@@ -293,6 +293,8 @@ class ConsoleDashboard:
         return 0
 
     def _require_real_terminal(self) -> None:
+        if os.environ.get("DEBUG") == "1":
+            return
         if not (sys.stdout.isatty() and os.environ.get("TERM") != "dumb"):
             raise RuntimeError(
                 "Retro Arena command center requires a real interactive terminal. "
