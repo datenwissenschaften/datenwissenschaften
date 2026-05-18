@@ -115,7 +115,7 @@ class RetroEnvironmentFactory:
 
 
 class EnvironmentBuilder:
-    """Builder for a single wrapped stable-retro DummyVecEnv."""
+    """Builder for wrapped stable-retro environments (single or parallel)."""
 
     def __init__(
         self,
@@ -123,6 +123,7 @@ class EnvironmentBuilder:
         *,
         render_mode: str = "rgb_array",
         n_stack: int = 1,
+        n_envs: int | None = None,
     ) -> None:
         global _last_environment_wrapper
         self.game = self._required_env("RETRO_ARENA_GAME_ID")
@@ -132,16 +133,32 @@ class EnvironmentBuilder:
         _last_environment_wrapper = wrapper
         self.render_mode = render_mode
         self.n_stack = n_stack
+        self.n_envs = n_envs if n_envs is not None else int(os.environ.get("RETRO_ARENA_NUM_ENVS", 1))
 
-    def make_env(self):
-        record_dir = os.path.join(self.record_dir, "0")
+    def make_env(self, rank: int = 0):
+        record_dir = os.path.join(self.record_dir, str(rank))
         os.makedirs(record_dir, exist_ok=True)
         env = retro.make(self.game, self.state, render_mode=self.render_mode, record=record_dir)
         return self.wrapper(env)
 
-    def build(self):
+    def build(self, n_envs: int | None = None, n_stack: int | None = None):
         import_roms()
-        venv = DummyVecEnv([self.make_env])
+
+        if n_envs is not None:
+            self.n_envs = n_envs
+        if n_stack is not None:
+            self.n_stack = n_stack
+
+        def _make_env(rank: int):
+            return lambda: self.make_env(rank)
+
+        env_fns = [_make_env(i) for i in range(self.n_envs)]
+
+        if self.n_envs > 1:
+            venv = SubprocVecEnv(env_fns)
+        else:
+            venv = DummyVecEnv(env_fns)
+
         venv = VecMonitor(venv)
         return VecFrameStack(venv, n_stack=self.n_stack)
 
