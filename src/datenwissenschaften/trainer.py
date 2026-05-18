@@ -24,7 +24,7 @@ class Trainer:
             *,
             additional_callbacks: Sequence[BaseCallback] | None = None,
     ) -> None:
-        self.total_timesteps = 1_000_000
+        self.total_timesteps = int(os.environ.get("RETRO_ARENA_TIMESTEPS"))
         self.callbacks = self._default_callbacks() + (additional_callbacks or [])
         self._state: dict[str, Any] = {}
         self._savestate = os.environ.get("RETRO_ARENA_SAVESTATE")
