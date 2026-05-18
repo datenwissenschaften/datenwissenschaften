@@ -37,11 +37,10 @@ class Trainer:
             reset_num_timesteps=False,
         )
 
-    @staticmethod
-    def _default_callbacks() -> list[BaseCallback]:
+    def _default_callbacks(self) -> list[BaseCallback]:
         return [
             SaveModelCallback(),
-            BestEpisodeCallback(),
+            BestEpisodeCallback(self.total_timesteps),
         ]
 
     def _configure_runtime(self) -> None:

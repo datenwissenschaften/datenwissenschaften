@@ -31,22 +31,42 @@ class ConsoleDashboard:
     episodes: int = 0
     wins: int = 0
     steps: int = 0
+    total_steps: int = 0
     last_env: int | None = None
     last_result: str = "-"
     last_save: str = "-"
     status: str = "Idle"
-    started_at: float | None = None
+    _tried_start: bool = False
 
-    def start(self, *, game: str, num_envs: int, best_time: int | None, announce: bool = True) -> None:
+    def start(
+        self,
+        *,
+        game: str,
+        num_envs: int,
+        best_time: int | None,
+        total_steps: int = 0,
+        current_steps: int = 0,
+        announce: bool = True,
+    ) -> None:
+        self._tried_start = True
         self._require_real_terminal()
+
         self.game = game
         self.num_envs = num_envs
         self.best_time = best_time
+        self.total_steps = total_steps
+        self.steps = current_steps
         self.status = "Training"
         self.started_at = monotonic()
 
         if self.live is None:
-            self.live = Live(self._render(), console=self.console, refresh_per_second=6, transient=False)
+            self.live = Live(
+                self._render(),
+                console=self.console,
+                refresh_per_second=2,
+                transient=False,
+                auto_refresh=True,
+            )
             self.live.start()
         if announce:
             self.message("ok", f"Training started for {game} across {num_envs} envs")
@@ -60,19 +80,29 @@ class ConsoleDashboard:
             self.live = None
 
     def message(self, level: MessageLevel, message: str) -> None:
-        if self.live is None and self._start_from_environment():
-            self.status = "Booting"
+        if self.live is None and not self._tried_start:
+            self._start_from_environment()
 
         self._add_event(level, message)
         self.status = message
         if self.live is None:
-            timestamp, event_level, event_message = self.events[0]
-            self.console.print(self._format_message(timestamp, event_level, event_message))
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            self.console.print(self._format_message(timestamp, level, message))
             return
         self.refresh()
 
-    def record_episode(self, *, env_index: int, episode_index: int, won: bool, time_until_won: int) -> None:
+    def record_episode(
+        self,
+        *,
+        env_index: int,
+        episode_index: int,
+        won: bool,
+        time_until_won: int,
+        current_steps: int = 0,
+    ) -> None:
         self.episodes += 1
+        if current_steps:
+            self.steps = current_steps
         if won:
             self.wins += 1
             self.last_result = f"win in {time_until_won}"
@@ -95,7 +125,7 @@ class ConsoleDashboard:
 
     def refresh(self) -> None:
         if self.live is not None:
-            self.live.update(self._render())
+            self.live.update(self._render(), refresh=True)
 
     def _render(self) -> Panel:
         return Panel(
@@ -155,13 +185,14 @@ class ConsoleDashboard:
     def _progress(self) -> Progress:
         progress = Progress(
             SpinnerColumn(style="cyan"),
-            TextColumn("[bold]Episode Stream[/]"),
+            TextColumn("[bold]Training Progress[/]"),
             BarColumn(bar_width=None),
-            TextColumn("{task.completed}"),
+            TextColumn("{task.percentage:>5.1f}%"),
+            TextColumn("{task.completed:,.0f}/{task.total:,.0f} steps"),
             expand=True,
         )
-        task = progress.add_task("episodes", total=max(self.episodes, 1), completed=self.episodes)
-        progress.update(task, total=max(self.episodes + 1, 1))
+        total = max(self.total_steps, self.steps, 1)
+        progress.add_task("steps", total=total, completed=min(self.steps, total))
         return progress
 
     def _activity(self) -> Table:
@@ -227,18 +258,18 @@ class ConsoleDashboard:
             return f"{hours:d}:{minutes:02d}:{seconds:02d}"
         return f"{minutes:02d}:{seconds:02d}"
 
-    def _start_from_environment(self) -> bool:
+    def _start_from_environment(self) -> None:
         game = os.environ.get("RETRO_ARENA_GAME_ID")
         if not game:
-            return False
+            return
 
         self.start(
             game=game,
             num_envs=0,
             best_time=self._best_time_from_environment(game),
+            current_steps=self._current_steps_from_environment(),
             announce=False,
         )
-        return True
 
     def _best_time_from_environment(self, game: str) -> int | None:
         models_dir = os.environ.get("RETRO_ARENA_MODEL_DIR")
@@ -255,21 +286,38 @@ class ConsoleDashboard:
             return None
         return int(text)
 
-    def _require_real_terminal(self) -> None:
-        if sys.stdout.isatty() and os.environ.get("TERM") != "dumb":
-            return
+    def _current_steps_from_environment(self) -> int:
+        value = os.environ.get("RETRO_ARENA_CURRENT_TIMESTEPS")
+        if value and value.isdecimal():
+            return int(value)
+        return 0
 
-        raise RuntimeError(
-            "Retro Arena command center requires a real interactive terminal. "
-            "PyCharm's Run console does not support the live dashboard; run this from an external terminal."
-        )
+    def _require_real_terminal(self) -> None:
+        if not (sys.stdout.isatty() and os.environ.get("TERM") != "dumb"):
+            raise RuntimeError(
+                "Retro Arena command center requires a real interactive terminal. "
+                "PyCharm's Run console does not support the live dashboard; run this via the runner script."
+            )
 
 
 _dashboard = ConsoleDashboard()
 
 
-def ui_start_training(*, game: str, num_envs: int, best_time: int | None) -> None:
-    _dashboard.start(game=game, num_envs=num_envs, best_time=best_time)
+def ui_start_training(
+    *,
+    game: str,
+    num_envs: int,
+    best_time: int | None,
+    total_steps: int = 0,
+    current_steps: int = 0,
+) -> None:
+    _dashboard.start(
+        game=game,
+        num_envs=num_envs,
+        best_time=best_time,
+        total_steps=total_steps,
+        current_steps=current_steps,
+    )
 
 
 def ui_stop_training() -> None:
@@ -288,12 +336,20 @@ def ui_warning(message: str) -> None:
     _dashboard.message("warn", message)
 
 
-def ui_episode_finished(*, env_index: int, episode_index: int, won: bool, time_until_won: int) -> None:
+def ui_episode_finished(
+    *,
+    env_index: int,
+    episode_index: int,
+    won: bool,
+    time_until_won: int,
+    current_steps: int = 0,
+) -> None:
     _dashboard.record_episode(
         env_index=env_index,
         episode_index=episode_index,
         won=won,
         time_until_won=time_until_won,
+        current_steps=current_steps,
     )
 
 
