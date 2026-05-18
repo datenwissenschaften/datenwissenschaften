@@ -1,9 +1,9 @@
 import os
 import tempfile
 
-from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
+from datenwissenschaften.console import ui_model_saved
 from datenwissenschaften.runtime import get_runtime
 
 
@@ -35,4 +35,4 @@ class SaveModelCallback(BaseCallback):
         runtime = get_runtime()
         model_path = runtime.get_model_path(runtime.game)
         atomic_save(self.model, model_path)
-        logger.debug("Rollout ended at {} steps. Model saved to {}.zip", self.num_timesteps, model_path)
+        ui_model_saved(steps=self.num_timesteps, model_path=f"{model_path}.zip")

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from loguru import logger
-
+from datenwissenschaften.console import ui_info
 from datenwissenschaften.core.config import TrainingConfig
 from datenwissenschaften.core.protocols import (
     CallbackFactory,
@@ -43,7 +42,7 @@ class TrainingSession:
 
     def train_forever(self, model: TrainableModel) -> None:
         self._claim_game(self.config.game)
-        logger.info("Starting training for {}...", self.config.game)
+        ui_info(f"Training {self.config.game} with {self.config.num_envs} envs")
 
         while True:
             model.learn(

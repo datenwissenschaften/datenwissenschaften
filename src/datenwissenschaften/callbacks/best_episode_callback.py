@@ -1,9 +1,9 @@
 import os
 
-from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften.callbacks.episode_record import EpisodeRecord
+from datenwissenschaften.console import ui_best_episode, ui_episode_finished, ui_start_training, ui_stop_training
 from datenwissenschaften.runtime import get_runtime
 
 
@@ -14,9 +14,22 @@ class BestEpisodeCallback(BaseCallback):
         self.episodes: list[EpisodeRecord] = []
         self.active_episodes: list[EpisodeRecord] = []
         self.episode_counts: list[int] = []
+        self.finished_episode_count = 0
+        self.winning_episode_count = 0
+        self.best_time: int | None = None
 
     def _on_training_start(self) -> None:
         self._ensure_episode_slots(self.training_env.num_envs)
+        runtime = get_runtime()
+        self.best_time = self._previous_time(runtime.get_state_value("best_time"))
+        ui_start_training(
+            game=runtime.game,
+            num_envs=self.training_env.num_envs,
+            best_time=self.best_time,
+        )
+
+    def _on_training_end(self) -> None:
+        ui_stop_training()
 
     # noinspection PyTypeChecker,PyUnresolvedReferences
     def _on_step(self) -> bool:
@@ -41,13 +54,11 @@ class BestEpisodeCallback(BaseCallback):
 
     def _on_rollout_end(self) -> bool:
         if not self.episodes:
-            logger.debug("Rollout ended with no finished episodes.")
             get_runtime().set_state_value("best_episode", "")
             return True
 
         won_episodes = [episode for episode in self.episodes if episode.won]
         if not won_episodes:
-            logger.debug("No winning episodes in rollout.")
             get_runtime().set_state_value("best_episode", "")
             self.episodes.clear()
             return True
@@ -59,11 +70,6 @@ class BestEpisodeCallback(BaseCallback):
         if self._is_new_best(best_episode, previous_time):
             self._save_best_episode(best_episode)
         else:
-            logger.debug(
-                "No new best episode. rollout_best_time={}, previous_time={}",
-                best_episode.time_until_won,
-                previous_time,
-            )
             runtime.set_state_value("best_episode", "")
 
         self.episodes.clear()
@@ -79,7 +85,15 @@ class BestEpisodeCallback(BaseCallback):
         episode.bk2_path = self._bk2_path(env_index, episode.episode_index)
 
         self.episodes.append(episode.clone())
-        self._log_finished_episode(env_index, episode)
+        self.finished_episode_count += 1
+        if episode.won:
+            self.winning_episode_count += 1
+        ui_episode_finished(
+            env_index=env_index,
+            episode_index=episode.episode_index,
+            won=episode.won,
+            time_until_won=episode.time_until_won,
+        )
 
         self.episode_counts[env_index] += 1
         self.active_episodes[env_index] = EpisodeRecord(env_index, self.episode_counts[env_index])
@@ -98,25 +112,12 @@ class BestEpisodeCallback(BaseCallback):
         return episode.time_until_won < previous_time
 
     def _save_best_episode(self, episode: EpisodeRecord) -> None:
-        logger.info(
-            "New best episode: time={}, bk2={}",
-            episode.time_until_won,
-            episode.bk2_path,
-        )
+        self.best_time = episode.time_until_won
+        ui_best_episode(time_until_won=episode.time_until_won, bk2_path=episode.bk2_path or "")
 
         runtime = get_runtime()
         runtime.set_state_value("best_time", episode.time_until_won)
         runtime.set_state_value("best_episode", episode.bk2_path)
-
-    def _log_finished_episode(self, env_index: int, episode: EpisodeRecord) -> None:
-        logger.debug(
-            "Episode finished env={}, episode={}, time={}, won={}, bk2={}",
-            env_index,
-            episode.episode_index,
-            episode.time_until_won,
-            episode.won,
-            episode.bk2_path,
-        )
 
     def _bk2_path(self, env_index: int, episode_index: int) -> str:
         runtime = get_runtime()

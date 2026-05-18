@@ -5,9 +5,9 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 import stable_retro as retro
-from loguru import logger
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecFrameStack, VecMonitor
 
+from datenwissenschaften.console import ui_warning
 from datenwissenschaften.retro.paths import RetroArenaPaths
 from datenwissenschaften.roms import import_roms
 
@@ -31,14 +31,14 @@ class SavestateResolver:
     def resolve(self, game: str, requested_state: str | None) -> str | None:
         savestate = requested_state or self.default_states.get(game)
         if not savestate:
-            logger.warning("No savestate configured for game {}. Starting without a state.", game)
+            ui_warning(f"No savestate configured for game {game}. Starting without a state.")
             return None
 
         available_state_set = {
             state for state in retro.data.list_states(game) if self._is_valid_state_file(game, state)
         }
         if savestate not in available_state_set:
-            logger.warning("Savestate {} is not valid for game {}. Starting without a state.", savestate, game)
+            ui_warning(f"Savestate {savestate} is not valid for game {game}. Starting without a state.")
             return None
         return savestate
 
@@ -88,13 +88,6 @@ class RetroEnvironmentFactory:
 
         game = self.get_game()
         savestate = self.savestate_resolver.resolve(game, self.get_savestate())
-        selected_state_path = retro.data.get_file_path(game, f"{savestate}.state") if savestate else None
-        logger.info(
-            "make_env selected game={} savestate={} state_path={}",
-            game,
-            savestate,
-            selected_state_path,
-        )
 
         if self.get_savestate() is None:
             self.set_savestate(savestate)
