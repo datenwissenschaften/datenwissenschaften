@@ -135,7 +135,7 @@ class ConsoleDashboard:
                 self._progress(),
                 self._activity(),
             ),
-            title="[bold cyan]RETRO ARENA COMMAND CENTER[/]",
+            title="[bold cyan]RETRO SPEEDLAB COMMAND CENTER[/]",
             border_style="cyan",
             box=box.DOUBLE,
         )
@@ -259,7 +259,7 @@ class ConsoleDashboard:
         return f"{minutes:02d}:{seconds:02d}"
 
     def _start_from_environment(self) -> None:
-        game = os.environ.get("RETRO_ARENA_GAME_ID")
+        game = os.environ.get("RETRO_SPEEDLAB_GAME_ID")
         if not game:
             return
 
@@ -272,11 +272,11 @@ class ConsoleDashboard:
         )
 
     def _best_time_from_environment(self, game: str) -> int | None:
-        models_dir = os.environ.get("RETRO_ARENA_MODEL_DIR")
+        models_dir = os.environ.get("RETRO_SPEEDLAB_MODEL_DIR")
         if not models_dir:
             return None
 
-        savestate = os.environ.get("RETRO_ARENA_SAVESTATE", "")
+        savestate = os.environ.get("RETRO_SPEEDLAB_SAVESTATE", "")
         best_time_path = Path(models_dir) / game / savestate / "best_time.txt"
         try:
             text = best_time_path.read_text(encoding="utf-8").strip()
@@ -287,7 +287,7 @@ class ConsoleDashboard:
         return int(text)
 
     def _current_steps_from_environment(self) -> int:
-        value = os.environ.get("RETRO_ARENA_CURRENT_TIMESTEPS")
+        value = os.environ.get("RETRO_SPEEDLAB_CURRENT_TIMESTEPS")
         if value and value.isdecimal():
             return int(value)
         return 0
@@ -297,7 +297,7 @@ class ConsoleDashboard:
             return
         if not (sys.stdout.isatty() and os.environ.get("TERM") != "dumb"):
             raise RuntimeError(
-                "Retro Arena command center requires a real interactive terminal. "
+                "Retro Speedlab command center requires a real interactive terminal. "
                 "PyCharm's Run console does not support the live dashboard; run this via the runner script."
             )
 

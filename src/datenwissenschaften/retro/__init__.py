@@ -5,14 +5,14 @@ from datenwissenschaften.retro.environment import (
     RetroVecEnvBuilder,
     SavestateResolver,
 )
-from datenwissenschaften.retro.paths import RetroArenaPaths
+from datenwissenschaften.retro.paths import RetroSpeedlabPaths
 
 __all__ = [
     "GameDefinition",
     "GameDefinitionLoader",
     "GameRegistry",
     "EnvironmentBuilder",
-    "RetroArenaPaths",
+    "RetroSpeedlabPaths",
     "RetroEnvironmentFactory",
     "RetroVecEnvBuilder",
     "SavestateResolver",

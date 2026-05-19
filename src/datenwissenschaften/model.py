@@ -19,14 +19,44 @@ def get_model_path(models_dir: str, game: str) -> str:
     return path
 
 
+def get_model_metadata(model: Any) -> dict[str, Any]:
+    return {
+        "action_space": str(model.action_space),
+        "batch_size": getattr(model, "batch_size", None),
+        "clip_range": str(getattr(model, "clip_range", None)),
+        "clip_range_vf": str(getattr(model, "clip_range_vf", None)),
+        "device": str(getattr(model, "device", None)),
+        "ent_coef": getattr(model, "ent_coef", None),
+        "gae_lambda": getattr(model, "gae_lambda", None),
+        "gamma": getattr(model, "gamma", None),
+        "lr_schedule": str(getattr(model, "lr_schedule", None)),
+        "max_grad_norm": getattr(model, "max_grad_norm", None),
+        "n_envs": getattr(model, "n_envs", None),
+        "n_epochs": getattr(model, "n_epochs", None),
+        "n_steps": getattr(model, "n_steps", None),
+        "normalize_advantage": getattr(model, "normalize_advantage", None),
+        "num_timesteps": getattr(model, "num_timesteps", None),
+        "observation_space": str(model.observation_space),
+        "policy_class": str(getattr(model, "policy_class", None)),
+        "policy_kwargs": getattr(model, "policy_kwargs", None),
+        "sde_sample_freq": getattr(model, "sde_sample_freq", None),
+        "seed": getattr(model, "seed", None),
+        "target_kl": getattr(model, "target_kl", None),
+        "use_sde": getattr(model, "use_sde", None),
+        "verbose": getattr(model, "verbose", None),
+        "vf_coef": getattr(model, "vf_coef", None),
+        "_total_timesteps": getattr(model, "_total_timesteps", None),
+    }
+
+
 def load_or_create_model(
     venv: Any,
     *,
     build_model: ModelFactory,
     load_model: ModelLoader = PPO.load,
 ) -> TrainableModel:
-    game = _required_env("RETRO_ARENA_GAME_ID")
-    models_dir = _required_env("RETRO_ARENA_MODEL_DIR")
+    game = _required_env("RETRO_SPEEDLAB_GAME_ID")
+    models_dir = _required_env("RETRO_SPEEDLAB_MODEL_DIR")
     model_path = get_model_path(models_dir, game)
     model_zip_path = f"{model_path}.zip"
 

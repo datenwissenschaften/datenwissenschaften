@@ -9,7 +9,7 @@ except ModuleNotFoundError:
     find_dotenv = None
     load_dotenv = None
 
-from datenwissenschaften.retro.paths import RetroArenaPaths
+from datenwissenschaften.retro.paths import RetroSpeedlabPaths
 
 
 def _required_path(name: str) -> Path:
@@ -19,16 +19,16 @@ def _required_path(name: str) -> Path:
     return Path(value)
 
 
-def load_paths_from_env() -> RetroArenaPaths:
+def load_paths_from_env() -> RetroSpeedlabPaths:
     if load_dotenv and find_dotenv:
         load_dotenv(find_dotenv(), override=True)
 
-    roms_path = _required_path("RETRO_ARENA_ROM_PATH")
-    models_dir = _required_path("RETRO_ARENA_MODELS_DIR")
-    working_dir = _required_path("RETRO_ARENA_WORKING_DIR")
-    record_dir = _required_path("RETRO_ARENA_RECORDING_DIR")
+    roms_path = _required_path("RETRO_SPEEDLAB_ROM_PATH")
+    models_dir = _required_path("RETRO_SPEEDLAB_MODELS_DIR")
+    working_dir = _required_path("RETRO_SPEEDLAB_WORKING_DIR")
+    record_dir = _required_path("RETRO_SPEEDLAB_RECORDING_DIR")
 
-    return RetroArenaPaths(
+    return RetroSpeedlabPaths(
         roms_path=roms_path,
         models_dir=models_dir,
         working_dir=working_dir,

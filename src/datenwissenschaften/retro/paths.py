@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
-class RetroArenaPaths:
+class RetroSpeedlabPaths:
     roms_path: Path
     models_dir: Path
     working_dir: Path

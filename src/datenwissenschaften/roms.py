@@ -4,7 +4,7 @@ import sys
 
 
 def import_roms(roms_dir: str | None = None) -> None:
-    roms_dir = roms_dir or _required_env("RETRO_ARENA_ROM_PATH")
+    roms_dir = roms_dir or _required_env("RETRO_SPEEDLAB_ROM_PATH")
     subprocess.run(
         [sys.executable, "-m", "stable_retro.import", roms_dir],
         check=True,

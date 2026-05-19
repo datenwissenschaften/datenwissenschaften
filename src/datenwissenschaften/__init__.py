@@ -5,19 +5,19 @@ from datenwissenschaften.retro import (
     GameDefinition,
     GameDefinitionLoader,
     GameRegistry,
-    RetroArenaPaths,
+    RetroSpeedlabPaths,
     RetroEnvironmentFactory,
     RetroVecEnvBuilder,
     SavestateResolver,
 )
 from datenwissenschaften.roms import import_roms
-from datenwissenschaften.runtime import RetroArenaRuntime, configure_runtime
+from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
 from datenwissenschaften.settings import load_paths_from_env
 from datenwissenschaften.trainer import Trainer
 
 __all__ = [
-    "RetroArenaPaths",
-    "RetroArenaRuntime",
+    "RetroSpeedlabPaths",
+    "RetroSpeedlabRuntime",
     "EnvironmentBuilder",
     "GameDefinition",
     "GameDefinitionLoader",

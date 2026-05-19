@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from datenwissenschaften.retro.paths import RetroArenaPaths
+from datenwissenschaften.retro.paths import RetroSpeedlabPaths
 
 
 @dataclass(frozen=True)
-class RetroArenaRuntime:
-    paths: RetroArenaPaths
+class RetroSpeedlabRuntime:
+    paths: RetroSpeedlabPaths
     wrappers: Mapping[str, type]
     ignored_states: Mapping[str, set[str]]
     default_states: Mapping[str, str]
@@ -22,6 +22,7 @@ class RetroArenaRuntime:
     get_state_value: Callable[[str], str]
     set_state_value: Callable[[str, Any], None]
     get_model_path: Callable[[str], str]
+    get_model_metadata: Callable[[Any], Mapping[str, Any]]
 
     @property
     def game(self) -> str:
@@ -44,15 +45,15 @@ class RetroArenaRuntime:
         return self.paths.record_dir
 
 
-_runtime: RetroArenaRuntime | None = None
+_runtime: RetroSpeedlabRuntime | None = None
 
 
-def configure_runtime(runtime: RetroArenaRuntime) -> None:
+def configure_runtime(runtime: RetroSpeedlabRuntime) -> None:
     global _runtime
     _runtime = runtime
 
 
-def get_runtime() -> RetroArenaRuntime:
+def get_runtime() -> RetroSpeedlabRuntime:
     if _runtime is None:
         raise RuntimeError("datenwissenschaften runtime is not configured.")
     return _runtime

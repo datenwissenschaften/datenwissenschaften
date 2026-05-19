@@ -11,10 +11,11 @@ from datenwissenschaften.callbacks import (
     BestEpisodeCallback,
     SaveModelCallback,
 )
-from datenwissenschaften.model import get_model_path
+from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
+from datenwissenschaften.model import get_model_metadata, get_model_path
 from datenwissenschaften.retro.environment import get_last_environment_wrapper
-from datenwissenschaften.retro.paths import RetroArenaPaths
-from datenwissenschaften.runtime import RetroArenaRuntime, configure_runtime
+from datenwissenschaften.retro.paths import RetroSpeedlabPaths
+from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
 
 
 class Trainer:
@@ -24,10 +25,10 @@ class Trainer:
             *,
             additional_callbacks: Sequence[BaseCallback] | None = None,
     ) -> None:
-        self.total_timesteps = int(os.environ.get("RETRO_ARENA_TIMESTEPS"))
+        self.total_timesteps = int(os.environ.get("RETRO_SPEEDLAB_TIMESTEPS"))
         self.callbacks = self._default_callbacks() + (additional_callbacks or [])
         self._state: dict[str, Any] = {}
-        self._savestate = os.environ.get("RETRO_ARENA_SAVESTATE")
+        self._savestate = os.environ.get("RETRO_SPEEDLAB_SAVESTATE")
 
     def train(self, model) -> None:
         self._configure_runtime()
@@ -41,19 +42,20 @@ class Trainer:
         return [
             SaveModelCallback(),
             BestEpisodeCallback(self.total_timesteps),
+            UploadEpisodeCallback(),
         ]
 
     def _configure_runtime(self) -> None:
-        roms_dir = self._required_env("RETRO_ARENA_ROM_PATH")
-        models_dir = self._required_env("RETRO_ARENA_MODEL_DIR")
-        record_dir = self._required_env("RETRO_ARENA_RECORDING_DIR")
-        game = self._required_env("RETRO_ARENA_GAME_ID")
+        roms_dir = self._required_env("RETRO_SPEEDLAB_ROM_PATH")
+        models_dir = self._required_env("RETRO_SPEEDLAB_MODEL_DIR")
+        record_dir = self._required_env("RETRO_SPEEDLAB_RECORDING_DIR")
+        game = self._required_env("RETRO_SPEEDLAB_GAME_ID")
         wrapper = get_last_environment_wrapper()
 
         # noinspection PyTypeChecker
         configure_runtime(
-            RetroArenaRuntime(
-                paths=RetroArenaPaths(
+            RetroSpeedlabRuntime(
+                paths=RetroSpeedlabPaths(
                     roms_path=Path(roms_dir),
                     models_dir=Path(models_dir),
                     working_dir=Path(record_dir),
@@ -70,6 +72,7 @@ class Trainer:
                 get_state_value=self._get_state_value,
                 set_state_value=self._set_state_value,
                 get_model_path=lambda selected_game: get_model_path(models_dir, selected_game),
+                get_model_metadata=get_model_metadata,
             )
         )
 
@@ -92,8 +95,8 @@ class Trainer:
 
     def _state_path(self, name: str) -> str:
         return os.path.join(
-            self._required_env("RETRO_ARENA_MODEL_DIR"),
-            self._required_env("RETRO_ARENA_GAME_ID"),
+            self._required_env("RETRO_SPEEDLAB_MODEL_DIR"),
+            self._required_env("RETRO_SPEEDLAB_GAME_ID"),
             self._savestate or "",
             f"{name}.txt",
         )

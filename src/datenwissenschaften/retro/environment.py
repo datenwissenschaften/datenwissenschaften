@@ -8,7 +8,7 @@ import stable_retro as retro
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecFrameStack, VecMonitor
 
 from datenwissenschaften.console import ui_warning
-from datenwissenschaften.retro.paths import RetroArenaPaths
+from datenwissenschaften.retro.paths import RetroSpeedlabPaths
 from datenwissenschaften.roms import import_roms
 
 GameProvider = Callable[[], str]
@@ -60,7 +60,7 @@ class RetroEnvironmentFactory:
     def __init__(
         self,
         *,
-        paths: RetroArenaPaths,
+        paths: RetroSpeedlabPaths,
         wrappers: Mapping[str, type],
         savestate_resolver: SavestateResolver,
         get_game: GameProvider,
@@ -126,14 +126,14 @@ class EnvironmentBuilder:
         n_envs: int | None = None,
     ) -> None:
         global _last_environment_wrapper
-        self.game = self._required_env("RETRO_ARENA_GAME_ID")
-        self.state = os.environ.get("RETRO_ARENA_SAVESTATE")
-        self.record_dir = self._required_env("RETRO_ARENA_RECORDING_DIR")
+        self.game = self._required_env("RETRO_SPEEDLAB_GAME_ID")
+        self.state = os.environ.get("RETRO_SPEEDLAB_SAVESTATE")
+        self.record_dir = self._required_env("RETRO_SPEEDLAB_RECORDING_DIR")
         self.wrapper = wrapper
         _last_environment_wrapper = wrapper
         self.render_mode = render_mode
         self.n_stack = n_stack
-        self.n_envs = n_envs if n_envs is not None else int(os.environ.get("RETRO_ARENA_NUM_ENVS", 1))
+        self.n_envs = n_envs if n_envs is not None else int(os.environ.get("RETRO_SPEEDLAB_NUM_ENVS", 1))
 
     def make_env(self, rank: int = 0):
         record_dir = os.path.join(self.record_dir, str(rank))
