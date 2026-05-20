@@ -125,6 +125,9 @@ def _parse_nvidia_smi_gpu(line: str) -> dict:
 class UploadEpisodeCallback(BaseCallback):
     def __init__(self):
         super().__init__()
+        self.upload_url = (
+            os.environ.get("RETRO_SPEEDLAB_UPLOAD_URL") or "https://speedlab.datenwissenschaften.com/api"
+        )
 
     def _on_step(self):
         return True
@@ -148,15 +151,13 @@ class UploadEpisodeCallback(BaseCallback):
             return True
 
         signing_key = requests.get(
-            f"{os.environ.get('RETRO_SPEEDLAB_UPLOAD_URL')}/runs/signing-key",
+            f"{self.upload_url}/runs/signing-key",
             headers={"X-API-Key": secret_key},
         ).json()["signing_key"]
 
         signer = Signer(signing_key)
         metadata_json = json.dumps(metadata, indent=4, sort_keys=True)
         signed_metadata = signer.sign(metadata_json.encode("utf-8"))
-
-        upload_url = os.environ.get("RETRO_SPEEDLAB_UPLOAD_URL")
 
         try:
             with open(best_episode_path, "rb") as f:
@@ -168,8 +169,8 @@ class UploadEpisodeCallback(BaseCallback):
                 headers = {
                     "X-API-Key": secret_key,
                 }
-                ui_info(f"Uploading episode to {upload_url}...")
-                response = requests.post(f"{upload_url}/runs", files=files, data=data, headers=headers, timeout=30)
+                ui_info(f"Uploading episode to {self.upload_url}...")
+                response = requests.post(f"{self.upload_url}/runs", files=files, data=data, headers=headers, timeout=30)
                 response.raise_for_status()
                 ui_info("Episode uploaded successfully.")
         except Exception as e:
