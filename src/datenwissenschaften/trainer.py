@@ -10,6 +10,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from datenwissenschaften.callbacks import (
     BestEpisodeCallback,
     SaveModelCallback,
+    StopTrainingAtTimestepsCallback,
 )
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
 from datenwissenschaften.model import get_model_metadata, get_model_path
@@ -32,8 +33,11 @@ class Trainer:
 
     def train(self, model) -> None:
         self._configure_runtime()
+        if model.num_timesteps >= self.total_timesteps:
+            return
+
         model.learn(
-            total_timesteps=self.total_timesteps,
+            total_timesteps=self.total_timesteps - model.num_timesteps,
             callback=self.callbacks,
             reset_num_timesteps=False,
         )
@@ -43,6 +47,7 @@ class Trainer:
             SaveModelCallback(),
             BestEpisodeCallback(self.total_timesteps),
             UploadEpisodeCallback(),
+            StopTrainingAtTimestepsCallback(self.total_timesteps),
         ]
 
     def _configure_runtime(self) -> None:
