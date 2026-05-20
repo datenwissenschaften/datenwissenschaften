@@ -25,8 +25,8 @@ dependencies = [
     "itsdangerous>=2.2.0,<3.0.0",
 ]
 classifiers = [
-    "Development Status :: 1 - Planning",
-    "Intended Audience :: Developers",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
