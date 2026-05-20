@@ -147,13 +147,6 @@ class UploadEpisodeCallback(BaseCallback):
             ui_info("RETRO_SPEEDLAB_API_KEY not set. Skipping episode upload.")
             return True
 
-        model_id = os.environ.get("RETRO_SPEEDLAB_MODEL_ID")
-        if not model_id:
-            ui_info("RETRO_SPEEDLAB_MODEL_ID not set. Skipping episode upload.")
-            return True
-
-        metadata["model_id"] = model_id
-
         signing_key = requests.get(
             f"{os.environ.get('RETRO_SPEEDLAB_UPLOAD_URL')}/runs/signing-key",
             headers={"X-API-Key": secret_key},
@@ -171,7 +164,7 @@ class UploadEpisodeCallback(BaseCallback):
                     "bk2_file": (os.path.basename(best_episode_path), f, "application/octet-stream"),
                     "metadata_file": ("metadata.json.signed", signed_metadata, "application/octet-stream"),
                 }
-                data = {}
+                data = {"game": runtime.game, "category": runtime.savestate}
                 headers = {
                     "X-API-Key": secret_key,
                 }

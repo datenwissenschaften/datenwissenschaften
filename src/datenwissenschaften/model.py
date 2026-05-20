@@ -22,31 +22,29 @@ def get_model_path(models_dir: str, game: str) -> str:
 def get_model_metadata(model: Any) -> dict[str, Any]:
     return {
         "action_space": str(model.action_space),
-        "batch_size": getattr(model, "batch_size", None),
-        "clip_range": str(getattr(model, "clip_range", None)),
-        "clip_range_vf": str(getattr(model, "clip_range_vf", None)),
+        "class": _class_path(model),
         "device": str(getattr(model, "device", None)),
-        "ent_coef": getattr(model, "ent_coef", None),
-        "gae_lambda": getattr(model, "gae_lambda", None),
-        "gamma": getattr(model, "gamma", None),
-        "lr_schedule": str(getattr(model, "lr_schedule", None)),
-        "max_grad_norm": getattr(model, "max_grad_norm", None),
         "n_envs": getattr(model, "n_envs", None),
-        "n_epochs": getattr(model, "n_epochs", None),
-        "n_steps": getattr(model, "n_steps", None),
-        "normalize_advantage": getattr(model, "normalize_advantage", None),
         "num_timesteps": getattr(model, "num_timesteps", None),
         "observation_space": str(model.observation_space),
-        "policy_class": str(getattr(model, "policy_class", None)),
-        "policy_kwargs": getattr(model, "policy_kwargs", None),
-        "sde_sample_freq": getattr(model, "sde_sample_freq", None),
-        "seed": getattr(model, "seed", None),
-        "target_kl": getattr(model, "target_kl", None),
-        "use_sde": getattr(model, "use_sde", None),
-        "verbose": getattr(model, "verbose", None),
-        "vf_coef": getattr(model, "vf_coef", None),
-        "_total_timesteps": getattr(model, "_total_timesteps", None),
+        "total_timesteps": getattr(model, "_total_timesteps", None),
     }
+
+
+def _class_path(obj: Any) -> str:
+    if isinstance(obj, type):
+        cls = obj
+    elif callable(obj):
+        module = getattr(obj, "__module__", None)
+        qualname = getattr(obj, "__qualname__", None)
+        if module and qualname:
+            return f"{module}.{qualname}"
+
+        cls = obj.__class__
+    else:
+        cls = obj.__class__
+
+    return f"{cls.__module__}.{cls.__qualname__}"
 
 
 def load_or_create_model(
