@@ -157,7 +157,7 @@ class UploadEpisodeCallback(BaseCallback):
         signing_key = requests.get(
             f"{os.environ.get('RETRO_SPEEDLAB_UPLOAD_URL')}/runs/signing-key",
             headers={"X-API-Key": secret_key},
-        ).json()['signing_key']
+        ).json()["signing_key"]
 
         signer = Signer(signing_key)
         metadata_json = json.dumps(metadata, indent=4, sort_keys=True)
@@ -171,10 +171,7 @@ class UploadEpisodeCallback(BaseCallback):
                     "bk2_file": (os.path.basename(best_episode_path), f, "application/octet-stream"),
                     "metadata_file": ("metadata.json.signed", signed_metadata, "application/octet-stream"),
                 }
-                data = {
-                    "game_id": runtime.game,
-                    "savestate": runtime.savestate,
-                }
+                data = {}
                 headers = {
                     "X-API-Key": secret_key,
                 }
