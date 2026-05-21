@@ -35,9 +35,9 @@ classifiers = [
 keywords = ["reinforcement-learning", "retro-gaming", "stable-baselines3", "stable-retro", "ai", "gymnasium"]
 
 [project.urls]
-Homepage = "https://github.com/datenwissenschaften/retro-speedlab"
-Repository = "https://github.com/datenwissenschaften/retro-speedlab"
-Documentation = "https://github.com/datenwissenschaften/retro-speedlab"
+Homepage = "https://speedlab.datenwissenschaften.com"
+Repository = "https://github.com/datenwissenschaften/datenwissenschaften"
+Documentation = "https://speedlab.datenwissenschaften.com/getting-started"
 
 [dependency-groups]
 dev = [
