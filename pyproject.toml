@@ -4,8 +4,8 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "datenwissenschaften"
-version = "1.0.0"
-description = "Python package for datenwissenschaften utilities."
+version = "1.0.1"
+description = "Core library for Retro Speedlab: A high-performance RL toolkit for classic games."
 readme = "README.md"
 authors = [
     { name = "datenwissenschaften", email = "martin.franke@datenwissenschaften.com" }
@@ -27,9 +27,17 @@ dependencies = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
+keywords = ["reinforcement-learning", "retro-gaming", "stable-baselines3", "stable-retro", "ai", "gymnasium"]
+
+[project.urls]
+Homepage = "https://github.com/datenwissenschaften/retro-speedlab"
+Repository = "https://github.com/datenwissenschaften/retro-speedlab"
+Documentation = "https://github.com/datenwissenschaften/retro-speedlab"
 
 [dependency-groups]
 dev = [

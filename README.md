@@ -1,15 +1,32 @@
-# datenwissenschaften
+# datenwissenschaften: Retro Speedlab Core 🚀
 
-Python package for datenwissenschaften utilities.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 
-This package is currently in the planning stage.
+**datenwissenschaften** is the core engine powering [Retro Speedlab](https://github.com/datenwissenschaften/retro-speedlab), a high-performance Reinforcement Learning (RL) toolkit for classic video games. Built on top of `stable-baselines3` and `stable-retro`, it provides the underlying infrastructure for training, monitoring, and recording RL agents.
 
-## Installation
+## ⚠️ Important Note
+
+This package is intended as the internal library for the Retro Speedlab project. For the full experience—including automated runners, training scripts, and comprehensive documentation—please use the main repository:
+
+👉 **[https://github.com/datenwissenschaften/retro-speedlab](https://github.com/datenwissenschaften/retro-speedlab)**
+
+## ✨ Features
+
+*   **🎮 Command Center**: A rich terminal dashboard for real-time training metrics.
+*   **🏋️ Orchestrated Training**: Simplified RL workflows and session management.
+*   **📊 Smart Callbacks**: Automatic checkpointing and replay recording (`.bk2`).
+*   **🛠️ Robust Infrastructure**: Streamlined environment and ROM management.
+
+## 🚀 Installation
 
 ```bash
 pip install datenwissenschaften
 ```
 
-## License
+## 📜 License
 
-This project is licensed under the GNU General Public License v3.0 only.
+This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for details.
+
+---
+Developed with ❤️ by [datenwissenschaften](mailto:martin.franke@datenwissenschaften.com).
