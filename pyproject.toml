@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "datenwissenschaften"
-version = "0.0.1"
+version = "1.0.0"
 description = "Python package for datenwissenschaften utilities."
 readme = "README.md"
 authors = [
