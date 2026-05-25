@@ -8,7 +8,7 @@ import requests
 from itsdangerous import Signer
 from stable_baselines3.common.callbacks import BaseCallback
 
-from datenwissenschaften.console import ui_info
+from loguru import logger
 from datenwissenschaften.runtime import get_runtime
 
 
@@ -147,7 +147,7 @@ class UploadEpisodeCallback(BaseCallback):
 
         secret_key = os.environ.get("RETRO_SPEEDLAB_API_KEY")
         if not secret_key:
-            ui_info("RETRO_SPEEDLAB_API_KEY not set. Skipping episode upload.")
+            logger.info("RETRO_SPEEDLAB_API_KEY not set. Skipping episode upload.")
             return True
 
         signing_key = requests.get(
@@ -169,11 +169,11 @@ class UploadEpisodeCallback(BaseCallback):
                 headers = {
                     "X-API-Key": secret_key,
                 }
-                ui_info(f"Uploading episode to {self.upload_url}...")
+                logger.info(f"Uploading episode to {self.upload_url}...")
                 response = requests.post(f"{self.upload_url}/runs", files=files, data=data, headers=headers, timeout=30)
                 response.raise_for_status()
-                ui_info("Episode uploaded successfully.")
+                logger.info("Episode uploaded successfully.")
         except Exception as e:
-            ui_info(f"Failed to upload episode: {e}")
+            logger.error(f"Failed to upload episode: {e}")
 
         return True

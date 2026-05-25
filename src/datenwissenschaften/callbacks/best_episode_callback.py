@@ -3,7 +3,7 @@ import os
 from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften.callbacks.episode_record import EpisodeRecord
-from datenwissenschaften.console import ui_best_episode, ui_episode_finished, ui_start_training, ui_stop_training
+from loguru import logger
 from datenwissenschaften.runtime import get_runtime
 
 
@@ -23,16 +23,13 @@ class BestEpisodeCallback(BaseCallback):
         self._ensure_episode_slots(self.training_env.num_envs)
         runtime = get_runtime()
         self.best_time = self._previous_time(runtime.get_state_value("best_time"))
-        ui_start_training(
-            game=runtime.game,
-            num_envs=self.training_env.num_envs,
-            best_time=self.best_time,
-            total_steps=self.total_timesteps,
-            current_steps=self.model.num_timesteps,
+        logger.info(
+            f"Training started for {runtime.game} across {self.training_env.num_envs} envs. "
+            f"Best time: {self.best_time}. Total steps: {self.total_timesteps}"
         )
 
     def _on_training_end(self) -> None:
-        ui_stop_training()
+        logger.info("Training stopped")
 
     # noinspection PyTypeChecker,PyUnresolvedReferences
     def _on_step(self) -> bool:
@@ -91,13 +88,8 @@ class BestEpisodeCallback(BaseCallback):
         self.finished_episode_count += 1
         if episode.won:
             self.winning_episode_count += 1
-        ui_episode_finished(
-            env_index=env_index,
-            episode_index=episode.episode_index,
-            won=episode.won,
-            time_until_won=episode.time_until_won,
-            current_steps=self.num_timesteps,
-        )
+        result = f"win in {episode.time_until_won}" if episode.won else "loss"
+        logger.debug(f"Env {env_index} finished episode {episode.episode_index}: {result}")
 
         self.episode_counts[env_index] += 1
         self.active_episodes[env_index] = EpisodeRecord(env_index, self.episode_counts[env_index])
@@ -117,7 +109,7 @@ class BestEpisodeCallback(BaseCallback):
 
     def _save_best_episode(self, episode: EpisodeRecord) -> None:
         self.best_time = episode.time_until_won
-        ui_best_episode(time_until_won=episode.time_until_won, bk2_path=episode.bk2_path or "")
+        logger.info(f"New best: {episode.time_until_won} frames ({os.path.basename(episode.bk2_path or '')})")
 
         runtime = get_runtime()
         runtime.set_state_value("best_time", episode.time_until_won)

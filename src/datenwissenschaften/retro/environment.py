@@ -7,7 +7,7 @@ from typing import Any
 import stable_retro as retro
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecFrameStack, VecMonitor
 
-from datenwissenschaften.console import ui_warning
+from loguru import logger
 from datenwissenschaften.retro.paths import RetroSpeedlabPaths
 from datenwissenschaften.roms import import_roms
 
@@ -31,14 +31,14 @@ class SavestateResolver:
     def resolve(self, game: str, requested_state: str | None) -> str | None:
         savestate = requested_state or self.default_states.get(game)
         if not savestate:
-            ui_warning(f"No savestate configured for game {game}. Starting without a state.")
+            logger.warning(f"No savestate configured for game {game}. Starting without a state.")
             return None
 
         available_state_set = {
             state for state in retro.data.list_states(game) if self._is_valid_state_file(game, state)
         }
         if savestate not in available_state_set:
-            ui_warning(f"Savestate {savestate} is not valid for game {game}. Starting without a state.")
+            logger.warning(f"Savestate {savestate} is not valid for game {game}. Starting without a state.")
             return None
         return savestate
 

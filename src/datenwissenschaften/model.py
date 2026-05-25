@@ -6,7 +6,7 @@ from typing import Any
 
 from stable_baselines3 import PPO
 
-from datenwissenschaften.console import ui_info, ui_warning
+from loguru import logger
 from datenwissenschaften.core.protocols import ModelBuilder as ModelFactory
 from datenwissenschaften.core.protocols import TrainableModel
 
@@ -59,15 +59,15 @@ def load_or_create_model(
     model_zip_path = f"{model_path}.zip"
 
     if not os.path.exists(model_zip_path):
-        ui_info(f"No existing model found at {model_zip_path}. Starting fresh training session.")
+        logger.info(f"No existing model found at {model_zip_path}. Starting fresh training session.")
         return build_model(venv)
 
     try:
-        ui_info(f"Loading existing model: {model_path}.zip")
+        logger.info(f"Loading existing model: {model_path}.zip")
         return load_model(model_path, env=venv, verbose=0)
     except Exception as error:
-        ui_warning(f"Failed to load model: {error}")
-        ui_info("Starting fresh training session.")
+        logger.warning(f"Failed to load model: {error}")
+        logger.info("Starting fresh training session.")
         return build_model(venv)
 
 

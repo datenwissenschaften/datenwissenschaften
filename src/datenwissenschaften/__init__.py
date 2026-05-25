@@ -1,4 +1,7 @@
+from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.core import TrainingConfig, TrainingSession
+
+setup_logging()
 from datenwissenschaften.model import ModelBuilder, get_model_path, load_or_create_model
 from datenwissenschaften.retro import (
     EnvironmentBuilder,

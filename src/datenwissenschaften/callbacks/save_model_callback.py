@@ -3,7 +3,7 @@ import tempfile
 
 from stable_baselines3.common.callbacks import BaseCallback
 
-from datenwissenschaften.console import ui_model_saved
+from loguru import logger
 from datenwissenschaften.runtime import get_runtime
 
 
@@ -36,5 +36,5 @@ class SaveModelCallback(BaseCallback):
         model_path = runtime.get_model_path(runtime.game)
         atomic_save(self.model, model_path)
 
-        ui_model_saved(steps=self.num_timesteps, model_path=f"{model_path}.zip")
+        logger.info(f"Checkpoint saved at {self.num_timesteps:,} steps: {os.path.basename(model_path)}.zip")
         return True
