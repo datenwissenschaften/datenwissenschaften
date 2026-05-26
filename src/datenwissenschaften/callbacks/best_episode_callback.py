@@ -24,7 +24,7 @@ class BestEpisodeCallback(BaseCallback):
         runtime = get_runtime()
         self.best_time = self._previous_time(runtime.get_state_value("best_time"))
         logger.info(
-            f"Training started for {runtime.game} across {self.training_env.num_envs} envs. "
+            f"Training started across {self.training_env.num_envs} envs. "
             f"Best time: {self.best_time}. Total steps: {self.total_timesteps}"
         )
 
@@ -55,17 +55,28 @@ class BestEpisodeCallback(BaseCallback):
     def _on_rollout_end(self) -> bool:
         if not self.episodes:
             get_runtime().set_state_value("best_episode", "")
+            logger.debug("No finished episodes in rollout. max_x unavailable")
             return True
 
         won_episodes = [episode for episode in self.episodes if episode.won]
         if not won_episodes:
             get_runtime().set_state_value("best_episode", "")
+            best_max_x_episode = self._best_max_x_episode(self.episodes)
+            logger.debug(
+                f"No winning episodes in rollout. Finished episodes: {len(self.episodes)}. "
+                f"best max_x: {self._max_x_debug(best_max_x_episode)}"
+            )
             self.episodes.clear()
             return True
 
         best_episode = min(won_episodes, key=lambda episode: episode.time_until_won)
         runtime = get_runtime()
         previous_time = self._previous_time(runtime.get_state_value("best_time"))
+        logger.debug(
+            f"Rollout best candidate: env={best_episode.env_index}, episode={best_episode.episode_index}, "
+            f"time={best_episode.time_until_won}, previous_time={previous_time}, "
+            f"max_x={best_episode.max_x}"
+        )
 
         if self._is_new_best(best_episode, previous_time):
             self._save_best_episode(best_episode)
@@ -89,7 +100,7 @@ class BestEpisodeCallback(BaseCallback):
         if episode.won:
             self.winning_episode_count += 1
         result = f"win in {episode.time_until_won}" if episode.won else "loss"
-        logger.debug(f"Env {env_index} finished episode {episode.episode_index}: {result}")
+        logger.debug(f"Env {env_index} finished episode {episode.episode_index}: {result}, max_x={episode.max_x}")
 
         self.episode_counts[env_index] += 1
         self.active_episodes[env_index] = EpisodeRecord(env_index, self.episode_counts[env_index])
@@ -119,3 +130,14 @@ class BestEpisodeCallback(BaseCallback):
         runtime = get_runtime()
         filename = f"{runtime.game}-{runtime.savestate}-{episode_index:06d}.bk2"
         return os.path.join(runtime.record_dir, str(env_index), filename)
+
+    def _best_max_x_episode(self, episodes: list[EpisodeRecord]) -> EpisodeRecord | None:
+        episodes_with_max_x = [episode for episode in episodes if episode.max_x is not None]
+        if not episodes_with_max_x:
+            return None
+        return max(episodes_with_max_x, key=lambda episode: episode.max_x or 0)
+
+    def _max_x_debug(self, episode: EpisodeRecord | None) -> str:
+        if episode is None:
+            return "unavailable"
+        return f"env={episode.env_index}, episode={episode.episode_index}, max_x={episode.max_x}"
