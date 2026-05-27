@@ -16,16 +16,15 @@ class BestEpisodeCallback(BaseCallback):
         self.active_episodes: list[EpisodeRecord] = []
         self.episode_counts: list[int] = []
         self.finished_episode_count = 0
-        self.winning_episode_count = 0
-        self.best_time: int | None = None
+        self.best_progress: int | float | None = None
 
     def _on_training_start(self) -> None:
         self._ensure_episode_slots(self.training_env.num_envs)
         runtime = get_runtime()
-        self.best_time = self._previous_time(runtime.get_state_value("best_time"))
+        self.best_progress = self._previous_progress(runtime.get_state_value("best_progress"))
         logger.info(
             f"Training started across {self.training_env.num_envs} envs. "
-            f"Best time: {self.best_time}. Total steps: {self.total_timesteps}"
+            f"Best progress: {self.best_progress}. Total steps: {self.total_timesteps}"
         )
 
     def _on_training_end(self) -> None:
@@ -55,30 +54,26 @@ class BestEpisodeCallback(BaseCallback):
     def _on_rollout_end(self) -> bool:
         if not self.episodes:
             get_runtime().set_state_value("best_episode", "")
-            logger.debug("No finished episodes in rollout. max_x unavailable")
+            logger.debug("No finished episodes in rollout. progress unavailable")
             return True
 
-        won_episodes = [episode for episode in self.episodes if episode.won]
-        if not won_episodes:
+        best_episode = self._best_progress_episode(self.episodes)
+        if best_episode is None:
             get_runtime().set_state_value("best_episode", "")
-            best_max_x_episode = self._best_max_x_episode(self.episodes)
             logger.debug(
-                f"No winning episodes in rollout. Finished episodes: {len(self.episodes)}. "
-                f"best max_x: {self._max_x_debug(best_max_x_episode)}"
+                f"No progress in rollout. Finished episodes: {len(self.episodes)}."
             )
             self.episodes.clear()
             return True
 
-        best_episode = min(won_episodes, key=lambda episode: episode.time_until_won)
         runtime = get_runtime()
-        previous_time = self._previous_time(runtime.get_state_value("best_time"))
+        previous_best_progress = self._previous_progress(runtime.get_state_value("best_progress"))
         logger.debug(
             f"Rollout best candidate: env={best_episode.env_index}, episode={best_episode.episode_index}, "
-            f"time={best_episode.time_until_won}, previous_time={previous_time}, "
-            f"max_x={best_episode.max_x}"
+            f"progress={best_episode.progress}, previous_best_progress={previous_best_progress}"
         )
 
-        if self._is_new_best(best_episode, previous_time):
+        if self._is_new_best(best_episode, previous_best_progress):
             self._save_best_episode(best_episode)
         else:
             runtime.set_state_value("best_episode", "")
@@ -97,33 +92,35 @@ class BestEpisodeCallback(BaseCallback):
 
         self.episodes.append(episode.clone())
         self.finished_episode_count += 1
-        if episode.won:
-            self.winning_episode_count += 1
-        result = f"win in {episode.time_until_won}" if episode.won else "loss"
-        logger.debug(f"Env {env_index} finished episode {episode.episode_index}: {result}, max_x={episode.max_x}")
+        logger.debug(
+            f"Env {env_index} finished episode {episode.episode_index}: progress={episode.progress}"
+        )
 
         self.episode_counts[env_index] += 1
         self.active_episodes[env_index] = EpisodeRecord(env_index, self.episode_counts[env_index])
 
-    def _previous_time(self, value: str) -> int | None:
+    def _previous_progress(self, value: str) -> int | float | None:
         text = str(value).strip()
         if text.isdecimal():
             return int(text)
-        return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
 
-    def _is_new_best(self, episode: EpisodeRecord, previous_time: int | None) -> bool:
-        if not episode.bk2_path or not episode.won:
+    def _is_new_best(self, episode: EpisodeRecord, previous_best_progress: int | float | None) -> bool:
+        if not episode.bk2_path or episode.progress is None:
             return False
-        if previous_time is None:
+        if previous_best_progress is None:
             return True
-        return episode.time_until_won < previous_time
+        return episode.progress > previous_best_progress
 
     def _save_best_episode(self, episode: EpisodeRecord) -> None:
-        self.best_time = episode.time_until_won
-        logger.info(f"New best: {episode.time_until_won} frames ({os.path.basename(episode.bk2_path or '')})")
+        self.best_progress = episode.progress
+        logger.info(f"New best progress: {episode.progress} ({os.path.basename(episode.bk2_path or '')})")
 
         runtime = get_runtime()
-        runtime.set_state_value("best_time", episode.time_until_won)
+        runtime.set_state_value("best_progress", episode.progress)
         runtime.set_state_value("best_episode", episode.bk2_path)
 
     def _bk2_path(self, env_index: int, episode_index: int) -> str:
@@ -131,13 +128,8 @@ class BestEpisodeCallback(BaseCallback):
         filename = f"{runtime.game}-{runtime.savestate}-{episode_index:06d}.bk2"
         return os.path.join(runtime.record_dir, str(env_index), filename)
 
-    def _best_max_x_episode(self, episodes: list[EpisodeRecord]) -> EpisodeRecord | None:
-        episodes_with_max_x = [episode for episode in episodes if episode.max_x is not None]
-        if not episodes_with_max_x:
+    def _best_progress_episode(self, episodes: list[EpisodeRecord]) -> EpisodeRecord | None:
+        episodes_with_progress = [episode for episode in episodes if episode.progress is not None]
+        if not episodes_with_progress:
             return None
-        return max(episodes_with_max_x, key=lambda episode: episode.max_x or 0)
-
-    def _max_x_debug(self, episode: EpisodeRecord | None) -> str:
-        if episode is None:
-            return "unavailable"
-        return f"env={episode.env_index}, episode={episode.episode_index}, max_x={episode.max_x}"
+        return max(episodes_with_progress, key=lambda episode: episode.progress)
