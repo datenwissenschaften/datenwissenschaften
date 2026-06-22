@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "datenwissenschaften"
-version = "1.2.0"
+version = "1.3.0"
 description = "Core library for Retro Speedlab: A high-performance RL toolkit for classic games."
 readme = "README.md"
 authors = [
@@ -18,7 +18,7 @@ dependencies = [
     "opencv-python>=4.10.0.84,<5.0.0.0",
     "python-dotenv>=1.2.2,<2.0.0",
     "requests>=2.34.2,<3.0.0",
-    "stable-baselines3>=2.9.0a2,<3.0.0",
+    "stable-baselines3>=2.9.0,<3.0.0",
     "stable-retro>=1.0.0,<2.0.0",
     "torch>=2.12.0,<3.0.0",
     "itsdangerous>=2.2.0,<3.0.0",

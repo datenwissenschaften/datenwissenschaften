@@ -22,9 +22,9 @@ from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
 class Trainer:
     # noinspection PyTypeChecker
     def __init__(
-            self,
-            *,
-            additional_callbacks: Sequence[BaseCallback] | None = None,
+        self,
+        *,
+        additional_callbacks: Sequence[BaseCallback] | None = None,
     ) -> None:
         self.total_timesteps = int(os.environ.get("RETRO_SPEEDLAB_TIMESTEPS"))
         self.callbacks = self._default_callbacks() + (additional_callbacks or [])

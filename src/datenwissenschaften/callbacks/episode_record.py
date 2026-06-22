@@ -1,31 +1,12 @@
 from dataclasses import dataclass, field
 
 
-def _number_info(info: dict, *keys: str) -> int | float | None:
-    for key in keys:
-        if key in info:
-            return _number_value(info[key])
-
-    state = info.get("state")
-    if isinstance(state, dict):
-        for key in keys:
-            if key in state:
-                return _number_value(state[key])
-
-    return None
-
-
-def _number_value(value: object) -> int | float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return value
-    if isinstance(value, str):
-        try:
-            return float(value) if "." in value else int(value)
-        except ValueError:
-            return None
-    return None
+def _require_won(info: dict) -> bool:
+    if "won" not in info:
+        raise ValueError("Episode info must include a 'won' boolean field.")
+    if not isinstance(info["won"], bool):
+        raise ValueError("Episode info field 'won' must be a boolean.")
+    return info["won"]
 
 
 @dataclass
@@ -33,19 +14,26 @@ class EpisodeRecord:
     env_index: int
     episode_index: int
     bk2_path: str = field(init=False)
-    progress: int | float | None = field(init=False)
+    won: bool = field(init=False)
+    step_count: int = field(init=False)
+    time_until_won: int | None = field(init=False)
 
     def __post_init__(self) -> None:
         self.bk2_path = ""
-        self.progress = None
+        self.won = False
+        self.step_count = 0
+        self.time_until_won = None
 
     def add_step(self, info: dict) -> None:
-        step_progress = _number_info(info, "progress")
-        if step_progress is not None and (self.progress is None or step_progress > self.progress):
-            self.progress = step_progress
+        self.step_count += 1
+        if _require_won(info) and not self.won:
+            self.won = True
+            self.time_until_won = self.step_count
 
     def clone(self) -> "EpisodeRecord":
         episode = EpisodeRecord(self.env_index, self.episode_index)
         episode.bk2_path = self.bk2_path
-        episode.progress = self.progress
+        episode.won = self.won
+        episode.step_count = self.step_count
+        episode.time_until_won = self.time_until_won
         return episode

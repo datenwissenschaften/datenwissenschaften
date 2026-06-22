@@ -43,4 +43,5 @@ def setup_logging(level: str | None = None) -> None:
         level=resolved_level,
     )
 
+
 setup_logging()

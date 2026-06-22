@@ -29,8 +29,5 @@ def load_paths_from_env() -> RetroSpeedlabPaths:
     record_dir = _required_path("RETRO_SPEEDLAB_RECORDING_DIR")
 
     return RetroSpeedlabPaths(
-        roms_path=roms_path,
-        models_dir=models_dir,
-        working_dir=working_dir,
-        record_dir=record_dir
+        roms_path=roms_path, models_dir=models_dir, working_dir=working_dir, record_dir=record_dir
     )

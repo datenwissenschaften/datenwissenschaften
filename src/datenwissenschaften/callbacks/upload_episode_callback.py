@@ -125,9 +125,7 @@ def _parse_nvidia_smi_gpu(line: str) -> dict:
 class UploadEpisodeCallback(BaseCallback):
     def __init__(self):
         super().__init__()
-        self.upload_url = (
-            os.environ.get("RETRO_SPEEDLAB_UPLOAD_URL") or "https://speedlab.datenwissenschaften.com/api"
-        )
+        self.upload_url = os.environ.get("RETRO_SPEEDLAB_UPLOAD_URL") or "https://speedlab.datenwissenschaften.com/api"
 
     def _on_step(self):
         return True
