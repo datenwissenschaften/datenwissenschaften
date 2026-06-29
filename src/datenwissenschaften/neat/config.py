@@ -38,15 +38,15 @@ bias_init_mean          = 0.0
 bias_init_stdev         = 1.0
 bias_max_value          = 30.0
 bias_min_value          = -30.0
-bias_mutate_power       = 0.5
-bias_mutate_rate        = 0.7
+bias_mutate_power       = 0.2
+bias_mutate_rate        = 0.5
 bias_replace_rate       = 0.1
 
 compatibility_disjoint_coefficient = 1.0
 compatibility_weight_coefficient   = 0.5
 
-conn_add_prob           = 0.2
-conn_delete_prob        = 0.05
+conn_add_prob           = 0.15
+conn_delete_prob        = 0.02
 
 enabled_default         = True
 enabled_mutate_rate     = 0.01
@@ -54,10 +54,10 @@ enabled_mutate_rate     = 0.01
 feed_forward            = True
 initial_connection      = full_direct
 
-node_add_prob           = 0.05
-node_delete_prob        = 0.02
+node_add_prob           = 0.03
+node_delete_prob        = 0.01
 
-num_hidden              = 8
+num_hidden              = 16
 num_inputs              = {num_inputs}
 num_outputs             = {num_outputs}
 
@@ -73,21 +73,21 @@ weight_init_mean        = 0.0
 weight_init_stdev       = 1.0
 weight_max_value        = 30.0
 weight_min_value        = -30.0
-weight_mutate_power     = 0.5
+weight_mutate_power     = 0.2
 weight_mutate_rate      = 0.8
 weight_replace_rate     = 0.1
 
 [DefaultSpeciesSet]
-compatibility_threshold = 3.0
+compatibility_threshold = 2.5
 
 [DefaultStagnation]
 species_fitness_func = max
-max_stagnation       = 20
+max_stagnation       = 50
 species_elitism      = 2
 
 [DefaultReproduction]
-elitism            = 5
-survival_threshold = 0.2
+elitism            = 10
+survival_threshold = 0.3
 """,
         encoding="utf-8",
     )
