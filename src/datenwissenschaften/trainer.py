@@ -12,6 +12,7 @@ from datenwissenschaften.callbacks import (
     StopTrainingAtTimestepsCallback,
 )
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
+from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.model import get_model_metadata, get_model_path
 from datenwissenschaften.retro.environment import get_last_environment_wrapper
 from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
@@ -26,7 +27,8 @@ class Trainer:
         additional_callbacks: Sequence[BaseCallback] | None = None,
         config_path: str | Path = DEFAULT_CONFIG_PATH,
     ) -> None:
-        self.config: RetroSpeedlabConfig = load_config()
+        self.config: RetroSpeedlabConfig = load_config(config_path)
+        setup_logging(self.config.log_level)
         self.total_timesteps = self.config.training.total_timesteps
         self.callbacks = self._default_callbacks() + (additional_callbacks or [])
         self._state: dict[str, Any] = {}

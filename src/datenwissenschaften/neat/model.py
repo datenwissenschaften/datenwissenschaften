@@ -27,7 +27,7 @@ class NEATModel:
         winner=None,
         settings_path: str | Path = DEFAULT_CONFIG_PATH,
     ):
-        settings = load_config()
+        settings = load_config(settings_path)
         self.env = env
         game = settings.training.game
         self.output_dir = settings.paths.models_dir / game / "datenwissenschaften"

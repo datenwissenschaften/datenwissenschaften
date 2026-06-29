@@ -40,8 +40,8 @@ class RetroSpeedlabConfig:
     upload: UploadSettings
 
 
-def load_config() -> RetroSpeedlabConfig:
-    config_path = DEFAULT_CONFIG_PATH.expanduser().resolve()
+def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabConfig:
+    config_path = Path(config_path).expanduser().resolve()
     try:
         with config_path.open(encoding="utf-8") as config_file:
             document = yaml.safe_load(config_file)
@@ -79,8 +79,8 @@ def load_config() -> RetroSpeedlabConfig:
     )
 
 
-def empty_all_paths() -> None:
-    paths = load_config().paths
+def empty_all_paths(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
+    paths = load_config(config_path).paths
     for path in (paths.models_dir, paths.record_dir, paths.savestate_dir):
         if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
@@ -88,8 +88,8 @@ def empty_all_paths() -> None:
             path.unlink(missing_ok=True)
 
 
-def load_paths_from_config() -> RetroSpeedlabPaths:
-    return load_config().paths
+def load_paths_from_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabPaths:
+    return load_config(config_path).paths
 
 
 def _mapping(values: dict[str, Any], key: str) -> dict[str, Any]:
