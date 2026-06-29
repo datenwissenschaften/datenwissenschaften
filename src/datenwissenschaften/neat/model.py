@@ -21,7 +21,6 @@ class NEATModel:
     def __init__(
         self,
         env,
-        population_size: int = 100,
         generations_completed: dict[str, int] | None = None,
         winners: dict[str, object] | None = None,
         winner=None,
@@ -32,7 +31,7 @@ class NEATModel:
         game = settings.training.game
         self.output_dir = settings.paths.models_dir / game / "datenwissenschaften"
         self.config_path = self.output_dir / "config.ini"
-        self.population_size = population_size
+        self.population_size = settings.training.population_size
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.generations_completed = dict(generations_completed or {})

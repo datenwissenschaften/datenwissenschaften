@@ -8,6 +8,7 @@ class TrainingConfig:
     game: str
     num_envs: int
     n_stack: int
+    population_size: int
     timestep_batch: int = int(1e7)
 
     def __post_init__(self) -> None:
@@ -19,3 +20,5 @@ class TrainingConfig:
             raise ValueError("TrainingConfig.n_stack must be at least 1.")
         if self.timestep_batch < 1:
             raise ValueError("TrainingConfig.timestep_batch must be at least 1.")
+        if self.population_size < 8:
+            raise ValueError("TrainingConfig.population_size must be at least 8.")

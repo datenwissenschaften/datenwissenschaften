@@ -22,6 +22,7 @@ class RetroSpeedlabPaths:
 class TrainingSettings:
     game: str
     total_timesteps: int
+    population_size: int
     savestate: str | None
     num_envs: int
 
@@ -70,6 +71,7 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             total_timesteps=_positive_int(training, "total_timesteps"),
             savestate=_nullable_string(training, "savestate"),
             num_envs=_positive_int(training, "num_envs"),
+            population_size=_positive_int(training, "population_size"),
         ),
         log_level=_string(document, "log_level"),
         upload=UploadSettings(
