@@ -1,4 +1,6 @@
 import math
+import time
+from statistics import mean, stdev
 
 import neat
 from loguru import logger
@@ -100,3 +102,75 @@ class WinnerReporter(neat.reporting.BaseReporter):
         self.model.generations_completed[self.state_name] = self.model.population.generation + 1
         self.model._networks.pop(self.state_name, None)
         self.model._save_all()
+
+
+class LoguruReporter(neat.reporting.BaseReporter):
+    def __init__(self, show_species_detail: bool = True):
+        self.show_species_detail = show_species_detail
+        self.generation = None
+        self.generation_start_time = None
+        self.generation_times = []
+        self.num_extinctions = 0
+
+    def start_generation(self, generation):
+        self.generation = generation
+        logger.info(f"Running generation {generation}")
+        self.generation_start_time = time.time()
+
+    def end_generation(self, config, population, species_set):
+        ng = len(population)
+        ns = len(species_set.species)
+        if self.show_species_detail:
+            logger.info(f"Population of {ng:d} members in {ns:d} species (after reproduction)")
+            for sid in sorted(species_set.species):
+                species = species_set.species[sid]
+                age = self.generation - species.created
+                size = len(species.members)
+                fitness = "--" if species.fitness is None else f"{species.fitness:.3f}"
+                adjusted_fitness = "--" if species.adjusted_fitness is None else f"{species.adjusted_fitness:.3f}"
+                stagnation = self.generation - species.last_improved
+                logger.info(
+                    f"species id={sid} age={age} size={size} "
+                    f"fitness={fitness} adj_fit={adjusted_fitness} stag={stagnation}"
+                )
+        else:
+            logger.info(f"Population of {ng:d} members in {ns:d} species (after reproduction)")
+
+        elapsed = time.time() - self.generation_start_time
+        self.generation_times.append(elapsed)
+        self.generation_times = self.generation_times[-10:]
+        average = sum(self.generation_times) / len(self.generation_times)
+
+        logger.info(f"Total extinctions: {self.num_extinctions:d}")
+        if len(self.generation_times) > 1:
+            logger.info(f"Generation time: {elapsed:.3f} sec ({average:.3f} average)")
+        else:
+            logger.info(f"Generation time: {elapsed:.3f} sec")
+
+    def post_evaluate(self, config, population, species, best_genome):
+        fitnesses = [candidate.fitness for candidate in population.values()]
+        fit_mean = mean(fitnesses)
+        fit_std = stdev(fitnesses)
+        best_species_id = species.get_species_id(best_genome.key)
+        logger.info(f"Population average fitness: {fit_mean:3.5f} stdev: {fit_std:3.5f}")
+        logger.info(
+            "Best fitness: "
+            f"{best_genome.fitness:3.5f} - size: {best_genome.size()!r} "
+            f"- species {best_species_id} - id {best_genome.key}"
+        )
+
+    def complete_extinction(self):
+        self.num_extinctions += 1
+        logger.warning("All species extinct.")
+
+    def found_solution(self, config, generation, best):
+        logger.info(
+            f"Best individual in generation {self.generation} meets fitness threshold " f"- complexity: {best.size()!r}"
+        )
+
+    def species_stagnant(self, sid, species):
+        if self.show_species_detail:
+            logger.info(f"Species {sid} with {len(species.members)} members is stagnated: removing it")
+
+    def info(self, msg):
+        logger.info(msg)

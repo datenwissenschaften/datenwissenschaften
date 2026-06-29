@@ -12,7 +12,7 @@ from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 from datenwissenschaften.neat.checkpointer import AtomicCheckpointer
 from datenwissenschaften.neat.config import write_neat_config
 from datenwissenschaften.neat.evaluator import NEATEvaluator
-from datenwissenschaften.neat.reporter import AdaptiveConfigReporter, WinnerReporter
+from datenwissenschaften.neat.reporter import AdaptiveConfigReporter, LoguruReporter, WinnerReporter
 from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 
@@ -29,7 +29,8 @@ class NEATModel:
     ):
         settings = load_config(settings_path)
         self.env = env
-        self.output_dir = settings.paths.models_dir / "neat"
+        game = settings.training.game
+        self.output_dir = settings.paths.models_dir / game / "datenwissenschaften"
         self.config_path = self.output_dir / "config.ini"
         self.population_size = population_size
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -333,7 +334,7 @@ class NEATModel:
                 total_generations=total_generations,
             )
         )
-        population.add_reporter(neat.StdOutReporter(True))
+        population.add_reporter(LoguruReporter(show_species_detail=True))
         statistics = neat.StatisticsReporter()
         self.statistics[state_name] = statistics
         population.add_reporter(statistics)
