@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -9,6 +10,7 @@ from stable_baselines3 import PPO
 
 from datenwissenschaften.core.protocols import ModelBuilder as ModelFactory
 from datenwissenschaften.core.protocols import TrainableModel
+from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 
 ModelLoader = Callable[..., TrainableModel]
 
@@ -52,10 +54,10 @@ def load_or_create_model(
     *,
     build_model: ModelFactory,
     load_model: ModelLoader = PPO.load,
+    config_path: str | Path = DEFAULT_CONFIG_PATH,
 ) -> TrainableModel:
-    game = _required_env("RETRO_SPEEDLAB_GAME_ID")
-    models_dir = _required_env("RETRO_SPEEDLAB_MODEL_DIR")
-    model_path = get_model_path(models_dir, game)
+    config = load_config(config_path)
+    model_path = get_model_path(str(config.paths.models_dir), config.training.game)
     model_zip_path = f"{model_path}.zip"
 
     if not os.path.exists(model_zip_path):
@@ -72,8 +74,9 @@ def load_or_create_model(
 
 
 class ModelBuilder:
-    def __init__(self, build_model: ModelFactory | type) -> None:
+    def __init__(self, build_model: ModelFactory | type, *, config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
         self.build_model = build_model
+        self.config_path = config_path
 
     def build(self, venv: Any) -> TrainableModel:
         build_model = self.build_model() if isinstance(self.build_model, type) else self.build_model
@@ -82,11 +85,5 @@ class ModelBuilder:
             venv,
             build_model=build_model,
             load_model=load_model,
+            config_path=self.config_path,
         )
-
-
-def _required_env(name: str) -> str:
-    value = os.environ.get(name)
-    if value is None:
-        raise RuntimeError(f"{name} must be set.")
-    return value

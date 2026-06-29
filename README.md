@@ -24,6 +24,12 @@ This package is intended as the internal library for the Retro Speedlab project.
 pip install datenwissenschaften
 ```
 
+## Configuration
+
+Copy `config.example.yaml` to `config.yaml` and adjust its values. Application settings are read from YAML rather than
+environment variables. APIs that load configuration also accept an explicit `config_path` when the file is stored
+elsewhere. Relative paths in the file are resolved relative to the configuration file.
+
 ## 📜 License
 
 This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for details.

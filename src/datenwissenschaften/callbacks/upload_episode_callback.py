@@ -3,13 +3,15 @@ import os
 import platform
 import shutil
 import subprocess
+from pathlib import Path
 
 import requests
 from itsdangerous import Signer
+from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
-from loguru import logger
 from datenwissenschaften.runtime import get_runtime
+from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, UploadSettings, load_config
 
 
 def get_system_metadata() -> dict:
@@ -123,9 +125,15 @@ def _parse_nvidia_smi_gpu(line: str) -> dict:
 
 
 class UploadEpisodeCallback(BaseCallback):
-    def __init__(self):
+    def __init__(
+        self,
+        settings: UploadSettings | None = None,
+        *,
+        config_path: str | Path = DEFAULT_CONFIG_PATH,
+    ):
         super().__init__()
-        self.upload_url = os.environ.get("RETRO_SPEEDLAB_UPLOAD_URL") or "https://speedlab.datenwissenschaften.com/api"
+        self.settings = settings or load_config(config_path).upload
+        self.upload_url = self.settings.url
 
     def _on_step(self):
         return True
@@ -143,9 +151,9 @@ class UploadEpisodeCallback(BaseCallback):
         metadata["savestate"] = runtime.savestate
         metadata["system"] = get_system_metadata()
 
-        secret_key = os.environ.get("RETRO_SPEEDLAB_API_KEY")
+        secret_key = self.settings.api_key
         if not secret_key:
-            logger.info("RETRO_SPEEDLAB_API_KEY not set. Skipping episode upload.")
+            logger.info("Upload API key is not configured. Skipping episode upload.")
             return True
 
         signing_key = requests.get(

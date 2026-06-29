@@ -37,10 +37,6 @@ class RetroSpeedlabRuntime:
         return self.paths.models_dir
 
     @property
-    def working_dir(self) -> Path:
-        return self.paths.working_dir
-
-    @property
     def record_dir(self) -> Path:
         return self.paths.record_dir
 

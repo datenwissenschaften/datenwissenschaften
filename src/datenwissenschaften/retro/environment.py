@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 import stable_retro as retro
+from loguru import logger
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecFrameStack, VecMonitor
 
-from loguru import logger
 from datenwissenschaften.retro.paths import RetroSpeedlabPaths
 from datenwissenschaften.roms import import_roms
+from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 
 GameProvider = Callable[[], str]
 SavestateProvider = Callable[[], str | None]
@@ -96,8 +98,6 @@ class RetroEnvironmentFactory:
         if wrapper_cls is None:
             raise ValueError(f"Unsupported game: {game}")
 
-        (self.paths.working_dir / game).mkdir(parents=True, exist_ok=True)
-
         env = retro.make(
             game,
             savestate,
@@ -124,16 +124,19 @@ class EnvironmentBuilder:
         render_mode: str = "rgb_array",
         n_stack: int = 1,
         n_envs: int | None = None,
+        config_path: str | Path = DEFAULT_CONFIG_PATH,
     ) -> None:
         global _last_environment_wrapper
-        self.game = self._required_env("RETRO_SPEEDLAB_GAME_ID")
-        self.state = os.environ.get("RETRO_SPEEDLAB_SAVESTATE")
-        self.record_dir = self._required_env("RETRO_SPEEDLAB_RECORDING_DIR")
+        config = load_config(config_path)
+        self.config_path = config_path
+        self.game = config.training.game
+        self.state = config.training.savestate
+        self.record_dir = str(config.paths.record_dir)
         self.wrapper = wrapper
         _last_environment_wrapper = wrapper
         self.render_mode = render_mode
         self.n_stack = n_stack
-        self.n_envs = n_envs if n_envs is not None else int(os.environ.get("RETRO_SPEEDLAB_NUM_ENVS", 1))
+        self.n_envs = n_envs if n_envs is not None else config.training.num_envs
 
     def make_env(self, rank: int = 0):
         record_dir = os.path.join(self.record_dir, str(rank))
@@ -142,7 +145,7 @@ class EnvironmentBuilder:
         return self.wrapper(env)
 
     def build(self, n_envs: int | None = None, n_stack: int | None = None):
-        import_roms()
+        import_roms(config_path=self.config_path)
 
         if n_envs is not None:
             self.n_envs = n_envs
@@ -161,14 +164,6 @@ class EnvironmentBuilder:
 
         venv = VecMonitor(venv)
         return VecFrameStack(venv, n_stack=self.n_stack)
-
-    @staticmethod
-    def _required_env(name: str) -> str:
-        value = os.environ.get(name)
-        if value is None:
-            raise RuntimeError(f"{name} must be set.")
-        return value
-
 
 class RetroVecEnvBuilder:
     def __init__(self, env_factory: RetroEnvironmentFactory) -> None:

@@ -1,0 +1,15 @@
+paths:
+  roms: roms
+  models: working/models
+  recordings: working/recordings
+
+training:
+  game: Airstriker-Genesis-v0
+  savestate: null
+  total_timesteps: 1000000
+  num_envs: 1
+
+log_level: INFO
+
+upload:
+  api_key: null

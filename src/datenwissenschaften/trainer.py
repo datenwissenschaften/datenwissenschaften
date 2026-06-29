@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -15,8 +14,8 @@ from datenwissenschaften.callbacks import (
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
 from datenwissenschaften.model import get_model_metadata, get_model_path
 from datenwissenschaften.retro.environment import get_last_environment_wrapper
-from datenwissenschaften.retro.paths import RetroSpeedlabPaths
 from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
+from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfig, load_config
 
 
 class Trainer:
@@ -25,11 +24,13 @@ class Trainer:
         self,
         *,
         additional_callbacks: Sequence[BaseCallback] | None = None,
+        config_path: str | Path = DEFAULT_CONFIG_PATH,
     ) -> None:
-        self.total_timesteps = int(os.environ.get("RETRO_SPEEDLAB_TIMESTEPS"))
+        self.config: RetroSpeedlabConfig = load_config(config_path)
+        self.total_timesteps = self.config.training.total_timesteps
         self.callbacks = self._default_callbacks() + (additional_callbacks or [])
         self._state: dict[str, Any] = {}
-        self._savestate = os.environ.get("RETRO_SPEEDLAB_SAVESTATE")
+        self._savestate = self.config.training.savestate
 
     def train(self, model) -> None:
         self._configure_runtime()
@@ -46,26 +47,19 @@ class Trainer:
         return [
             SaveModelCallback(),
             BestEpisodeCallback(self.total_timesteps),
-            UploadEpisodeCallback(),
+            UploadEpisodeCallback(self.config.upload),
             StopTrainingAtTimestepsCallback(self.total_timesteps),
         ]
 
     def _configure_runtime(self) -> None:
-        roms_dir = self._required_env("RETRO_SPEEDLAB_ROM_PATH")
-        models_dir = self._required_env("RETRO_SPEEDLAB_MODEL_DIR")
-        record_dir = self._required_env("RETRO_SPEEDLAB_RECORDING_DIR")
-        game = self._required_env("RETRO_SPEEDLAB_GAME_ID")
+        paths = self.config.paths
+        game = self.config.training.game
         wrapper = get_last_environment_wrapper()
 
         # noinspection PyTypeChecker
         configure_runtime(
             RetroSpeedlabRuntime(
-                paths=RetroSpeedlabPaths(
-                    roms_path=Path(roms_dir),
-                    models_dir=Path(models_dir),
-                    working_dir=Path(record_dir),
-                    record_dir=Path(record_dir),
-                ),
+                paths=paths,
                 wrappers={game: wrapper} if wrapper else {},
                 ignored_states={game: set()},
                 default_states={game: self._savestate or ""},
@@ -76,39 +70,32 @@ class Trainer:
                 set_savestate=self._set_savestate,
                 get_state_value=self._get_state_value,
                 set_state_value=self._set_state_value,
-                get_model_path=lambda selected_game: get_model_path(models_dir, selected_game),
+                get_model_path=lambda selected_game: get_model_path(str(paths.models_dir), selected_game),
                 get_model_metadata=get_model_metadata,
             )
         )
 
     def _get_state_value(self, name: str) -> str:
         state_path = self._state_path(name)
-        if os.path.exists(state_path):
-            with open(state_path, encoding="utf-8") as file:
+        if state_path.exists():
+            with state_path.open(encoding="utf-8") as file:
                 return file.read()
         return str(self._state.get(name, "False"))
 
     def _set_state_value(self, name: str, value: Any) -> None:
         self._state[name] = value
         state_path = self._state_path(name)
-        os.makedirs(os.path.dirname(state_path), exist_ok=True)
-        with open(state_path, "w", encoding="utf-8") as file:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        with state_path.open("w", encoding="utf-8") as file:
             file.write(str(value))
 
     def _set_savestate(self, savestate: str) -> None:
         self._savestate = savestate
 
-    def _state_path(self, name: str) -> str:
-        return os.path.join(
-            self._required_env("RETRO_SPEEDLAB_MODEL_DIR"),
-            self._required_env("RETRO_SPEEDLAB_GAME_ID"),
+    def _state_path(self, name: str) -> Path:
+        return Path(
+            self.config.paths.models_dir,
+            self.config.training.game,
             self._savestate or "",
             f"{name}.txt",
         )
-
-    @staticmethod
-    def _required_env(name: str) -> str:
-        value = os.environ.get(name)
-        if value is None:
-            raise RuntimeError(f"{name} must be set.")
-        return value

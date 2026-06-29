@@ -1,12 +1,3 @@
-from __future__ import annotations
+from datenwissenschaften.settings import RetroSpeedlabPaths
 
-from dataclasses import dataclass
-from pathlib import Path
-
-
-@dataclass(frozen=True)
-class RetroSpeedlabPaths:
-    roms_path: Path
-    models_dir: Path
-    working_dir: Path
-    record_dir: Path
+__all__ = ["RetroSpeedlabPaths"]
