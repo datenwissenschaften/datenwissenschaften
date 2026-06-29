@@ -113,6 +113,9 @@ class NEATModel:
                     self.env,
                     training_state=state_name,
                     controller_genomes=dict(self.winners),
+                    max_steps=20_000,
+                    max_no_progress_steps=600,
+                    episodes_per_genome=3,
                     callback=training_callback,
                 )
                 while generations_remaining > 0:
@@ -120,6 +123,7 @@ class NEATModel:
                         training_callback.on_rollout_start()
                     winner = population.run(evaluator.evaluate_generation, 1)
                     generations_remaining -= 1
+                    self.generations_completed[state_name] = population.generation
                     self.winners[state_name] = winner
                     self.winner = winner
                     self._networks.clear()
