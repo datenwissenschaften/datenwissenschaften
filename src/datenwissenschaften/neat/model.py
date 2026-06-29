@@ -1,3 +1,5 @@
+import hashlib
+import inspect
 import math
 import pickle
 from copy import copy, deepcopy
@@ -9,12 +11,14 @@ import numpy as np
 from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 
+from datenwissenschaften import settings
 from datenwissenschaften.neat.checkpointer import AtomicCheckpointer
 from datenwissenschaften.neat.config import write_neat_config
 from datenwissenschaften.neat.evaluator import NEATEvaluator
 from datenwissenschaften.neat.reporter import AdaptiveConfigReporter, LoguruReporter, WinnerReporter
 from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
+from datenwissenschaften.vision.encoder import FixedVisualEncoder
 
 
 class NEATModel:
@@ -24,6 +28,7 @@ class NEATModel:
         generations_completed: dict[str, int] | None = None,
         winners: dict[str, object] | None = None,
         winner=None,
+        input_signature: dict[str, int] | None = None,
         settings_path: str | Path = DEFAULT_CONFIG_PATH,
     ):
         settings = load_config(settings_path)
@@ -37,6 +42,7 @@ class NEATModel:
         self.generations_completed = dict(generations_completed or {})
         self.winners = dict(winners or {})
         self.winner = winner
+        self.input_signature = dict(input_signature or {})
         self.populations: dict[str, neat.Population] = {}
         self.population = None
         self.statistics: dict[str, neat.StatisticsReporter] = {}
@@ -67,6 +73,7 @@ class NEATModel:
         self.env.reset()
         num_inputs = len(self.env.env_method("features")[0])
         num_outputs = self.env.env_method("num_actions")[0]
+        self._ensure_input_compatibility(num_inputs)
         state_names = self._training_state_names()
 
         logger.info(
@@ -262,6 +269,7 @@ class NEATModel:
             "winner": self.winner,
             "generations_completed": self.generations_completed,
             "population_size": self.population_size,
+            "input_signature": self.input_signature,
         }
         temporary_path = path.with_name(f".{path.name}.tmp")
         with temporary_path.open("wb") as file:
@@ -289,6 +297,7 @@ class NEATModel:
             generations_completed=payload["generations_completed"],
             winners=payload["winners"],
             winner=payload["winner"],
+            input_signature=payload.get("input_signature"),
             settings_path=settings_path,
         )
         return model
@@ -300,6 +309,8 @@ class NEATModel:
         config = self._load_config()
         state_names = self.env.env_method("state_name")
         all_features = self.env.env_method("features")
+        if all_features:
+            self._ensure_input_compatibility(len(all_features[0]))
         actions = []
 
         for state_name, features in zip(state_names, all_features, strict=True):
@@ -329,6 +340,39 @@ class NEATModel:
     def _highest_progress_index(self, state_names: list[str]) -> int:
         highest_states = self.env.env_method("highest_progress_state")
         return max(state_names.index(state_name) for state_name in highest_states)
+
+    def _current_input_signature(self, num_inputs: int) -> dict[str, int | str]:
+        encoder_source = inspect.getsource(FixedVisualEncoder.encode)
+        encoder_kernels = np.asarray(FixedVisualEncoder._kernels, dtype=np.float32)
+        encoder_hash = hashlib.sha256()
+        encoder_hash.update(encoder_source.encode("utf-8"))
+        encoder_hash.update(str(FixedVisualEncoder.output_size).encode("utf-8"))
+        encoder_hash.update(str(FixedVisualEncoder._pooled_size).encode("utf-8"))
+        encoder_hash.update(encoder_kernels.tobytes())
+        return {
+            "num_inputs": int(num_inputs),
+            "encoder_signature": encoder_hash.hexdigest(),
+        }
+
+    def _ensure_input_compatibility(self, num_inputs: int) -> None:
+        current_signature = self._current_input_signature(num_inputs)
+        if not self.input_signature:
+            self.input_signature = current_signature
+            return
+
+        if self.input_signature == current_signature:
+            return
+
+        expected_inputs = self.input_signature.get("num_inputs")
+        expected_encoder_signature = self.input_signature.get("encoder_signature")
+        logger.warning(
+            "Model input has changed. "
+            f"Expected {expected_inputs} inputs, got {current_signature['num_inputs']}. "
+            f"Encoder signature changed: {expected_encoder_signature != current_signature['encoder_signature']}."
+        )
+        logger.warning("Deleting all model artifacts and stopping training.")
+        settings.empty_all_paths()
+        raise ValueError("Model input has changed. Model files were deleted. Please restart training.")
 
     def _load_config(self):
         if self._config is None:

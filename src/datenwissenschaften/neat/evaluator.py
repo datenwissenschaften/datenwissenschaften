@@ -42,26 +42,25 @@ class NEATEvaluator:
                 break
 
     def evaluate_batch(self, genomes, config) -> bool:
-        candidate_networks = [neat.nn.FeedForwardNetwork.create(genome, config) for _, genome in genomes]
         try:
+            candidate_networks = [neat.nn.FeedForwardNetwork.create(genome, config) for _, genome in genomes]
             controller_networks = {
                 state_name: neat.nn.FeedForwardNetwork.create(genome, config)
                 for state_name, genome in self.controller_genomes.items()
             }
         except KeyError as error:
-            logger.warning(f"Model input has changed. Missing controller genome: {error}")
-            logger.warning("Deleting all controller genomes and starting from scratch.")
+            logger.warning(
+                "Detected incompatible NEAT genome while creating networks "
+                f"for state {self.training_state}: missing node {error}."
+            )
+            logger.warning("Deleting all model artifacts and stopping training.")
             settings.empty_all_paths()
-            self.controller_genomes.clear()
-            self.restart_requested = True
-            return False
+            raise ValueError("Model input has changed. Model files were deleted. Please restart training.")
 
         restored = self.env.env_method("set_training_state", self.training_state)
         self.env.reset()
         if any(restored[: len(genomes)]):
-            # TODO: Use loguru instead of print
-            # print(f"Restored automatic savestate for {self.training_state}")
-            pass
+            logger.debug(f"Restored automatic savestate for {self.training_state}")
         current_states = self.env.env_method("state_name")
         active = [True] * len(genomes)
         entered_training_state = [state_name == self.training_state for state_name in current_states[: len(genomes)]]
