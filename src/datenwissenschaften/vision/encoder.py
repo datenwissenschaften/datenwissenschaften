@@ -3,21 +3,39 @@ import numpy as np
 
 
 class FixedVisualEncoder:
-    output_size = 512
     _pooled_size = (8, 8)
+
     _kernels = np.asarray(
         [
+            # Identity / smoothing
             [[0, 0, 0], [0, 1, 0], [0, 0, 0]],
             [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+            [[0, 1, 0], [1, 4, 1], [0, 1, 0]],
+            # Sobel / directional edges
             [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],
             [[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
             [[-2, -1, 0], [-1, 0, 1], [0, 1, 2]],
             [[0, 1, 2], [-1, 0, 1], [-2, -1, 0]],
+            # Laplacian / high-pass
             [[0, 1, 0], [1, -4, 1], [0, 1, 0]],
             [[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]],
+            # Corners
+            [[1, 1, 0], [1, -2, -1], [0, -1, -1]],
+            [[0, 1, 1], [-1, -2, 1], [-1, -1, 0]],
+            [[-1, -1, 0], [-1, -2, 1], [0, 1, 1]],
+            [[0, -1, -1], [1, -2, -1], [1, 1, 0]],
+            # Bars / lines
+            [[-1, 2, -1], [-1, 2, -1], [-1, 2, -1]],
+            [[-1, -1, -1], [2, 2, 2], [-1, -1, -1]],
+            # Local contrast patterns
+            [[1, -1, 1], [-1, 1, -1], [1, -1, 1]],
+            [[-1, 1, -1], [1, -1, 1], [-1, 1, -1]],
         ],
         dtype=np.float32,
     )
+
+    output_size = len(_kernels) * _pooled_size[0] * _pooled_size[1]
+
     _kernel_norms = np.maximum(
         np.abs(_kernels).sum(axis=(1, 2), keepdims=True),
         1.0,
@@ -37,6 +55,7 @@ class FixedVisualEncoder:
         image = image / 255.0
 
         features = []
+
         for kernel, norm in zip(self._kernels, self._kernel_norms, strict=True):
             response = cv2.filter2D(
                 image,
@@ -51,4 +70,4 @@ class FixedVisualEncoder:
             )
             features.extend(pooled.reshape(-1))
 
-        return np.asarray(features, dtype=np.float32).tolist()
+        return np.asarray(features, dtype=np.float32).clip(-1.0, 1.0).tolist()
