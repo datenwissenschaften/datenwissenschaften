@@ -12,6 +12,7 @@ from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 
 from datenwissenschaften import settings
+from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.neat.checkpointer import AtomicCheckpointer
 from datenwissenschaften.neat.config import write_neat_config
 from datenwissenschaften.neat.evaluator import NEATEvaluator
@@ -32,6 +33,7 @@ class NEATModel:
         settings_path: str | Path = DEFAULT_CONFIG_PATH,
     ):
         settings = load_config(settings_path)
+        setup_logging(settings.log_level)
         self.env = env
         game = settings.training.game
         self.output_dir = settings.paths.models_dir / game / "datenwissenschaften"
