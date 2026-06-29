@@ -4,9 +4,9 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+from loguru import logger
 from stable_baselines3 import PPO
 
-from loguru import logger
 from datenwissenschaften.core.protocols import ModelBuilder as ModelFactory
 from datenwissenschaften.core.protocols import TrainableModel
 
@@ -72,21 +72,16 @@ def load_or_create_model(
 
 
 class ModelBuilder:
-    def __init__(
-        self,
-        build_model: ModelFactory | type,
-        *,
-        load_model: ModelLoader = PPO.load,
-    ) -> None:
+    def __init__(self, build_model: ModelFactory | type) -> None:
         self.build_model = build_model
-        self.load_model = load_model
 
     def build(self, venv: Any) -> TrainableModel:
         build_model = self.build_model() if isinstance(self.build_model, type) else self.build_model
+        load_model = getattr(build_model, "load", PPO.load)
         return load_or_create_model(
             venv,
             build_model=build_model,
-            load_model=self.load_model,
+            load_model=load_model,
         )
 
 
