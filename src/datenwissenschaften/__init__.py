@@ -1,3 +1,4 @@
+from datenwissenschaften.accelerator import configure_accelerator
 from datenwissenschaften.core import TrainingConfig, TrainingSession
 from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.model import ModelBuilder, get_model_path, load_or_create_model
@@ -30,6 +31,7 @@ __all__ = [
     "TrainingConfig",
     "TrainingSession",
     "Trainer",
+    "configure_accelerator",
     "configure_runtime",
     "get_model_path",
     "import_roms",

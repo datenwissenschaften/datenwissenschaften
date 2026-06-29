@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 from loguru import logger
 
+from datenwissenschaften.accelerator import configure_accelerator
 from datenwissenschaften.core.config import TrainingConfig
 from datenwissenschaften.core.protocols import (
     CallbackFactory,
@@ -39,6 +40,7 @@ class TrainingSession:
     def build(self) -> TrainableModel:
         self._claim_game(self.config.game)
         venv = self._build_venv(self.config.num_envs, self.config.n_stack)
+        configure_accelerator()
         return self._build_model(venv)
 
     def train_forever(self, model: TrainableModel) -> None:

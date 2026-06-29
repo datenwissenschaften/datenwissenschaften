@@ -6,6 +6,7 @@ from typing import Any
 
 from stable_baselines3.common.callbacks import BaseCallback
 
+from datenwissenschaften.accelerator import configure_accelerator
 from datenwissenschaften.callbacks import (
     BestEpisodeCallback,
     SaveModelCallback,
@@ -35,6 +36,7 @@ class Trainer:
         self._savestate = self.config.training.savestate
 
     def train(self, model) -> None:
+        configure_accelerator()
         self._configure_runtime()
         if model.num_timesteps >= self.total_timesteps:
             return

@@ -4,6 +4,7 @@ from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften import settings
+from datenwissenschaften.neat.torch_network import TorchFeedForwardBatch
 
 
 class NEATEvaluator:
@@ -74,6 +75,7 @@ class NEATEvaluator:
     def evaluate_batch(self, genomes, config) -> dict[int, float] | None:
         try:
             candidate_networks = [neat.nn.FeedForwardNetwork.create(genome, config) for _, genome in genomes]
+            candidate_batch = TorchFeedForwardBatch.create(candidate_networks)
             controller_networks = {
                 state_name: neat.nn.FeedForwardNetwork.create(genome, config)
                 for state_name, genome in self.controller_genomes.items()
@@ -95,6 +97,9 @@ class NEATEvaluator:
 
         current_states = self.env.env_method("state_name")
 
+        if candidate_batch is not None:
+            logger.debug(f"Evaluating {len(genomes)} NEAT networks as a {candidate_batch.device.type} batch")
+
         active = [True] * len(genomes)
         entered_training_state = [state_name == self.training_state for state_name in current_states[: len(genomes)]]
 
@@ -109,6 +114,7 @@ class NEATEvaluator:
             all_features = self.env.env_method("features")
             current_states = self.env.env_method("state_name")
             actions = []
+            candidate_outputs = candidate_batch.activate(all_features[: len(genomes)]) if candidate_batch else None
 
             for i, is_active in enumerate(active):
                 if not is_active:
@@ -119,6 +125,9 @@ class NEATEvaluator:
 
                 if state_name == self.training_state:
                     entered_training_state[i] = True
+                    if candidate_outputs is not None:
+                        actions.append(int(np.argmax(candidate_outputs[i])))
+                        continue
                     network = candidate_networks[i]
                 else:
                     network = controller_networks.get(state_name)

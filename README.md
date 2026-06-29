@@ -15,6 +15,7 @@ This package is intended as the internal library for the Retro Speedlab project.
 
 *   **🎮 Command Center**: A rich terminal dashboard for real-time training metrics.
 *   **🏋️ Orchestrated Training**: Simplified RL workflows and session management.
+*   **⚡ GPU acceleration**: CUDA tuning for PPO plus batched GPU inference for NEAT, with CPU fallback.
 *   **📊 Smart Callbacks**: Automatic checkpointing and replay recording (`.bk2`).
 *   **🛠️ Robust Infrastructure**: Streamlined environment and ROM management.
 

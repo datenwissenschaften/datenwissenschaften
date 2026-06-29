@@ -17,6 +17,7 @@ from datenwissenschaften.neat.checkpointer import AtomicCheckpointer
 from datenwissenschaften.neat.config import write_neat_config
 from datenwissenschaften.neat.evaluator import NEATEvaluator
 from datenwissenschaften.neat.reporter import AdaptiveConfigReporter, LoguruReporter, WinnerReporter
+from datenwissenschaften.neat.torch_network import TorchFeedForwardBatch
 from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.vision.encoder import FixedVisualEncoder
@@ -49,6 +50,7 @@ class NEATModel:
         self.population = None
         self.statistics: dict[str, neat.StatisticsReporter] = {}
         self._networks: dict[str, neat.nn.FeedForwardNetwork] = {}
+        self._torch_network_batches: dict[tuple[str, ...], TorchFeedForwardBatch | None] = {}
         self._config = None
 
     @property
@@ -127,6 +129,7 @@ class NEATModel:
                     self.winners[state_name] = winner
                     self.winner = winner
                     self._networks.clear()
+                    self._torch_network_batches.clear()
                     self._save_all()
                     if training_callback is not None:
                         training_callback.on_rollout_end()
@@ -167,6 +170,7 @@ class NEATModel:
         self.population = None
         self.statistics.clear()
         self._networks.clear()
+        self._torch_network_batches.clear()
 
     def _initialize_callback(self, callback) -> BaseCallback | None:
         if callback is None:
@@ -317,12 +321,12 @@ class NEATModel:
         all_features = self.env.env_method("features")
         if all_features:
             self._ensure_input_compatibility(len(all_features[0]))
-        actions = []
+        actions = [0] * len(state_names)
+        routed_networks = []
 
-        for state_name, features in zip(state_names, all_features, strict=True):
+        for index, (state_name, features) in enumerate(zip(state_names, all_features, strict=True)):
             genome = self.winners.get(state_name)
             if genome is None:
-                actions.append(0)
                 continue
 
             if state_name not in self._networks:
@@ -330,8 +334,22 @@ class NEATModel:
                     genome,
                     config,
                 )
-            outputs = self._networks[state_name].activate(features)
-            actions.append(int(np.argmax(outputs)))
+            routed_networks.append((index, state_name, features, self._networks[state_name]))
+
+        batch_key = tuple(state_name for _, state_name, _, _ in routed_networks)
+        if batch_key not in self._torch_network_batches:
+            self._torch_network_batches[batch_key] = TorchFeedForwardBatch.create(
+                [network for _, _, _, network in routed_networks]
+            )
+
+        torch_batch = self._torch_network_batches[batch_key]
+        if torch_batch is not None:
+            outputs = torch_batch.activate([features for _, _, features, _ in routed_networks])
+            for (index, _, _, _), network_outputs in zip(routed_networks, outputs, strict=True):
+                actions[index] = int(np.argmax(network_outputs))
+        else:
+            for index, _, features, network in routed_networks:
+                actions[index] = int(np.argmax(network.activate(features)))
 
         return np.asarray(actions, dtype=np.int64), None
 

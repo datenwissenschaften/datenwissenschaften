@@ -8,6 +8,7 @@ from typing import Any
 from loguru import logger
 from stable_baselines3 import PPO
 
+from datenwissenschaften.accelerator import configure_accelerator
 from datenwissenschaften.core.protocols import ModelBuilder as ModelFactory
 from datenwissenschaften.core.protocols import TrainableModel
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
@@ -56,6 +57,7 @@ def load_or_create_model(
     load_model: ModelLoader = PPO.load,
     config_path: str | Path = DEFAULT_CONFIG_PATH,
 ) -> TrainableModel:
+    configure_accelerator()
     config = load_config(config_path)
     model_path = get_model_path(str(config.paths.models_dir), config.training.game)
     model_zip_path = f"{model_path}.zip"
