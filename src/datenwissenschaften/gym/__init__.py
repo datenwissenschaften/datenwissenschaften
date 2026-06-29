@@ -126,11 +126,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             reward,
             terminated,
             truncated,
-            {
-                "won": self.state_machine.current_state._won(),
-                "state": self.state_machine.state_name,
-                "score": self.last_ram.score if self.last_ram is not None else 0,
-            },
+            {"won": self.state_machine.current_state._won(), "state": self.state_machine.state_name},
         )
 
     def features(self) -> list[float]:

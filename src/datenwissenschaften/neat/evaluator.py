@@ -148,7 +148,6 @@ class NEATEvaluator:
             f"fitness={genome.fitness:.2f} "
             f"training_steps={training_steps} "
             f"total_steps={total_steps} "
-            f"score={info.get('score')} "
             f"won={info.get('won')} "
             f"final_state={info.get('state')} "
             f"timed_out={timed_out}"
