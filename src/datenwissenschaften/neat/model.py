@@ -13,22 +13,23 @@ from datenwissenschaften.neat.config import write_neat_config
 from datenwissenschaften.neat.evaluator import NEATEvaluator
 from datenwissenschaften.neat.reporter import AdaptiveConfigReporter, WinnerReporter
 from datenwissenschaften.runtime import get_runtime
+from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 
 
 class NEATModel:
     def __init__(
         self,
         env,
-        config_path: Path,
-        output_dir: Path,
         population_size: int = 100,
         generations_completed: dict[str, int] | None = None,
         winners: dict[str, object] | None = None,
         winner=None,
+        settings_path: str | Path = DEFAULT_CONFIG_PATH,
     ):
+        settings = load_config(settings_path)
         self.env = env
-        self.config_path = Path(config_path)
-        self.output_dir = Path(output_dir)
+        self.output_dir = settings.paths.models_dir / "neat"
+        self.config_path = self.output_dir / "config.ini"
         self.population_size = population_size
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -239,8 +240,6 @@ class NEATModel:
             "winner": self.winner,
             "generations_completed": self.generations_completed,
             "population_size": self.population_size,
-            "config_path": str(self.config_path),
-            "output_dir": str(self.output_dir),
         }
         temporary_path = path.with_name(f".{path.name}.tmp")
         with temporary_path.open("wb") as file:
@@ -252,8 +251,7 @@ class NEATModel:
         cls,
         path,
         env=None,
-        config_path: Path | None = None,
-        output_dir: Path | None = None,
+        settings_path: str | Path = DEFAULT_CONFIG_PATH,
         **kwargs,
     ):
         path = Path(path)
@@ -266,12 +264,11 @@ class NEATModel:
 
         model = cls(
             env=env,
-            config_path=Path(payload["config_path"]) if config_path is None else config_path,
-            output_dir=Path(payload["output_dir"]) if output_dir is None else output_dir,
             population_size=payload["population_size"],
             generations_completed=payload["generations_completed"],
             winners=payload["winners"],
             winner=payload["winner"],
+            settings_path=settings_path,
         )
         return model
 
