@@ -44,6 +44,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_ram: T | None = None
         self.last_frame: np.ndarray | None = None
         self.last_observation: np.ndarray | None = None
+
+        self._last_progress: float | int | None = None
+        self._frames_without_progress = 0
+
         self._validate_training_states()
         self._load_savestates()
 
@@ -59,6 +63,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def reset(self, **kwargs):
         frame, _ = self.env.reset(**kwargs)
 
+        self._last_progress = None
+        self._frames_without_progress = 0
+
         self._load_savestates()
         state_cls = self._highest_savestate_state()
         if state_cls is not None:
@@ -72,10 +79,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_observation = observation
 
         self.state_machine.reset(ram, frame, observation, state_cls)
+        self._update_progress_tracking()
 
         return observation, {}
 
-    # noinspection PyUnresolvedReferences
     def step(self, action: WrapperActType):
         frame = None
         observation = None
@@ -87,6 +94,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         for _ in range(self.action_repeat):
             state_before_step = type(self.state_machine.current_state)
+
             frame, _, env_terminated, env_truncated, _ = self.env.step(action)
 
             ram = self._read_ram()
@@ -102,10 +110,13 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 observation,
             )
 
+            self._update_progress_tracking()
+
             state_after_step = type(self.state_machine.current_state)
             if state_after_step.progress > state_before_step.progress:
                 self._mark_beaten(state_before_step)
                 self._load_savestate(state_after_step)
+
                 savestate = self.env.unwrapped.em.get_state()
                 if self.state_machine.save_current_state(savestate):
                     self._write_savestate(state_after_step.__name__, savestate)
@@ -121,12 +132,19 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         if frame is None or observation is None:
             raise RuntimeError("No observation produced during step().")
 
+        current_state = self.state_machine.current_state
+
         return (
             observation,
             reward,
             terminated,
             truncated,
-            {"won": self.state_machine.current_state._won(), "state": self.state_machine.state_name},
+            {
+                "won": current_state._won(),
+                "state": self.state_machine.state_name,
+                "progress": type(current_state).progress,
+                "frames_without_progress": self._frames_without_progress,
+            },
         )
 
     def features(self) -> list[float]:
@@ -142,6 +160,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         classes_by_name = self._training_classes_by_name()
         if state_name not in classes_by_name:
             raise ValueError(f"Unknown training state: {state_name}")
+
         self._load_savestates()
         selected = self._highest_savestate_state()
         return selected is not None and selected.__name__ == state_name
@@ -150,6 +169,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._load_savestates()
         state_cls = self._highest_savestate_state()
         return state_cls.__name__ if state_cls is not None else self.start_state_cls.__name__
+
+    def frames_without_progress(self) -> int:
+        return self._frames_without_progress
 
     def delete_savestate(self, state_name: str) -> bool:
         classes_by_name = self._training_classes_by_name()
@@ -165,7 +187,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         return action
 
     def _read_ram(self) -> T:
-        # noinspection PyUnresolvedReferences
         return self.ram_info_cls.from_ram(self.env.unwrapped.get_ram())
 
     def _process_observation(self, obs: Any) -> np.ndarray:
@@ -200,9 +221,23 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         x_index = np.linspace(0, obs.shape[1] - 1, target_w).astype(int)
         return obs[y_index][:, x_index]
 
-    # noinspection PyUnresolvedReferences
     def num_actions(self) -> int:
         return self.action_space.n
+
+    def _update_progress_tracking(self) -> None:
+        progress = type(self.state_machine.current_state).progress
+
+        if self._last_progress is None:
+            self._last_progress = progress
+            self._frames_without_progress = 0
+            return
+
+        if progress > self._last_progress:
+            self._last_progress = progress
+            self._frames_without_progress = 0
+            return
+
+        self._frames_without_progress += 1
 
     def _highest_savestate_state(self) -> type[State[T]] | None:
         available = [
@@ -212,7 +247,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         ]
         return max(available, key=lambda state_cls: state_cls.progress, default=None)
 
-    # noinspection PyUnresolvedReferences
     def _restore_savestate(self, savestate: bytes | None) -> np.ndarray:
         if savestate is None:
             raise RuntimeError("Cannot restore an empty savestate.")
@@ -253,6 +287,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         savestate = path.read_bytes()
         if not savestate:
             return False
+
         self.state_machine.load_savestate(state_cls, savestate)
         return True
 
@@ -272,9 +307,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def _mark_beaten(self, state_cls: type[State[T]]) -> None:
         self.state_machine.mark_beaten(state_cls)
         self._delete_savestate_file(state_cls.__name__)
+
         path = self._beaten_path(state_cls.__name__)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch(exist_ok=True)
+
         logger.info(f"Marked savestate as beaten for {state_cls.__name__}")
 
     def _delete_savestate_file(self, state_name: str) -> bool:

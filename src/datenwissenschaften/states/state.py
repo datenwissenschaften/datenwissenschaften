@@ -4,14 +4,14 @@ from typing import Generic, TypeVar
 import numpy as np
 
 from datenwissenschaften.ram import RamInfo
-from datenwissenschaften.vision.encoder import FixedVisualEncoder
+from datenwissenschaften.vision.hybrid_encoder import HybridEncoder
 
 T = TypeVar("T", bound=RamInfo)
 
 
 class State(ABC, Generic[T]):
     description = ""
-    visual_encoder = FixedVisualEncoder()
+    visual_encoder = HybridEncoder()
 
     ram: T
     frame: np.ndarray
@@ -75,7 +75,7 @@ class State(ABC, Generic[T]):
         return reward, terminated, truncated, next_state
 
     def features(self) -> list[float]:
-        return self.visual_encoder.encode(self.observation)
+        return self.visual_encoder.encode(self.observation, self.ram)
 
     def _on_reset(self) -> None:
         pass

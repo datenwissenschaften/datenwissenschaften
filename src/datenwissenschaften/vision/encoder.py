@@ -3,8 +3,8 @@ import numpy as np
 
 
 class FixedVisualEncoder:
-    output_size = 128
-    _pooled_size = (4, 4)
+    output_size = 512
+    _pooled_size = (8, 8)
     _kernels = np.asarray(
         [
             [[0, 0, 0], [0, 1, 0], [0, 0, 0]],
@@ -25,14 +25,17 @@ class FixedVisualEncoder:
 
     def encode(self, observation: np.ndarray) -> list[float]:
         image = np.asarray(observation, dtype=np.float32)
+
         if image.ndim == 3:
             if image.shape[0] != 1:
                 raise ValueError("FixedVisualEncoder expects a grayscale observation with one channel.")
             image = image[0]
+
         if image.ndim != 2:
             raise ValueError(f"Expected observation shape (1, H, W) or (H, W), got {image.shape}.")
 
         image = image / 255.0
+
         features = []
         for kernel, norm in zip(self._kernels, self._kernel_norms, strict=True):
             response = cv2.filter2D(
