@@ -107,7 +107,6 @@ class RetroEnvironmentFactory:
             grayscale=self.grayscale,
             hybrid_obs=self.hybrid_obs,
             action_repeat=self.action_repeat,
-            savestate_dir=self.paths.savestate_dir,
         )
 
 
@@ -127,7 +126,6 @@ class EnvironmentBuilder:
         self.game = config.training.game
         self.state = config.training.savestate
         self.record_dir = str(config.paths.record_dir)
-        self.savestate_dir = config.paths.savestate_dir
         self.wrapper = wrapper
         _last_environment_wrapper = wrapper
         self.render_mode = render_mode
@@ -138,7 +136,7 @@ class EnvironmentBuilder:
         record_dir = os.path.join(self.record_dir, str(rank))
         os.makedirs(record_dir, exist_ok=True)
         env = retro.make(self.game, self.state, render_mode=self.render_mode, record=record_dir)
-        return self.wrapper(env, savestate_dir=self.savestate_dir)
+        return self.wrapper(env)
 
     def build(self, n_envs: int | None = None, n_stack: int | None = None):
         import_roms(config_path=self.config_path)
