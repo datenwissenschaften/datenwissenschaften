@@ -1,4 +1,3 @@
-import math
 from pathlib import Path
 
 
@@ -18,13 +17,11 @@ def write_neat_config(
 
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    initial_connection = _initial_connection(num_inputs, pop_size)
-
     path.write_text(
         f"""[NEAT]
 fitness_criterion      = max
 fitness_threshold      = 10000
-pop_size               = {pop_size}
+pop_size               = {min(pop_size, 1024)}
 reset_on_extinction    = False
 no_fitness_termination = False
 
@@ -48,19 +45,19 @@ bias_replace_rate       = 0.1
 compatibility_disjoint_coefficient = 1.0
 compatibility_weight_coefficient   = 0.5
 
-conn_add_prob           = 0.5
-conn_delete_prob        = 0.3
+conn_add_prob           = 0.2
+conn_delete_prob        = 0.05
 
 enabled_default         = True
 enabled_mutate_rate     = 0.01
 
 feed_forward            = True
-initial_connection      = {initial_connection}
+initial_connection      = full_direct
 
-node_add_prob           = 0.2
-node_delete_prob        = 0.2
+node_add_prob           = 0.05
+node_delete_prob        = 0.02
 
-num_hidden              = 0
+num_hidden              = 8
 num_inputs              = {num_inputs}
 num_outputs             = {num_outputs}
 
@@ -89,22 +86,8 @@ max_stagnation       = 20
 species_elitism      = 2
 
 [DefaultReproduction]
-elitism            = 2
+elitism            = 5
 survival_threshold = 0.2
 """,
         encoding="utf-8",
     )
-
-
-def _initial_connection(num_inputs: int, pop_size: int) -> str:
-    # Give every output at least one expected input connection per genome.
-    minimum_fan_in_fraction = 1.0 / num_inputs
-
-    # Across the initial population, give each possible edge an even chance of
-    # being sampled at least once: 1 - (1 - fraction) ** pop_size = 0.5.
-    population_coverage_fraction = 1.0 - math.pow(0.5, 1.0 / pop_size)
-    connection_fraction = max(minimum_fan_in_fraction, population_coverage_fraction)
-
-    if connection_fraction >= 1.0:
-        return "full_direct"
-    return f"partial_direct {connection_fraction:.6f}"
