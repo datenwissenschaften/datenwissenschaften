@@ -2,8 +2,8 @@ from typing import Generic, TypeVar
 
 import numpy as np
 
-from src.ram.base import RamInfo
-from src.states.state import State
+from datenwissenschaften.ram import RamInfo
+from datenwissenschaften.states.state import State
 
 T = TypeVar("T", bound=RamInfo)
 

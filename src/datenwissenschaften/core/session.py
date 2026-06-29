@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from loguru import logger
+
 from datenwissenschaften.core.config import TrainingConfig
 from datenwissenschaften.core.protocols import (
     CallbackFactory,

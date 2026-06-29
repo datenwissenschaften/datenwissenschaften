@@ -3,8 +3,8 @@ from typing import Generic, TypeVar
 
 import numpy as np
 
-from src.ram.base import RamInfo
-from src.vision.encoder import FixedVisualEncoder
+from datenwissenschaften.ram import RamInfo
+from datenwissenschaften.vision.encoder import FixedVisualEncoder
 
 T = TypeVar("T", bound=RamInfo)
 
