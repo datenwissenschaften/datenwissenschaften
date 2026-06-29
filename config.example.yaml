@@ -9,6 +9,7 @@ training:
   savestate: null
   total_timesteps: 1000000
   num_envs: 1
+  population_size: 100
 
 log_level: INFO
 

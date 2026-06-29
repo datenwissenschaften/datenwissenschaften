@@ -286,7 +286,6 @@ class NEATModel:
 
         model = cls(
             env=env,
-            population_size=payload["population_size"],
             generations_completed=payload["generations_completed"],
             winners=payload["winners"],
             winner=payload["winner"],
