@@ -4,27 +4,27 @@ from copy import copy, deepcopy
 from itertools import count
 from pathlib import Path
 
-import numpy as np
-
 import neat
-from src.neat.checkpointer import AtomicCheckpointer
-from src.neat.config import write_neat_config
-from src.neat.evaluator import NEATEvaluator
-from src.neat.reporter import AdaptiveConfigReporter, WinnerReporter
+import numpy as np
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList
+
+from datenwissenschaften.neat.checkpointer import AtomicCheckpointer
+from datenwissenschaften.neat.config import write_neat_config
+from datenwissenschaften.neat.evaluator import NEATEvaluator
+from datenwissenschaften.neat.reporter import AdaptiveConfigReporter, WinnerReporter
+from datenwissenschaften.runtime import get_runtime
 
 
 class NEATModel:
-    trainer_model_path = Path("working/model/SnakeRattleNRoll-Nes-v0/model.zip")
-
     def __init__(
-            self,
-            env,
-            config_path: Path,
-            output_dir: Path,
-            population_size: int = 100,
-            generations_completed: dict[str, int] | None = None,
-            winners: dict[str, object] | None = None,
-            winner=None,
+        self,
+        env,
+        config_path: Path,
+        output_dir: Path,
+        population_size: int = 100,
+        generations_completed: dict[str, int] | None = None,
+        winners: dict[str, object] | None = None,
+        winner=None,
     ):
         self.env = env
         self.config_path = Path(config_path)
@@ -42,8 +42,16 @@ class NEATModel:
         self._config = None
 
     @property
+    def trainer_model_path(self) -> Path:
+        runtime = get_runtime()
+        return runtime.models_dir / runtime.game / "model.zip"
+
+    @property
     def num_timesteps(self) -> int:
         return self.population_size * sum(self.generations_completed.values())
+
+    def get_env(self):
+        return self.env
 
     def learn(self, total_timesteps=None, callback=None, **kwargs):
         if total_timesteps is None:
@@ -59,53 +67,80 @@ class NEATModel:
         state_names = self._training_state_names()
 
         print(
-            "Generating NEAT config: " f"{num_inputs} inputs, {num_outputs} outputs, " f"{len(state_names)} state populations")
+            "Generating NEAT config: "
+            f"{num_inputs} inputs, {num_outputs} outputs, "
+            f"{len(state_names)} state populations"
+        )
         write_neat_config(
-            path=self.config_path,
-            num_inputs=num_inputs,
-            num_outputs=num_outputs,
-            pop_size=self.population_size
+            path=self.config_path, num_inputs=num_inputs, num_outputs=num_outputs, pop_size=self.population_size
         )
         self._config = None
         config = self._load_config()
+        training_callback = self._initialize_callback(callback)
+        if training_callback is not None:
+            training_callback.on_training_start(locals(), globals())
 
-        for state_index, state_name in enumerate(state_names):
-            if state_index < self._highest_progress_index(state_names):
-                print(f"Skipping beaten training state {state_name}")
-                continue
+        try:
+            continue_training = True
+            for state_index, state_name in enumerate(state_names):
+                if state_index < self._highest_progress_index(state_names):
+                    print(f"Skipping beaten training state {state_name}")
+                    continue
 
-            population = self._load_population(state_name, config)
-            print(
-                f"Training NEAT population for {state_name} "
-                f"from generation {population.generation} "
-                f"({generations_remaining} generations in timestep budget)"
-            )
-            self.populations[state_name] = population
-            self.population = population
-            self._add_reporters(population, state_name, total_generations)
+                population = self._load_population(state_name, config)
+                print(
+                    f"Training NEAT population for {state_name} "
+                    f"from generation {population.generation} "
+                    f"({generations_remaining} generations in timestep budget)"
+                )
+                self.populations[state_name] = population
+                self.population = population
+                self._add_reporters(population, state_name, total_generations)
 
-            evaluator = NEATEvaluator(
-                self.env,
-                training_state=state_name,
-                controller_genomes=dict(self.winners),
-            )
-            while generations_remaining > 0:
-                winner = population.run(evaluator.evaluate_generation, 1)
-                generations_remaining -= 1
-                self.winners[state_name] = winner
-                self.winner = winner
-                self._networks.clear()
-                self._save_all()
+                evaluator = NEATEvaluator(
+                    self.env,
+                    training_state=state_name,
+                    controller_genomes=dict(self.winners),
+                    callback=training_callback,
+                )
+                while generations_remaining > 0:
+                    if training_callback is not None:
+                        training_callback.on_rollout_start()
+                    winner = population.run(evaluator.evaluate_generation, 1)
+                    generations_remaining -= 1
+                    self.winners[state_name] = winner
+                    self.winner = winner
+                    self._networks.clear()
+                    self._save_all()
+                    if training_callback is not None:
+                        training_callback.on_rollout_end()
 
-                if self._highest_progress_index(state_names) > state_index:
-                    print(f"Advancing training beyond beaten state {state_name}")
+                    if not evaluator.continue_training:
+                        continue_training = False
+                        break
+
+                    if self._highest_progress_index(state_names) > state_index:
+                        print(f"Advancing training beyond beaten state {state_name}")
+                        break
+
+                if generations_remaining == 0 or not continue_training:
                     break
-
-            if generations_remaining == 0:
-                break
+        finally:
+            if training_callback is not None:
+                training_callback.on_training_end()
 
         self._save_all()
         return self
+
+    def _initialize_callback(self, callback) -> BaseCallback | None:
+        if callback is None:
+            return None
+        if isinstance(callback, list):
+            callback = CallbackList(callback)
+        if not isinstance(callback, BaseCallback):
+            raise TypeError("callback must be a BaseCallback or a list of BaseCallback instances.")
+        callback.init_callback(self)
+        return callback
 
     def _load_population(self, state_name: str, config) -> neat.Population:
         for checkpoint in self._checkpoints(state_name):
@@ -171,7 +206,6 @@ class NEATModel:
 
     @staticmethod
     def _synchronize_node_indexer(config, genomes) -> None:
-        """Keep NEAT's global node allocator ahead of all restored genomes."""
         genome_config = config.genome_config
         next_node_key = genome_config.num_outputs
 
@@ -206,6 +240,7 @@ class NEATModel:
             "generations_completed": self.generations_completed,
             "population_size": self.population_size,
             "config_path": str(self.config_path),
+            "output_dir": str(self.output_dir),
         }
         temporary_path = path.with_name(f".{path.name}.tmp")
         with temporary_path.open("wb") as file:
@@ -214,12 +249,12 @@ class NEATModel:
 
     @classmethod
     def load(
-            cls,
-            path,
-            env=None,
-            config_path: Path | None = None,
-            output_dir: Path | None = None,
-            **kwargs,
+        cls,
+        path,
+        env=None,
+        config_path: Path | None = None,
+        output_dir: Path | None = None,
+        **kwargs,
     ):
         path = Path(path)
         zip_path = Path(f"{path}.zip")
@@ -231,15 +266,13 @@ class NEATModel:
 
         model = cls(
             env=env,
-            config_path=config_path or Path(payload.get("config_path", "src/neat/config.ini")),
-            output_dir=output_dir or Path("working/neat"),
-            population_size=payload.get("population_size", 100),
-            generations_completed=payload.get("generations_completed"),
-            winners=payload.get("winners"),
-            winner=payload.get("winner"),
+            config_path=Path(payload["config_path"]) if config_path is None else config_path,
+            output_dir=Path(payload["output_dir"]) if output_dir is None else output_dir,
+            population_size=payload["population_size"],
+            generations_completed=payload["generations_completed"],
+            winners=payload["winners"],
+            winner=payload["winner"],
         )
-        if "population_size" not in payload:
-            model.population_size = model._load_config().pop_size
         return model
 
     def predict(self, observation, deterministic=True):
@@ -249,11 +282,10 @@ class NEATModel:
         config = self._load_config()
         state_names = self.env.env_method("state_name")
         all_features = self.env.env_method("features")
-        winners = self._winners_with_legacy_fallback()
         actions = []
 
         for state_name, features in zip(state_names, all_features, strict=True):
-            genome = winners.get(state_name)
+            genome = self.winners.get(state_name)
             if genome is None:
                 actions.append(0)
                 continue
@@ -280,12 +312,6 @@ class NEATModel:
         highest_states = self.env.env_method("highest_progress_state")
         return max(state_names.index(state_name) for state_name in highest_states)
 
-    def _winners_with_legacy_fallback(self) -> dict[str, object]:
-        if self.winners or self.winner is None:
-            return self.winners
-        first_state = self._training_state_names()[0]
-        return {first_state: self.winner}
-
     def _load_config(self):
         if self._config is None:
             self._config = neat.Config(
@@ -298,10 +324,10 @@ class NEATModel:
         return self._config
 
     def _add_reporters(
-            self,
-            population: neat.Population,
-            state_name: str,
-            total_generations: int,
+        self,
+        population: neat.Population,
+        state_name: str,
+        total_generations: int,
     ) -> None:
         population.add_reporter(
             AdaptiveConfigReporter(

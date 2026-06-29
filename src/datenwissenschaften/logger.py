@@ -23,10 +23,7 @@ def _add_runtime_context(record: dict) -> None:
 
 def setup_logging(level: str | None = None, *, config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
     if level is None:
-        try:
-            level = load_config(config_path).log_level
-        except RuntimeError:
-            level = "INFO"
+        level = load_config(config_path).log_level
 
     logger.remove()
     logger.configure(patcher=_add_runtime_context)
@@ -40,6 +37,3 @@ def setup_logging(level: str | None = None, *, config_path: str | Path = DEFAULT
         ),
         level=level,
     )
-
-
-setup_logging()

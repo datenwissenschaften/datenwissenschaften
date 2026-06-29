@@ -2,6 +2,7 @@ paths:
   roms: roms
   models: working/models
   recordings: working/recordings
+  savestates: working/savestates
 
 training:
   game: Airstriker-Genesis-v0
@@ -12,4 +13,5 @@ training:
 log_level: INFO
 
 upload:
+  url: https://speedlab.datenwissenschaften.com/api
   api_key: null

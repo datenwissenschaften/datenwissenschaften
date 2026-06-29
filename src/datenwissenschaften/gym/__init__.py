@@ -15,7 +15,6 @@ T = TypeVar("T", bound=RamInfo)
 
 
 class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
-    savestate_dir = Path("working/savestates")
     start_state_cls: type[State[T]]
     training_state_classes: tuple[type[State[T]], ...] = ()
     ram_info_cls: type[T]
@@ -28,6 +27,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         action_repeat: int,
         hybrid_obs: bool,
         grayscale: bool,
+        savestate_dir: str | Path,
     ):
         super().__init__(env)
 
@@ -38,6 +38,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.action_repeat = action_repeat
         self.hybrid_obs = hybrid_obs
         self.grayscale = grayscale
+        self.savestate_dir = Path(savestate_dir)
 
         self.last_ram: T | None = None
         self.last_frame: np.ndarray | None = None

@@ -1,6 +1,6 @@
-import numpy as np
-
 import neat
+import numpy as np
+from stable_baselines3.common.callbacks import BaseCallback
 
 
 class NEATEvaluator:
@@ -11,11 +11,14 @@ class NEATEvaluator:
         training_state: str,
         controller_genomes: dict[str, object] | None = None,
         max_steps: int = 20_000,
+        callback: BaseCallback | None = None,
     ):
         self.env = env
         self.training_state = training_state
         self.controller_genomes = dict(controller_genomes or {})
         self.max_steps = max_steps
+        self.callback = callback
+        self.continue_training = True
 
     def evaluate_generation(self, genomes, config) -> None:
         genome_items = list(genomes)
@@ -25,17 +28,20 @@ class NEATEvaluator:
 
         for start in range(0, len(genome_items), num_envs):
             batch = genome_items[start : start + num_envs]
-            self.evaluate_batch(batch, config)
+            if not self.evaluate_batch(batch, config):
+                self.continue_training = False
+                break
             highest_states = self.env.env_method("highest_progress_state")
             state_names = self.env.env_method("training_state_names")[0]
             training_index = state_names.index(self.training_state)
             if any(state_names.index(state_name) > training_index for state_name in highest_states):
                 break
 
-    def evaluate_batch(self, genomes, config) -> None:
+    def evaluate_batch(self, genomes, config) -> bool:
         candidate_networks = [neat.nn.FeedForwardNetwork.create(genome, config) for _, genome in genomes]
         controller_networks = {
-            state_name: neat.nn.FeedForwardNetwork.create(genome, config) for state_name, genome in self.controller_genomes.items()
+            state_name: neat.nn.FeedForwardNetwork.create(genome, config)
+            for state_name, genome in self.controller_genomes.items()
         }
 
         restored = self.env.env_method("set_training_state", self.training_state)
@@ -106,6 +112,13 @@ class NEATEvaluator:
                         info=infos[i],
                         timed_out=timed_out,
                     )
+
+            if self.callback is not None:
+                self.callback.update_locals({"rewards": rewards, "dones": dones, "infos": infos})
+                if not self.callback.on_step():
+                    return False
+
+        return True
 
     def _report_episode(
         self,

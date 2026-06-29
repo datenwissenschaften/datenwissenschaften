@@ -33,8 +33,6 @@ class TemplateDetector:
     #         self.method,
     #     )
     #
-    #     # Path("working/debug").mkdir(parents=True, exist_ok=True)
-    #     # cv2.imwrite("working/debug/raw_frame.png", frame)
     #
     #     _, score, _, _ = cv2.minMaxLoc(result)
     #

@@ -14,28 +14,29 @@ class RetroSpeedlabPaths:
     roms_path: Path
     models_dir: Path
     record_dir: Path
+    savestate_dir: Path
 
 
 @dataclass(frozen=True)
 class TrainingSettings:
     game: str
     total_timesteps: int
-    savestate: str | None = None
-    num_envs: int = 1
+    savestate: str | None
+    num_envs: int
 
 
 @dataclass(frozen=True)
 class UploadSettings:
-    url: str = "https://speedlab.datenwissenschaften.com/api"
-    api_key: str | None = None
+    url: str
+    api_key: str | None
 
 
 @dataclass(frozen=True)
 class RetroSpeedlabConfig:
     paths: RetroSpeedlabPaths
     training: TrainingSettings
-    log_level: str = "INFO"
-    upload: UploadSettings = UploadSettings()
+    log_level: str
+    upload: UploadSettings
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabConfig:
@@ -53,7 +54,7 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabConfig:
 
     paths = _mapping(document, "paths")
     training = _mapping(document, "training")
-    upload = _optional_mapping(document, "upload")
+    upload = _mapping(document, "upload")
     base_dir = config_path.parent
 
     return RetroSpeedlabConfig(
@@ -61,17 +62,18 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabConfig:
             roms_path=_path(paths, "roms", base_dir),
             models_dir=_path(paths, "models", base_dir),
             record_dir=_path(paths, "recordings", base_dir),
+            savestate_dir=_path(paths, "savestates", base_dir),
         ),
         training=TrainingSettings(
             game=_string(training, "game"),
             total_timesteps=_positive_int(training, "total_timesteps"),
-            savestate=_optional_string(training, "savestate"),
-            num_envs=_positive_int(training, "num_envs", default=1),
+            savestate=_nullable_string(training, "savestate"),
+            num_envs=_positive_int(training, "num_envs"),
         ),
-        log_level=_optional_string(document, "log_level") or "INFO",
+        log_level=_string(document, "log_level"),
         upload=UploadSettings(
-            url=_optional_string(upload, "url") or UploadSettings.url,
-            api_key=_optional_string(upload, "api_key"),
+            url=_string(upload, "url"),
+            api_key=_nullable_string(upload, "api_key"),
         ),
     )
 
@@ -82,13 +84,6 @@ def load_paths_from_config(path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeed
 
 def _mapping(values: dict[str, Any], key: str) -> dict[str, Any]:
     value = values.get(key)
-    if not isinstance(value, dict):
-        raise RuntimeError(f"Configuration value '{key}' must be a mapping.")
-    return value
-
-
-def _optional_mapping(values: dict[str, Any], key: str) -> dict[str, Any]:
-    value = values.get(key, {})
     if not isinstance(value, dict):
         raise RuntimeError(f"Configuration value '{key}' must be a mapping.")
     return value
@@ -110,8 +105,14 @@ def _optional_string(values: dict[str, Any], key: str) -> str | None:
     return value
 
 
-def _positive_int(values: dict[str, Any], key: str, *, default: int | None = None) -> int:
-    value = values.get(key, default)
+def _nullable_string(values: dict[str, Any], key: str) -> str | None:
+    if key not in values:
+        raise RuntimeError(f"Missing required configuration value: {key}")
+    return _optional_string(values, key)
+
+
+def _positive_int(values: dict[str, Any], key: str) -> int:
+    value = values.get(key)
     if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         raise RuntimeError(f"Configuration value '{key}' must be a positive integer.")
     return value

@@ -132,7 +132,7 @@ class UploadEpisodeCallback(BaseCallback):
         config_path: str | Path = DEFAULT_CONFIG_PATH,
     ):
         super().__init__()
-        self.settings = settings or load_config(config_path).upload
+        self.settings = load_config(config_path).upload if settings is None else settings
         self.upload_url = self.settings.url
 
     def _on_step(self):

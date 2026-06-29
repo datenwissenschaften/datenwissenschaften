@@ -40,6 +40,14 @@ class RetroSpeedlabRuntime:
     def record_dir(self) -> Path:
         return self.paths.record_dir
 
+    @property
+    def savestate_dir(self) -> Path:
+        return self.paths.savestate_dir
+
+    @property
+    def neat_dir(self) -> Path:
+        return self.paths.models_dir / "neat"
+
 
 _runtime: RetroSpeedlabRuntime | None = None
 

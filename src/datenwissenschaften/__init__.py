@@ -16,8 +16,6 @@ from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
 from datenwissenschaften.settings import RetroSpeedlabConfig, load_config, load_paths_from_config
 from datenwissenschaften.trainer import Trainer
 
-setup_logging()
-
 __all__ = [
     "RetroSpeedlabPaths",
     "RetroSpeedlabRuntime",
@@ -39,4 +37,5 @@ __all__ = [
     "RetroSpeedlabConfig",
     "load_config",
     "load_paths_from_config",
+    "setup_logging",
 ]

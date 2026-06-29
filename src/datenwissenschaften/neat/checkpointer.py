@@ -7,8 +7,6 @@ import neat
 
 
 class AtomicCheckpointer(neat.Checkpointer):
-    """A NEAT checkpointer that cannot expose a partially written checkpoint."""
-
     def save_checkpoint(self, config, population, species_set, generation) -> None:
         path = Path(f"{self.filename_prefix}{generation}")
         temporary_path = path.with_name(f".{path.name}.tmp")

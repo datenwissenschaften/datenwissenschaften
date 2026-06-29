@@ -1,9 +1,9 @@
 import os
 import tempfile
 
+from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
-from loguru import logger
 from datenwissenschaften.runtime import get_runtime
 
 
@@ -17,10 +17,13 @@ def atomic_save(model, model_path: str) -> None:
     tmp_zip = tmp_base + ".zip"
     try:
         model.save(tmp_base)
-        os.replace(tmp_zip, target)
+        saved_path = tmp_zip if os.path.exists(tmp_zip) else tmp_base
+        os.replace(saved_path, target)
     except Exception:
         if os.path.exists(tmp_zip):
             os.remove(tmp_zip)
+        if os.path.exists(tmp_base):
+            os.remove(tmp_base)
         raise
 
 

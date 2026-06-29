@@ -25,8 +25,6 @@ def get_last_environment_wrapper() -> EnvWrapperFactory | None:
 
 
 class SavestateResolver:
-    """Strategy for choosing a valid stable-retro state."""
-
     def __init__(self, default_states: Mapping[str, str]) -> None:
         self.default_states = default_states
 
@@ -57,8 +55,6 @@ class SavestateResolver:
 
 
 class RetroEnvironmentFactory:
-    """Factory for one wrapped stable-retro environment."""
-
     def __init__(
         self,
         *,
@@ -111,12 +107,11 @@ class RetroEnvironmentFactory:
             grayscale=self.grayscale,
             hybrid_obs=self.hybrid_obs,
             action_repeat=self.action_repeat,
+            savestate_dir=self.paths.savestate_dir,
         )
 
 
 class EnvironmentBuilder:
-    """Builder for wrapped stable-retro environments (single or parallel)."""
-
     def __init__(
         self,
         wrapper: EnvWrapperFactory,
@@ -132,6 +127,7 @@ class EnvironmentBuilder:
         self.game = config.training.game
         self.state = config.training.savestate
         self.record_dir = str(config.paths.record_dir)
+        self.savestate_dir = config.paths.savestate_dir
         self.wrapper = wrapper
         _last_environment_wrapper = wrapper
         self.render_mode = render_mode
@@ -142,7 +138,7 @@ class EnvironmentBuilder:
         record_dir = os.path.join(self.record_dir, str(rank))
         os.makedirs(record_dir, exist_ok=True)
         env = retro.make(self.game, self.state, render_mode=self.render_mode, record=record_dir)
-        return self.wrapper(env)
+        return self.wrapper(env, savestate_dir=self.savestate_dir)
 
     def build(self, n_envs: int | None = None, n_stack: int | None = None):
         import_roms(config_path=self.config_path)
@@ -164,6 +160,7 @@ class EnvironmentBuilder:
 
         venv = VecMonitor(venv)
         return VecFrameStack(venv, n_stack=self.n_stack)
+
 
 class RetroVecEnvBuilder:
     def __init__(self, env_factory: RetroEnvironmentFactory) -> None:

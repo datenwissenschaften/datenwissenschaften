@@ -18,8 +18,6 @@ class GameDefinition:
 
 
 class GameDefinitionLoader:
-    """Loads exactly one game package from GAME_DIR."""
-
     def __init__(self, game_dir: Path) -> None:
         self.game_dir = game_dir
 
@@ -57,8 +55,6 @@ class GameDefinitionLoader:
 
 
 class GameRegistry:
-    """Adapter from a single game definition to the mappings used by factories."""
-
     def __init__(self, definition: GameDefinition) -> None:
         self.definition = definition
 

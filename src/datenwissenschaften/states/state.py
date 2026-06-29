@@ -26,7 +26,6 @@ class State(ABC, Generic[T]):
             raise TypeError(f"{cls.__name__} must define an integer progress value.")
 
     def save(self, savestate: bytes) -> bool:
-        """Keep the first emulator snapshot that reached this state."""
         if self.beaten or self.savestate is not None:
             return False
 
