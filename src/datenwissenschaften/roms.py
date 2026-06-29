@@ -7,7 +7,7 @@ from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 
 def import_roms(roms_dir: str | Path | None = None, *, config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
     if roms_dir is None:
-        roms_dir = load_config(config_path).paths.roms_path
+        roms_dir = load_config().paths.roms_path
     subprocess.run(
         [sys.executable, "-m", "stable_retro.import", str(roms_dir)],
         check=True,

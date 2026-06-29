@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -39,8 +40,8 @@ class RetroSpeedlabConfig:
     upload: UploadSettings
 
 
-def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabConfig:
-    config_path = Path(path).expanduser().resolve()
+def load_config() -> RetroSpeedlabConfig:
+    config_path = DEFAULT_CONFIG_PATH.expanduser().resolve()
     try:
         with config_path.open(encoding="utf-8") as config_file:
             document = yaml.safe_load(config_file)
@@ -78,8 +79,17 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabConfig:
     )
 
 
-def load_paths_from_config(path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabPaths:
-    return load_config(path).paths
+def empty_all_paths() -> None:
+    paths = load_config().paths
+    for path in (paths.models_dir, paths.record_dir, paths.savestate_dir):
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
+
+
+def load_paths_from_config() -> RetroSpeedlabPaths:
+    return load_config().paths
 
 
 def _mapping(values: dict[str, Any], key: str) -> dict[str, Any]:

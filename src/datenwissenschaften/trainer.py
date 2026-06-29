@@ -26,7 +26,7 @@ class Trainer:
         additional_callbacks: Sequence[BaseCallback] | None = None,
         config_path: str | Path = DEFAULT_CONFIG_PATH,
     ) -> None:
-        self.config: RetroSpeedlabConfig = load_config(config_path)
+        self.config: RetroSpeedlabConfig = load_config()
         self.total_timesteps = self.config.training.total_timesteps
         self.callbacks = self._default_callbacks() + (additional_callbacks or [])
         self._state: dict[str, Any] = {}

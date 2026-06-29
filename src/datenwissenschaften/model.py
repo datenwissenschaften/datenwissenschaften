@@ -56,7 +56,7 @@ def load_or_create_model(
     load_model: ModelLoader = PPO.load,
     config_path: str | Path = DEFAULT_CONFIG_PATH,
 ) -> TrainableModel:
-    config = load_config(config_path)
+    config = load_config()
     model_path = get_model_path(str(config.paths.models_dir), config.training.game)
     model_zip_path = f"{model_path}.zip"
 

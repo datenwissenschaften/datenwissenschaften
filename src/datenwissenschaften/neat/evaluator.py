@@ -3,6 +3,8 @@ import numpy as np
 from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
+from datenwissenschaften import settings
+
 
 class NEATEvaluator:
     def __init__(
@@ -20,6 +22,7 @@ class NEATEvaluator:
         self.max_steps = max_steps
         self.callback = callback
         self.continue_training = True
+        self.restart_requested = False
 
     def evaluate_generation(self, genomes, config) -> None:
         genome_items = list(genomes)
@@ -40,10 +43,18 @@ class NEATEvaluator:
 
     def evaluate_batch(self, genomes, config) -> bool:
         candidate_networks = [neat.nn.FeedForwardNetwork.create(genome, config) for _, genome in genomes]
-        controller_networks = {
-            state_name: neat.nn.FeedForwardNetwork.create(genome, config)
-            for state_name, genome in self.controller_genomes.items()
-        }
+        try:
+            controller_networks = {
+                state_name: neat.nn.FeedForwardNetwork.create(genome, config)
+                for state_name, genome in self.controller_genomes.items()
+            }
+        except KeyError as error:
+            logger.warning(f"Model input has changed. Missing controller genome: {error}")
+            logger.warning("Deleting all controller genomes and starting from scratch.")
+            settings.empty_all_paths()
+            self.controller_genomes.clear()
+            self.restart_requested = True
+            return False
 
         restored = self.env.env_method("set_training_state", self.training_state)
         self.env.reset()

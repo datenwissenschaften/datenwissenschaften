@@ -121,7 +121,7 @@ class EnvironmentBuilder:
         config_path: str | Path = DEFAULT_CONFIG_PATH,
     ) -> None:
         global _last_environment_wrapper
-        config = load_config(config_path)
+        config = load_config()
         self.config_path = config_path
         self.game = config.training.game
         self.state = config.training.savestate

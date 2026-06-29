@@ -27,7 +27,7 @@ class NEATModel:
         winner=None,
         settings_path: str | Path = DEFAULT_CONFIG_PATH,
     ):
-        settings = load_config(settings_path)
+        settings = load_config()
         self.env = env
         game = settings.training.game
         self.output_dir = settings.paths.models_dir / game / "datenwissenschaften"
@@ -57,6 +57,7 @@ class NEATModel:
         return self.env
 
     def learn(self, total_timesteps=None, callback=None, **kwargs):
+        restart_attempted = bool(kwargs.pop("_restart_attempted", False))
         if total_timesteps is None:
             raise ValueError("total_timesteps is required.")
         if total_timesteps <= 0:
@@ -119,6 +120,17 @@ class NEATModel:
                         training_callback.on_rollout_end()
 
                     if not evaluator.continue_training:
+                        if evaluator.restart_requested and not restart_attempted:
+                            logger.warning(
+                                "Restarting NEAT training from scratch after incompatible controller genomes."
+                            )
+                            self._reset_training_state()
+                            return self.learn(
+                                total_timesteps=total_timesteps,
+                                callback=callback,
+                                _restart_attempted=True,
+                                **kwargs,
+                            )
                         continue_training = False
                         break
 
@@ -134,6 +146,15 @@ class NEATModel:
 
         self._save_all()
         return self
+
+    def _reset_training_state(self) -> None:
+        self.generations_completed.clear()
+        self.winners.clear()
+        self.winner = None
+        self.populations.clear()
+        self.population = None
+        self.statistics.clear()
+        self._networks.clear()
 
     def _initialize_callback(self, callback) -> BaseCallback | None:
         if callback is None:
