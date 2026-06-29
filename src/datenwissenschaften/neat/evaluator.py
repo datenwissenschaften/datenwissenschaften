@@ -95,7 +95,8 @@ class NEATEvaluator:
         if any(restored[: len(genomes)]):
             logger.debug(f"Restored automatic savestate for {self.training_state}")
 
-        current_states = self.env.env_method("state_name")
+        policy_inputs = self.env.env_method("policy_input")
+        _, current_states = zip(*policy_inputs, strict=True)
 
         if candidate_batch is not None:
             logger.debug(f"Evaluating {len(genomes)} NEAT networks as a {candidate_batch.device.type} batch")
@@ -111,8 +112,8 @@ class NEATEvaluator:
         steps_without_progress = [0] * len(genomes)
 
         while any(active):
-            all_features = self.env.env_method("features")
-            current_states = self.env.env_method("state_name")
+            policy_inputs = self.env.env_method("policy_input")
+            all_features, current_states = zip(*policy_inputs, strict=True)
             actions = []
             candidate_outputs = candidate_batch.activate(all_features[: len(genomes)]) if candidate_batch else None
 

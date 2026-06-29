@@ -7,7 +7,6 @@ from typing import Any
 
 import stable_retro as retro
 from loguru import logger
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecFrameStack, VecMonitor
 
 from datenwissenschaften.retro.paths import RetroSpeedlabPaths
 from datenwissenschaften.roms import import_roms
@@ -139,6 +138,8 @@ class EnvironmentBuilder:
         return self.wrapper(env)
 
     def build(self, n_envs: int | None = None, n_stack: int | None = None):
+        from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecFrameStack, VecMonitor
+
         import_roms(config_path=self.config_path)
 
         if n_envs is not None:
@@ -165,6 +166,8 @@ class RetroVecEnvBuilder:
         self.env_factory = env_factory
 
     def build(self, num_envs: int, n_stack: int):
+        from stable_baselines3.common.vec_env import SubprocVecEnv, VecFrameStack, VecMonitor
+
         venv = SubprocVecEnv([lambda index=index: self.env_factory.create(index) for index in range(num_envs)])
         venv = VecMonitor(venv)
         return VecFrameStack(venv, n_stack=n_stack)

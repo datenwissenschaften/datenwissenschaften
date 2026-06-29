@@ -150,6 +150,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def features(self) -> list[float]:
         return self.state_machine.features()
 
+    def policy_input(self) -> tuple[np.ndarray, str]:
+        features = np.asarray(self.state_machine.features(), dtype=np.float32)
+        return features, self.state_machine.state_name
+
     def state_name(self) -> str:
         return self.state_machine.state_name
 

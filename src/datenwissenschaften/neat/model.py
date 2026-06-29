@@ -75,7 +75,7 @@ class NEATModel:
         generations_remaining = math.ceil(total_timesteps / self.population_size)
         total_generations = generations_remaining
         self.env.reset()
-        num_inputs = len(self.env.env_method("features")[0])
+        num_inputs = len(self.env.env_method("policy_input")[0][0])
         num_outputs = self.env.env_method("num_actions")[0]
         self._ensure_input_compatibility(num_inputs)
         state_names = self._training_state_names()
@@ -317,8 +317,8 @@ class NEATModel:
             raise RuntimeError("An environment is required to route state-specific winners.")
 
         config = self._load_config()
-        state_names = self.env.env_method("state_name")
-        all_features = self.env.env_method("features")
+        policy_inputs = self.env.env_method("policy_input")
+        all_features, state_names = zip(*policy_inputs, strict=True)
         if all_features:
             self._ensure_input_compatibility(len(all_features[0]))
         actions = [0] * len(state_names)
