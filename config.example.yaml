@@ -8,7 +8,7 @@ training:
   game: Airstriker-Genesis-v0
   savestate: null
   total_timesteps: 1000000
-  num_envs: 1
+  num_envs: auto
   population_size: 100
 
 log_level: INFO

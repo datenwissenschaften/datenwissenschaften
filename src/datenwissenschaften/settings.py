@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from datenwissenschaften.parallelism import optimal_env_count
+
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 
 
@@ -59,6 +61,8 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
     upload = _mapping(document, "upload")
     base_dir = config_path.parent
 
+    population_size = _positive_int(training, "population_size")
+
     return RetroSpeedlabConfig(
         paths=RetroSpeedlabPaths(
             roms_path=_path(paths, "roms", base_dir),
@@ -70,8 +74,8 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             game=_string(training, "game"),
             total_timesteps=_positive_int(training, "total_timesteps"),
             savestate=_nullable_string(training, "savestate"),
-            num_envs=_positive_int(training, "num_envs"),
-            population_size=_positive_int(training, "population_size"),
+            num_envs=_environment_count(training, "num_envs", population_size),
+            population_size=population_size,
         ),
         log_level=_string(document, "log_level"),
         upload=UploadSettings(
@@ -128,6 +132,13 @@ def _positive_int(values: dict[str, Any], key: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         raise RuntimeError(f"Configuration value '{key}' must be a positive integer.")
     return value
+
+
+def _environment_count(values: dict[str, Any], key: str, population_size: int) -> int:
+    value = values.get(key)
+    if isinstance(value, str) and value.casefold() == "auto":
+        return optimal_env_count(population_size)
+    return _positive_int(values, key)
 
 
 def _path(values: dict[str, Any], key: str, base_dir: Path) -> Path:

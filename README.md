@@ -31,6 +31,9 @@ Copy `config.example.yaml` to `config.yaml` and adjust its values. Application s
 environment variables. APIs that load configuration also accept an explicit `config_path` when the file is stored
 elsewhere. Relative paths in the file are resolved relative to the configuration file.
 
+Set `training.num_envs` to `auto` to select parallel environment workers from CPU affinity, population size, and the
+systemd/cgroup memory limit. An explicit positive integer continues to override automatic selection.
+
 ## 📜 License
 
 This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for details.

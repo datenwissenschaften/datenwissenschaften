@@ -25,6 +25,7 @@ _EXPORTS = {
     "load_config": ("datenwissenschaften.settings", "load_config"),
     "load_or_create_model": ("datenwissenschaften.model", "load_or_create_model"),
     "load_paths_from_config": ("datenwissenschaften.settings", "load_paths_from_config"),
+    "optimal_env_count": ("datenwissenschaften.parallelism", "optimal_env_count"),
     "setup_logging": ("datenwissenschaften.logger", "setup_logging"),
 }
 
