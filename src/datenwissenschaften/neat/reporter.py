@@ -1,6 +1,7 @@
 import math
 
 import neat
+from loguru import logger
 
 
 class AdaptiveConfigReporter(neat.reporting.BaseReporter):
@@ -87,7 +88,7 @@ class WinnerReporter(neat.reporting.BaseReporter):
 
         if self.stagnant_generations >= self.savestate_stagnation:
             if self.model.delete_savestate(self.state_name):
-                print(
+                logger.info(
                     f"Deleted stagnant savestate for {self.state_name} "
                     f"after {self.stagnant_generations} generations without improvement"
                 )

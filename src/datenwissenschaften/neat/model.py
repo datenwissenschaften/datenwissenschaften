@@ -6,6 +6,7 @@ from pathlib import Path
 
 import neat
 import numpy as np
+from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 
 from datenwissenschaften.neat.checkpointer import AtomicCheckpointer
@@ -67,7 +68,7 @@ class NEATModel:
         num_outputs = self.env.env_method("num_actions")[0]
         state_names = self._training_state_names()
 
-        print(
+        logger.info(
             "Generating NEAT config: "
             f"{num_inputs} inputs, {num_outputs} outputs, "
             f"{len(state_names)} state populations"
@@ -85,11 +86,11 @@ class NEATModel:
             continue_training = True
             for state_index, state_name in enumerate(state_names):
                 if state_index < self._highest_progress_index(state_names):
-                    print(f"Skipping beaten training state {state_name}")
+                    logger.info(f"Skipping beaten training state {state_name}")
                     continue
 
                 population = self._load_population(state_name, config)
-                print(
+                logger.info(
                     f"Training NEAT population for {state_name} "
                     f"from generation {population.generation} "
                     f"({generations_remaining} generations in timestep budget)"
@@ -121,7 +122,7 @@ class NEATModel:
                         break
 
                     if self._highest_progress_index(state_names) > state_index:
-                        print(f"Advancing training beyond beaten state {state_name}")
+                        logger.info(f"Advancing training beyond beaten state {state_name}")
                         break
 
                 if generations_remaining == 0 or not continue_training:
@@ -145,14 +146,14 @@ class NEATModel:
 
     def _load_population(self, state_name: str, config) -> neat.Population:
         for checkpoint in self._checkpoints(state_name):
-            print(f"Restoring NEAT population from {checkpoint}")
+            logger.info(f"Restoring NEAT population from {checkpoint}")
             try:
                 population = neat.Checkpointer.restore_checkpoint(
                     str(checkpoint),
                     new_config=config,
                 )
             except Exception as error:
-                print(f"Ignoring unreadable checkpoint {checkpoint}: {error}")
+                logger.warning(f"Ignoring unreadable checkpoint {checkpoint}: {error}")
                 continue
 
             self._synchronize_node_indexer(config, population.population.values())
@@ -167,7 +168,7 @@ class NEATModel:
         completed = self.generations_completed.get(state_name, 0)
 
         if winner is None or completed == 0:
-            print(f"No readable checkpoint found for {state_name}; creating a new population")
+            logger.info(f"No readable checkpoint found for {state_name}; creating a new population")
             return population
 
         self._synchronize_node_indexer(config, [winner])
@@ -199,7 +200,7 @@ class NEATModel:
             completed,
         )
         population.generation = completed
-        print(
+        logger.info(
             f"No readable checkpoint found for {state_name}; "
             f"rebuilding generation {completed} from its saved winner"
         )

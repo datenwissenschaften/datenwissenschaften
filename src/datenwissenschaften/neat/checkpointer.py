@@ -4,13 +4,14 @@ import random
 from pathlib import Path
 
 import neat
+from loguru import logger
 
 
 class AtomicCheckpointer(neat.Checkpointer):
     def save_checkpoint(self, config, population, species_set, generation) -> None:
         path = Path(f"{self.filename_prefix}{generation}")
         temporary_path = path.with_name(f".{path.name}.tmp")
-        print(f"Saving checkpoint to {path}")
+        logger.info(f"Saving checkpoint to {path}")
 
         # Species reporters point back to the model and its multiprocessing
         # environment. They are runtime state and are rebuilt by Population.

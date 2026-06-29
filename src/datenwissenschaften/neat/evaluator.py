@@ -1,5 +1,6 @@
 import neat
 import numpy as np
+from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
 
@@ -130,15 +131,15 @@ class NEATEvaluator:
         info: dict,
         timed_out: bool,
     ) -> None:
-        print(
-            "episode",
-            f"env={env_index}",
-            f"training_state={self.training_state}",
-            f"fitness={genome.fitness:.2f}",
-            f"training_steps={training_steps}",
-            f"total_steps={total_steps}",
-            f"score={info.get('score')}",
-            f"won={info.get('won')}",
-            f"final_state={info.get('state')}",
-            f"timed_out={timed_out}",
+        logger.info(
+            "episode "
+            f"env={env_index} "
+            f"training_state={self.training_state} "
+            f"fitness={genome.fitness:.2f} "
+            f"training_steps={training_steps} "
+            f"total_steps={total_steps} "
+            f"score={info.get('score')} "
+            f"won={info.get('won')} "
+            f"final_state={info.get('state')} "
+            f"timed_out={timed_out}"
         )

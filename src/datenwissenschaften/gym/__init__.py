@@ -6,6 +6,7 @@ import cv2
 import gymnasium as gym
 import numpy as np
 from gymnasium.core import WrapperActType
+from loguru import logger
 
 from datenwissenschaften.ram import RamInfo
 from datenwissenschaften.settings import load_paths_from_config
@@ -108,7 +109,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 savestate = self.env.unwrapped.em.get_state()
                 if self.state_machine.save_current_state(savestate):
                     self._write_savestate(state_after_step.__name__, savestate)
-                    print(f"Saved automatic savestate for {state_after_step.__name__}")
+                    logger.info(f"Saved automatic savestate for {state_after_step.__name__}")
 
             reward += state_reward
             terminated = env_terminated or state_terminated
@@ -278,7 +279,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         path = self._beaten_path(state_cls.__name__)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch(exist_ok=True)
-        print(f"Marked savestate as beaten for {state_cls.__name__}")
+        logger.info(f"Marked savestate as beaten for {state_cls.__name__}")
 
     def _delete_savestate_file(self, state_name: str) -> bool:
         try:
