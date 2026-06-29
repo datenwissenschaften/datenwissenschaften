@@ -41,11 +41,29 @@ jobs:
               match = re.search(r'^name = "([^"]+)"', content, re.MULTILINE)
               return match.group(1) if match else None
 
-          def get_current_version():
-              with open("pyproject.toml", "r") as f:
-                  content = f.read()
+          def get_version(content):
               match = re.search(r'^version = "([^"]+)"', content, re.MULTILINE)
               return match.group(1) if match else None
+
+          def get_current_version():
+              with open("pyproject.toml", "r") as f:
+                  return get_version(f.read())
+
+          def get_previous_version():
+              try:
+                  content = subprocess.run(
+                      ["git", "show", "HEAD^:pyproject.toml"],
+                      check=True,
+                      capture_output=True,
+                      text=True,
+                  ).stdout
+              except subprocess.CalledProcessError:
+                  return None
+              return get_version(content)
+
+          def major_minor(version):
+              match = re.match(r'^(\d+)\.(\d+)(?:\.|$)', version)
+              return tuple(map(int, match.groups())) if match else None
 
           def pypi_version_exists(project_name, version):
               url = f"https://pypi.org/pypi/{project_name}/{version}/json"
@@ -59,6 +77,7 @@ jobs:
           
           project_name = get_project_name()
           current_str = get_current_version()
+          previous_str = get_previous_version()
           
           if not project_name:
               print("Could not find project name in pyproject.toml")
@@ -71,11 +90,24 @@ jobs:
           print(f"Current version in pyproject.toml: {current_str}")
           
           bumped = False
-          while pypi_version_exists(project_name, current_str):
-              print(f"Version {current_str} already exists on PyPI. Bumping patch version...")
-              subprocess.run(["poetry", "version", "patch"], check=True)
-              current_str = get_current_version()
-              bumped = True
+          manually_changed_release = (
+              previous_str is not None
+              and major_minor(previous_str) is not None
+              and major_minor(current_str) is not None
+              and major_minor(previous_str) != major_minor(current_str)
+          )
+
+          if manually_changed_release:
+              print(
+                  f"Major/minor version was manually changed from {previous_str} "
+                  f"to {current_str}. Skipping automated patch bump."
+              )
+          else:
+              while pypi_version_exists(project_name, current_str):
+                  print(f"Version {current_str} already exists on PyPI. Bumping patch version...")
+                  subprocess.run(["poetry", "version", "patch"], check=True)
+                  current_str = get_current_version()
+                  bumped = True
           
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"bumped={'true' if bumped else 'false'}\n")
