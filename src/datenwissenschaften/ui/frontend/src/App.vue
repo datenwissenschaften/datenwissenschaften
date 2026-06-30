@@ -55,6 +55,7 @@ const runtimeDetails = computed(() => {
   return { class: model.value.class || 'Unknown', ...details }
 })
 const run = computed(() => snapshot.value.metadata?.run || {})
+const server = computed(() => snapshot.value.server || {})
 const generation = computed(() => snapshot.value.generations?.at(-1))
 const activeAlgorithm = computed(() => entries(neat.value).length ? 'neat' : entries(ppo.value).length ? 'ppo' : null)
 const control = computed(() => snapshot.value.control || {})
@@ -106,6 +107,7 @@ const label = key => key.replaceAll('_', ' ')
         <span>{{ run.game || 'Awaiting run' }}</span>
         <span class="separator">/</span>
         <span>{{ latest?.training_state || run.savestate || 'no state' }}</span>
+        <span class="endpoint">{{ server.bind_address || '—' }}</span>
         <span :class="['connection', { offline: !connected }]"><i></i>{{ connected ? 'Live' : 'Disconnected' }}</span>
       </div>
     </header>

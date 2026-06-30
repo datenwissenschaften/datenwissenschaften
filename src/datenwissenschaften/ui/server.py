@@ -21,6 +21,7 @@ class DashboardServer:
         self.settings = settings
         self._httpd = ThreadingHTTPServer((settings.host, settings.port), _DashboardHandler)
         self._httpd.csrf_token = secrets.token_urlsafe(32)
+        self._httpd.ui_settings = settings
         self._thread = threading.Thread(target=self._httpd.serve_forever, name="training-ui", daemon=True)
 
     def start(self) -> None:
@@ -49,7 +50,11 @@ def start_ui(settings: UISettings) -> DashboardServer | None:
         except OSError as error:
             logger.error(f"Could not start training UI on {settings.host}:{settings.port}: {error}")
             return None
-    logger.info(f"Training UI available at http://{settings.host}:{settings.port}")
+    browser_host = "127.0.0.1" if settings.host == "0.0.0.0" else settings.host
+    logger.info(
+        f"Training UI listening on {settings.host}:{settings.port}; "
+        f"open http://{browser_host}:{settings.port} locally"
+    )
     return _server
 
 
@@ -63,6 +68,12 @@ class _DashboardHandler(BaseHTTPRequestHandler):
             snapshot["control"] = {
                 **control_metadata(),
                 "csrf_token": self.server.csrf_token,
+            }
+            settings = self.server.ui_settings
+            snapshot["server"] = {
+                "host": settings.host,
+                "port": settings.port,
+                "bind_address": f"{settings.host}:{settings.port}",
             }
             self._send_json(snapshot)
             return

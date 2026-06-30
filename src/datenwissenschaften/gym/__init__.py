@@ -316,7 +316,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch(exist_ok=True)
 
-        logger.info(f"Marked savestate as beaten for {state_cls.__name__}")
+        logger.debug(f"Marked savestate as beaten for {state_cls.__name__}")
 
     def _delete_savestate_file(self, state_name: str) -> bool:
         try:

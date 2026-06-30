@@ -38,7 +38,8 @@ Set `ui.enable: true` to run the local Vue training dashboard at `http://127.0.0
 and step counts, shows termination outcomes, and reports environment, PPO, and NEAT configuration details. The `ui`
 mapping accepts `enable`, `host`, `port`, and `max_episodes` values. Dashboard history
 is restored from and atomically persisted to `models/<game>/<savestate>/history.json` (relative to the configured
-models directory).
+models directory). Set `host: 0.0.0.0` to listen on all network interfaces; use the machine's IP address rather than
+`0.0.0.0` when opening the dashboard from another device.
 
 ## 📜 License
 
