@@ -143,9 +143,9 @@ class LoguruReporter(neat.reporting.BaseReporter):
 
         logger.info(f"Total extinctions: {self.num_extinctions:d}")
         if len(self.generation_times) > 1:
-            logger.info(f"Generation time: {elapsed:.3f} sec ({average:.3f} average)")
+            logger.debug(f"Generation time: {elapsed:.3f} sec ({average:.3f} average)")
         else:
-            logger.info(f"Generation time: {elapsed:.3f} sec")
+            logger.debug(f"Generation time: {elapsed:.3f} sec")
 
     def post_evaluate(self, config, population, species, best_genome):
         fitnesses = [candidate.fitness for candidate in population.values()]

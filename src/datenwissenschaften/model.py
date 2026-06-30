@@ -23,15 +23,38 @@ def get_model_path(models_dir: str, game: str) -> str:
 
 
 def get_model_metadata(model: Any) -> dict[str, Any]:
-    return {
-        "action_space": str(model.action_space),
-        "class": _class_path(model),
+    metadata = {
+        "action_space": str(getattr(model, "action_space", None)),
+        "class": f"{model.__class__.__module__.partition('.')[0]}.{model.__class__.__name__}",
+        "class_path": _class_path(model),
         "device": str(getattr(model, "device", None)),
         "n_envs": getattr(model, "n_envs", None),
         "num_timesteps": getattr(model, "num_timesteps", None),
-        "observation_space": str(model.observation_space),
+        "observation_space": str(getattr(model, "observation_space", None)),
         "total_timesteps": getattr(model, "_total_timesteps", None),
     }
+    ppo_fields = (
+        "batch_size",
+        "n_steps",
+        "n_epochs",
+        "gamma",
+        "gae_lambda",
+        "clip_range",
+        "clip_range_vf",
+        "normalize_advantage",
+        "ent_coef",
+        "vf_coef",
+        "max_grad_norm",
+        "use_sde",
+        "sde_sample_freq",
+        "learning_rate",
+        "policy_kwargs",
+    )
+    ppo = {field: getattr(model, field) for field in ppo_fields if hasattr(model, field)}
+    if ppo:
+        ppo["policy"] = _class_path(model.policy) if getattr(model, "policy", None) is not None else None
+        metadata["ppo"] = ppo
+    return metadata
 
 
 def _class_path(obj: Any) -> str:

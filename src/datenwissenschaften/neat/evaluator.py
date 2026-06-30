@@ -5,6 +5,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften import settings
 from datenwissenschaften.neat.torch_network import TorchFeedForwardBatch
+from datenwissenschaften.ui.telemetry import publish_episode
 
 
 class NEATEvaluator:
@@ -40,7 +41,7 @@ class NEATEvaluator:
         episode_counts = {genome_id: 0 for genome_id, _ in genome_items}
 
         for episode_index in range(self.episodes_per_genome):
-            logger.info(f"Evaluating NEAT episode pass {episode_index + 1}/{self.episodes_per_genome}")
+            logger.debug(f"Evaluating NEAT episode pass {episode_index + 1}/{self.episodes_per_genome}")
 
             for start in range(0, len(genome_items), num_envs):
                 batch = genome_items[start : start + num_envs]
@@ -212,7 +213,19 @@ class NEATEvaluator:
         timed_out: bool,
         no_progress_timeout: bool,
     ) -> None:
-        logger.info(
+        episode = {
+            "env": env_index,
+            "training_state": self.training_state,
+            "fitness": float(genome.fitness),
+            "training_steps": training_steps,
+            "total_steps": total_steps,
+            "won": None if info.get("won") is None else bool(info.get("won")),
+            "final_state": info.get("state"),
+            "timed_out": timed_out,
+            "no_progress_timeout": no_progress_timeout,
+        }
+        publish_episode(**episode)
+        logger.debug(
             "episode "
             f"env={env_index} "
             f"training_state={self.training_state} "

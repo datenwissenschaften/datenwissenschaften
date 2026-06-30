@@ -18,6 +18,7 @@ from datenwissenschaften.model import get_model_metadata, get_model_path
 from datenwissenschaften.retro.environment import get_last_environment_wrapper
 from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfig, load_config
+from datenwissenschaften.ui import configure_history, publish_metadata, start_ui
 
 
 class Trainer:
@@ -38,6 +39,7 @@ class Trainer:
     def train(self, model) -> None:
         configure_accelerator()
         self._configure_runtime()
+        self._start_ui(model)
         if model.num_timesteps >= self.total_timesteps:
             return
 
@@ -46,6 +48,60 @@ class Trainer:
             callback=self.callbacks,
             reset_num_timesteps=False,
         )
+
+    def _start_ui(self, model) -> None:
+        if not self.config.ui.enabled:
+            return
+        history_dir = self.config.paths.models_dir / self.config.training.game
+        if self.config.training.savestate:
+            history_dir /= self.config.training.savestate
+        configure_history(history_dir / "history.json")
+        if start_ui(self.config.ui) is None:
+            return
+        env = model.get_env() if callable(getattr(model, "get_env", None)) else getattr(model, "env", None)
+        publish_metadata(
+            "run",
+            {
+                "game": self.config.training.game,
+                "savestate": self.config.training.savestate,
+                "total_timesteps": self.total_timesteps,
+                "population_size": self.config.training.population_size,
+                "configured_envs": self.config.training.num_envs,
+            },
+        )
+        publish_metadata("model", get_model_metadata(model))
+        publish_metadata("environment", self._environment_metadata(env))
+
+    @staticmethod
+    def _environment_metadata(env) -> dict[str, Any]:
+        if env is None:
+            return {"class": None}
+        wrappers = []
+        current = env
+        while current is not None and len(wrappers) < 12:
+            wrappers.append(f"{current.__class__.__module__}.{current.__class__.__qualname__}")
+            next_env = getattr(current, "venv", None)
+            if next_env is None:
+                next_env = getattr(current, "env", None)
+            if next_env is current:
+                break
+            current = next_env
+        emulator_action_space = str(getattr(env, "action_space", None))
+        action_space = emulator_action_space
+        try:
+            num_actions = env.env_method("num_actions")[0]
+            if isinstance(num_actions, int) and not isinstance(num_actions, bool) and num_actions > 0:
+                action_space = f"Discrete({num_actions})"
+        except (AttributeError, IndexError, TypeError, ValueError):
+            pass
+        return {
+            "class": wrappers[0],
+            "wrappers": wrappers,
+            "num_envs": getattr(env, "num_envs", None),
+            "observation_space": str(getattr(env, "observation_space", None)),
+            "action_space": action_space,
+            "emulator_action_space": emulator_action_space,
+        }
 
     def _default_callbacks(self) -> list[BaseCallback]:
         return [

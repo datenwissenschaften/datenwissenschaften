@@ -145,7 +145,7 @@ class UploadEpisodeCallback(BaseCallback):
         if not best_episode_path or not os.path.exists(best_episode_path):
             return True
 
-        metadata = runtime.get_model_metadata(self.model)
+        metadata = dict(runtime.get_model_metadata(self.model))
         metadata["num_timesteps"] = self.num_timesteps
         metadata["game"] = runtime.game
         metadata["savestate"] = runtime.savestate

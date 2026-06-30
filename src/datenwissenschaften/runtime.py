@@ -22,7 +22,7 @@ class RetroSpeedlabRuntime:
     get_state_value: Callable[[str], str]
     set_state_value: Callable[[str, Any], None]
     get_model_path: Callable[[str], str]
-    get_model_metadata: Callable[[Any], Mapping[str, Any]]
+    get_model_metadata: Callable[[Any], dict[str, Any]]
 
     @property
     def game(self) -> str:

@@ -34,6 +34,12 @@ elsewhere. Relative paths in the file are resolved relative to the configuration
 Set `training.num_envs` to `auto` to select parallel environment workers from CPU affinity, population size, and the
 systemd/cgroup memory limit. An explicit positive integer continues to override automatic selection.
 
+Set `ui: enable` to run the local Vue training dashboard at `http://127.0.0.1:8765`. It charts episode fitness and
+step counts, shows termination outcomes, and reports environment, PPO, and NEAT configuration details. Advanced
+configuration can set `ui` to a mapping with `enabled`, `host`, `port`, and `max_episodes` values. Dashboard history
+is restored from and atomically persisted to `models/<game>/<savestate>/history.json` (relative to the configured
+models directory).
+
 ## 📜 License
 
 This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for details.

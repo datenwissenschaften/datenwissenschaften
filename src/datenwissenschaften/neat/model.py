@@ -20,6 +20,7 @@ from datenwissenschaften.neat.reporter import AdaptiveConfigReporter, LoguruRepo
 from datenwissenschaften.neat.torch_network import TorchFeedForwardBatch
 from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
+from datenwissenschaften.ui.telemetry import publish_generation, publish_metadata
 from datenwissenschaften.vision.encoder import FixedVisualEncoder
 
 
@@ -90,6 +91,7 @@ class NEATModel:
         )
         self._config = None
         config = self._load_config()
+        self._publish_neat_metadata(config, num_inputs, num_outputs, state_names)
         training_callback = self._initialize_callback(callback)
         if training_callback is not None:
             training_callback.on_training_start(locals(), globals())
@@ -126,6 +128,12 @@ class NEATModel:
                     winner = population.run(evaluator.evaluate_generation, 1)
                     generations_remaining -= 1
                     self.generations_completed[state_name] = population.generation
+                    publish_generation(
+                        training_state=state_name,
+                        generation=population.generation,
+                        winner_fitness=float(getattr(winner, "fitness", 0.0) or 0.0),
+                        species=len(population.species.species),
+                    )
                     self.winners[state_name] = winner
                     self.winner = winner
                     self._networks.clear()
@@ -161,6 +169,35 @@ class NEATModel:
 
         self._save_all()
         return self
+
+    def _publish_neat_metadata(self, config, num_inputs: int, num_outputs: int, state_names: list[str]) -> None:
+        genome = config.genome_config
+        publish_metadata(
+            "neat",
+            {
+                "population_size": self.population_size,
+                "inputs": num_inputs,
+                "outputs": num_outputs,
+                "hidden_nodes": genome.num_hidden,
+                "training_states": state_names,
+                "fitness_criterion": config.fitness_criterion,
+                "fitness_threshold": config.fitness_threshold,
+                "activation": genome.activation_default,
+                "aggregation": genome.aggregation_default,
+                "initial_connection": genome.initial_connection,
+                "compatibility_threshold": config.species_set_config.compatibility_threshold,
+                "max_stagnation": config.stagnation_config.max_stagnation,
+                "elitism": config.reproduction_config.elitism,
+                "survival_threshold": config.reproduction_config.survival_threshold,
+                "node_add_probability": genome.node_add_prob,
+                "node_delete_probability": genome.node_delete_prob,
+                "connection_add_probability": genome.conn_add_prob,
+                "connection_delete_probability": genome.conn_delete_prob,
+                "episodes_per_genome": 3,
+                "max_episode_steps": 20_000,
+                "max_no_progress_steps": 600,
+            },
+        )
 
     def _reset_training_state(self) -> None:
         self.generations_completed.clear()

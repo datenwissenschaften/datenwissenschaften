@@ -36,11 +36,20 @@ class UploadSettings:
 
 
 @dataclass(frozen=True)
+class UISettings:
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8765
+    max_episodes: int = 5_000
+
+
+@dataclass(frozen=True)
 class RetroSpeedlabConfig:
     paths: RetroSpeedlabPaths
     training: TrainingSettings
     log_level: str
     upload: UploadSettings
+    ui: UISettings
 
 
 def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabConfig:
@@ -82,6 +91,7 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             url=_string(upload, "url"),
             api_key=_nullable_string(upload, "api_key"),
         ),
+        ui=_ui_settings(document.get("ui")),
     )
 
 
@@ -144,3 +154,33 @@ def _environment_count(values: dict[str, Any], key: str, population_size: int) -
 def _path(values: dict[str, Any], key: str, base_dir: Path) -> Path:
     path = Path(_string(values, key)).expanduser()
     return path.resolve() if path.is_absolute() else (base_dir / path).resolve()
+
+
+def _ui_settings(value: Any) -> UISettings:
+    if value is None:
+        return UISettings()
+    if isinstance(value, bool):
+        return UISettings(enabled=value)
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"enable", "enabled", "on", "true"}:
+            return UISettings(enabled=True)
+        if normalized in {"disable", "disabled", "off", "false"}:
+            return UISettings(enabled=False)
+        raise RuntimeError("Configuration value 'ui' must be 'enable' or 'disable'.")
+    if not isinstance(value, dict):
+        raise RuntimeError("Configuration value 'ui' must be a string, boolean, or mapping.")
+
+    enabled = value.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise RuntimeError("Configuration value 'ui.enabled' must be a boolean.")
+    host = value.get("host", "127.0.0.1")
+    if not isinstance(host, str) or not host.strip():
+        raise RuntimeError("Configuration value 'ui.host' must be a non-empty string.")
+    port = value.get("port", 8765)
+    max_episodes = value.get("max_episodes", 5_000)
+    if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65_535:
+        raise RuntimeError("Configuration value 'ui.port' must be between 1 and 65535.")
+    if not isinstance(max_episodes, int) or isinstance(max_episodes, bool) or max_episodes < 1:
+        raise RuntimeError("Configuration value 'ui.max_episodes' must be a positive integer.")
+    return UISettings(enabled=enabled, host=host.strip(), port=port, max_episodes=max_episodes)
