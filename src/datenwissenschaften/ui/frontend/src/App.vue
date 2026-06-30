@@ -7,13 +7,22 @@ const connected = ref(false)
 const error = ref('')
 const stateFilter = ref('all')
 const windowSize = ref(200)
+const showResetDialog = ref(false)
+const resetting = ref(false)
+const resetError = ref('')
+const resetStartedAt = ref(null)
 let timer
 
 const load = async () => {
   try {
     const response = await fetch('/api/snapshot', { cache: 'no-store' })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    snapshot.value = await response.json()
+    const payload = await response.json()
+    snapshot.value = payload
+    if (resetting.value && resetStartedAt.value && payload.started_at !== resetStartedAt.value) {
+      resetting.value = false
+      resetStartedAt.value = null
+    }
     connected.value = true
     error.value = ''
   } catch (reason) {
@@ -48,6 +57,26 @@ const runtimeDetails = computed(() => {
 const run = computed(() => snapshot.value.metadata?.run || {})
 const generation = computed(() => snapshot.value.generations?.at(-1))
 const activeAlgorithm = computed(() => entries(neat.value).length ? 'neat' : entries(ppo.value).length ? 'ppo' : null)
+const control = computed(() => snapshot.value.control || {})
+
+const resetModel = async () => {
+  resetting.value = true
+  resetStartedAt.value = snapshot.value.started_at
+  resetError.value = ''
+  try {
+    const response = await fetch('/api/model/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': control.value.csrf_token },
+      body: JSON.stringify({ game: run.value.game }),
+    })
+    const payload = await response.json()
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+    showResetDialog.value = false
+  } catch (reason) {
+    resetting.value = false
+    resetError.value = reason.message
+  }
+}
 
 const fitnessSeries = [{ key: 'fitness', label: 'Fitness / reward', color: '#8cf5c6' }]
 const stepSeries = [
@@ -85,6 +114,9 @@ const label = key => key.replaceAll('_', ' ')
       <div><p class="eyebrow">OBSERVATION WINDOW</p><strong>Episode telemetry</strong></div>
       <label>State<select v-model="stateFilter"><option value="all">All states</option><option v-for="state in states" :key="state">{{ state }}</option></select></label>
       <label>Range<select v-model.number="windowSize"><option :value="50">Last 50</option><option :value="200">Last 200</option><option :value="500">Last 500</option><option :value="5000">All retained</option></select></label>
+      <button class="reset-button" :disabled="!control.restart_supported || control.reset_pending || resetting" @click="showResetDialog = true">
+        {{ control.reset_pending || resetting ? 'Restarting…' : 'Delete model' }}
+      </button>
       <p v-if="error" class="error">{{ error }}</p>
     </section>
 
@@ -136,5 +168,18 @@ const label = key => key.replaceAll('_', ' ')
       </table></div>
     </section>
     <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} episodes in view</footer>
+
+    <div v-if="showResetDialog" class="modal-backdrop" @click.self="showResetDialog = false">
+      <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+        <p class="eyebrow danger-text">DESTRUCTIVE ACTION</p>
+        <h2 id="reset-title">Delete {{ run.game }} model?</h2>
+        <p>All checkpoints and model history for this game will be deleted. The current generation will stop and training will restart from generation zero.</p>
+        <p v-if="resetError" class="error">{{ resetError }}</p>
+        <div class="dialog-actions">
+          <button class="cancel-button" :disabled="resetting" @click="showResetDialog = false">Cancel</button>
+          <button class="confirm-reset" :disabled="resetting" @click="resetModel">{{ resetting ? 'Requesting…' : 'Delete and restart' }}</button>
+        </div>
+      </section>
+    </div>
   </main>
 </template>

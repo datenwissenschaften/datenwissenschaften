@@ -6,6 +6,7 @@ import math
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
@@ -22,6 +23,7 @@ def _timestamp() -> str:
 class TelemetryStore:
     def __init__(self, max_episodes: int = 5_000) -> None:
         self._lock = threading.RLock()
+        self._write_lock = threading.Lock()
         self._episodes: deque[dict[str, Any]] = deque(maxlen=max_episodes)
         self._generations: deque[dict[str, Any]] = deque(maxlen=1_000)
         self._metadata: dict[str, Any] = {}
@@ -93,18 +95,31 @@ class TelemetryStore:
             )
 
     def flush(self) -> None:
-        with self._lock:
-            if self._history_path is None:
-                return
-            path = self._history_path
-            payload = self._snapshot_locked()
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temporary_path = path.with_name(f".{path.name}.tmp")
-            temporary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            temporary_path.replace(path)
-        except OSError as error:
-            logger.warning(f"Could not persist training UI history to {path}: {error}")
+        with self._write_lock:
+            with self._lock:
+                if self._history_path is None:
+                    return
+                path = self._history_path
+                payload = self._snapshot_locked()
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temporary_path = path.with_name(f".{path.name}.tmp")
+                temporary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                temporary_path.replace(path)
+            except OSError as error:
+                logger.warning(f"Could not persist training UI history to {path}: {error}")
+
+    def reset_for_restart(self, delete_model_directory: Callable[[], None]) -> None:
+        """Delete model files without allowing the history writer to recreate them mid-reset."""
+        with self._write_lock:
+            self._persist_event.clear()
+            delete_model_directory()
+            with self._lock:
+                self._episodes.clear()
+                self._generations.clear()
+                self._sequence = 0
+                self._started_at = _timestamp()
+                self._mark_dirty()
 
     def _snapshot_locked(self) -> dict[str, Any]:
         return {

@@ -5,6 +5,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften import settings
 from datenwissenschaften.neat.torch_network import TorchFeedForwardBatch
+from datenwissenschaften.ui.control import model_reset_requested
 from datenwissenschaften.ui.telemetry import publish_episode
 
 
@@ -74,6 +75,9 @@ class NEATEvaluator:
                 genome.fitness = fitness_sums[genome_id] / count
 
     def evaluate_batch(self, genomes, config) -> dict[int, float] | None:
+        if model_reset_requested():
+            self.restart_requested = True
+            return None
         try:
             candidate_networks = [neat.nn.FeedForwardNetwork.create(genome, config) for _, genome in genomes]
             candidate_batch = TorchFeedForwardBatch.create(candidate_networks)
@@ -113,6 +117,9 @@ class NEATEvaluator:
         steps_without_progress = [0] * len(genomes)
 
         while any(active):
+            if model_reset_requested():
+                self.restart_requested = True
+                return None
             policy_inputs = self.env.env_method("policy_input")
             all_features, current_states = zip(*policy_inputs, strict=True)
             actions = []

@@ -1,9 +1,6 @@
 import hashlib
 import inspect
 import math
-import pickle
-from copy import copy, deepcopy
-from itertools import count
 from pathlib import Path
 
 import neat
@@ -16,15 +13,20 @@ from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.neat.checkpointer import AtomicCheckpointer
 from datenwissenschaften.neat.config import write_neat_config
 from datenwissenschaften.neat.evaluator import NEATEvaluator
+from datenwissenschaften.neat.policy import NEATPolicyRouter
+from datenwissenschaften.neat.population import load_population, preserve_global_champion
 from datenwissenschaften.neat.reporter import AdaptiveConfigReporter, LoguruReporter, WinnerReporter
-from datenwissenschaften.neat.torch_network import TorchFeedForwardBatch
+from datenwissenschaften.neat.serialization import load_model_state, save_model_state
 from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
+from datenwissenschaften.ui.control import consume_model_reset, perform_model_reset
 from datenwissenschaften.ui.telemetry import publish_generation, publish_metadata
 from datenwissenschaften.vision.encoder import FixedVisualEncoder
 
 
 class NEATModel:
+    supports_ui_restart = True
+
     def __init__(
         self,
         env,
@@ -43,6 +45,8 @@ class NEATModel:
         self.population_size = settings.training.population_size
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        self.best_fitness = float("-inf")
+        self.best_genome = None
         self.generations_completed = dict(generations_completed or {})
         self.winners = dict(winners or {})
         self.winner = winner
@@ -50,8 +54,11 @@ class NEATModel:
         self.populations: dict[str, neat.Population] = {}
         self.population = None
         self.statistics: dict[str, neat.StatisticsReporter] = {}
-        self._networks: dict[str, neat.nn.FeedForwardNetwork] = {}
-        self._torch_network_batches: dict[tuple[str, ...], TorchFeedForwardBatch | None] = {}
+        self._policy_router = NEATPolicyRouter(self.winners)
+        # Reporter compatibility: WinnerReporter invalidates state networks
+        # through this existing private attribute.
+        self._networks = self._policy_router.networks
+        self._torch_network_batches = self._policy_router.torch_batches
         self._config = None
 
     @property
@@ -67,6 +74,7 @@ class NEATModel:
         return self.env
 
     def learn(self, total_timesteps=None, callback=None, **kwargs):
+        restart_budget = total_timesteps + self.num_timesteps if total_timesteps is not None else None
         restart_attempted = bool(kwargs.pop("_restart_attempted", False))
         if total_timesteps is None:
             raise ValueError("total_timesteps is required.")
@@ -93,6 +101,7 @@ class NEATModel:
         config = self._load_config()
         self._publish_neat_metadata(config, num_inputs, num_outputs, state_names)
         training_callback = self._initialize_callback(callback)
+        model_reset = None
         if training_callback is not None:
             training_callback.on_training_start(locals(), globals())
 
@@ -126,6 +135,12 @@ class NEATModel:
                     if training_callback is not None:
                         training_callback.on_rollout_start()
                     winner = population.run(evaluator.evaluate_generation, 1)
+                    model_reset = consume_model_reset()
+                    if model_reset is not None:
+                        logger.warning("Stopping current NEAT generation for a requested model reset")
+                        continue_training = False
+                        break
+                    self._preserve_global_champion(population, winner)
                     generations_remaining -= 1
                     self.generations_completed[state_name] = population.generation
                     publish_generation(
@@ -167,6 +182,12 @@ class NEATModel:
             if training_callback is not None:
                 training_callback.on_training_end()
 
+        model_reset = model_reset or consume_model_reset()
+        if model_reset is not None:
+            self._reset_training_state()
+            perform_model_reset(model_reset)
+            return self.learn(total_timesteps=restart_budget, callback=callback, reset_num_timesteps=True)
+
         self._save_all()
         return self
 
@@ -200,6 +221,8 @@ class NEATModel:
         )
 
     def _reset_training_state(self) -> None:
+        self.best_fitness = float("-inf")
+        self.best_genome = None
         self.generations_completed.clear()
         self.winners.clear()
         self.winner = None
@@ -220,108 +243,28 @@ class NEATModel:
         return callback
 
     def _load_population(self, state_name: str, config) -> neat.Population:
-        for checkpoint in self._checkpoints(state_name):
-            logger.info(f"Restoring NEAT population from {checkpoint}")
-            try:
-                population = neat.Checkpointer.restore_checkpoint(
-                    str(checkpoint),
-                    new_config=config,
-                )
-            except Exception as error:
-                logger.warning(f"Ignoring unreadable checkpoint {checkpoint}: {error}")
-                continue
-
-            self._synchronize_node_indexer(config, population.population.values())
-            self.generations_completed[state_name] = population.generation
-            return population
-
-        return self._replacement_population(state_name, config)
-
-    def _replacement_population(self, state_name: str, config) -> neat.Population:
-        population = neat.Population(config)
-        winner = self.winners.get(state_name)
-        completed = self.generations_completed.get(state_name, 0)
-
-        if winner is None or completed == 0:
-            logger.info(f"No readable checkpoint found for {state_name}; creating a new population")
-            return population
-
-        self._synchronize_node_indexer(config, [winner])
-
-        keys = list(population.population)
-        tracker = population.reproduction.innovation_tracker
-        tracker.global_counter = max(
-            (connection.innovation for connection in winner.connections.values()),
-            default=0,
+        population = load_population(
+            output_dir=self.output_dir,
+            state_name=state_name,
+            config=config,
+            winners=self.winners,
+            generations_completed=self.generations_completed,
         )
-        tracker.generation_innovations.clear()
-        config.genome_config.innovation_tracker = tracker
-
-        population.population.clear()
-        for index, key in enumerate(keys):
-            genome = deepcopy(winner)
-            genome.key = key
-            if index > 0:
-                genome.mutate(config.genome_config)
-            population.population[key] = genome
-
-        population.species = config.species_set_type(
-            config.species_set_config,
-            population.reporters,
-        )
-        population.species.speciate(
-            config,
-            population.population,
-            completed,
-        )
-        population.generation = completed
-        logger.info(
-            f"No readable checkpoint found for {state_name}; "
-            f"rebuilding generation {completed} from its saved winner"
-        )
+        if self.best_genome is not None:
+            self._preserve_global_champion(population, self.best_genome)
         return population
 
-    @staticmethod
-    def _synchronize_node_indexer(config, genomes) -> None:
-        genome_config = config.genome_config
-        next_node_key = genome_config.num_outputs
-
-        if genome_config.node_indexer is not None:
-            next_node_key = max(next_node_key, next(copy(genome_config.node_indexer)))
-
-        for genome in genomes:
-            if genome.nodes:
-                next_node_key = max(next_node_key, max(genome.nodes) + 1)
-
-        genome_config.node_indexer = count(next_node_key)
-
-    def _checkpoints(self, state_name: str) -> list[Path]:
-        state_dir = self.output_dir / state_name
-        checkpoints = []
-        for path in state_dir.glob("checkpoint-*"):
-            try:
-                generation = int(path.name.rsplit("-", 1)[1])
-            except ValueError:
-                continue
-            checkpoints.append((generation, path))
-
-        checkpoints.sort(reverse=True, key=lambda item: item[0])
-        return [path for _, path in checkpoints]
-
     def save(self, path) -> None:
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "winners": self.winners,
             "winner": self.winner,
             "generations_completed": self.generations_completed,
             "population_size": self.population_size,
             "input_signature": self.input_signature,
+            "best_fitness": self.best_fitness,
+            "best_genome": self.best_genome,
         }
-        temporary_path = path.with_name(f".{path.name}.tmp")
-        with temporary_path.open("wb") as file:
-            pickle.dump(payload, file)
-        temporary_path.replace(path)
+        save_model_state(path, payload)
 
     @classmethod
     def load(
@@ -331,13 +274,7 @@ class NEATModel:
         settings_path: str | Path = DEFAULT_CONFIG_PATH,
         **kwargs,
     ):
-        path = Path(path)
-        zip_path = Path(f"{path}.zip")
-        if not path.exists() and zip_path.exists():
-            path = zip_path
-
-        with path.open("rb") as file:
-            payload = pickle.load(file)
+        payload = load_model_state(path)
 
         model = cls(
             env=env,
@@ -347,48 +284,33 @@ class NEATModel:
             input_signature=payload.get("input_signature"),
             settings_path=settings_path,
         )
+
+        model.population_size = payload["population_size"]
+        model.best_genome = payload.get("best_genome")
+        if model.best_genome is None:
+            candidates = [genome for genome in [*model.winners.values(), model.winner] if genome is not None]
+            model.best_genome = max(
+                candidates,
+                key=lambda genome: genome.fitness if genome.fitness is not None else float("-inf"),
+                default=None,
+            )
+        default_best_fitness = (
+            float(model.best_genome.fitness)
+            if model.best_genome is not None and model.best_genome.fitness is not None
+            else float("-inf")
+        )
+        model.best_fitness = float(payload.get("best_fitness", default_best_fitness))
+
         return model
 
     def predict(self, observation, deterministic=True):
         if self.env is None:
             raise RuntimeError("An environment is required to route state-specific winners.")
-
-        config = self._load_config()
-        policy_inputs = self.env.env_method("policy_input")
-        all_features, state_names = zip(*policy_inputs, strict=True)
-        if all_features:
-            self._ensure_input_compatibility(len(all_features[0]))
-        actions = [0] * len(state_names)
-        routed_networks = []
-
-        for index, (state_name, features) in enumerate(zip(state_names, all_features, strict=True)):
-            genome = self.winners.get(state_name)
-            if genome is None:
-                continue
-
-            if state_name not in self._networks:
-                self._networks[state_name] = neat.nn.FeedForwardNetwork.create(
-                    genome,
-                    config,
-                )
-            routed_networks.append((index, state_name, features, self._networks[state_name]))
-
-        batch_key = tuple(state_name for _, state_name, _, _ in routed_networks)
-        if batch_key not in self._torch_network_batches:
-            self._torch_network_batches[batch_key] = TorchFeedForwardBatch.create(
-                [network for _, _, _, network in routed_networks]
-            )
-
-        torch_batch = self._torch_network_batches[batch_key]
-        if torch_batch is not None:
-            outputs = torch_batch.activate([features for _, _, features, _ in routed_networks])
-            for (index, _, _, _), network_outputs in zip(routed_networks, outputs, strict=True):
-                actions[index] = int(np.argmax(network_outputs))
-        else:
-            for index, _, features, network in routed_networks:
-                actions[index] = int(np.argmax(network.activate(features)))
-
-        return np.asarray(actions, dtype=np.int64), None
+        return self._policy_router.predict(
+            env=self.env,
+            config=self._load_config(),
+            validate_input_size=self._ensure_input_compatibility,
+        )
 
     def _training_state_names(self) -> list[str]:
         names = self.env.env_method("training_state_names")[0]
@@ -487,3 +409,11 @@ class NEATModel:
         self.save(self.output_dir / "winners.pkl")
         self.save(self.output_dir / "winner.pkl")
         self.save(self.trainer_model_path)
+
+    def _preserve_global_champion(self, population: neat.Population, winner) -> None:
+        self.best_fitness, self.best_genome = preserve_global_champion(
+            population,
+            winner,
+            best_fitness=self.best_fitness,
+            best_genome=self.best_genome,
+        )

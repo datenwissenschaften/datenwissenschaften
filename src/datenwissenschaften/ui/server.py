@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import secrets
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -11,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from loguru import logger
 
 from datenwissenschaften.settings import UISettings
+from datenwissenschaften.ui.control import control_metadata, request_model_reset
 from datenwissenschaften.ui.telemetry import get_store
 
 
@@ -18,6 +20,7 @@ class DashboardServer:
     def __init__(self, settings: UISettings) -> None:
         self.settings = settings
         self._httpd = ThreadingHTTPServer((settings.host, settings.port), _DashboardHandler)
+        self._httpd.csrf_token = secrets.token_urlsafe(32)
         self._thread = threading.Thread(target=self._httpd.serve_forever, name="training-ui", daemon=True)
 
     def start(self) -> None:
@@ -56,19 +59,53 @@ class _DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.partition("?")[0]
         if path == "/api/snapshot":
-            self._send_json(get_store().snapshot())
+            snapshot = get_store().snapshot()
+            snapshot["control"] = {
+                **control_metadata(),
+                "csrf_token": self.server.csrf_token,
+            }
+            self._send_json(snapshot)
             return
         if path == "/api/health":
             self._send_json({"status": "ok"})
             return
         self._send_asset(path)
 
+    def do_POST(self) -> None:  # noqa: N802
+        path = self.path.partition("?")[0]
+        if path != "/api/model/reset":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if self.headers.get("X-CSRF-Token") != self.server.csrf_token:
+            self.send_error(HTTPStatus.FORBIDDEN, "Invalid CSRF token")
+            return
+        if self.headers.get_content_type() != "application/json":
+            self.send_error(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "Expected application/json")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 4_096:
+                raise ValueError("Invalid request size")
+            payload = json.loads(self.rfile.read(length))
+            game = payload.get("game") if isinstance(payload, dict) else None
+            if not isinstance(game, str) or not game:
+                raise ValueError("Missing game")
+            request_model_reset(game)
+        except (json.JSONDecodeError, ValueError) as error:
+            self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        except RuntimeError as error:
+            self._send_json({"error": str(error)}, status=HTTPStatus.CONFLICT)
+            return
+        logger.warning(f"Model reset requested from training UI for {game}")
+        self._send_json({"status": "reset_pending", "game": game}, status=HTTPStatus.ACCEPTED)
+
     def log_message(self, format: str, *args) -> None:
         logger.debug(f"Training UI: {format % args}")
 
-    def _send_json(self, payload: dict) -> None:
+    def _send_json(self, payload: dict, *, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        self.send_response(HTTPStatus.OK)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))

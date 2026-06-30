@@ -13,7 +13,7 @@ def write_neat_config(
     if num_outputs < 1:
         raise ValueError("num_outputs must be positive.")
     if pop_size < 128:
-        raise ValueError("pop_size must be positive and at least 128.")
+        raise ValueError("pop_size must be at least 128.")
 
     effective_pop_size = max(128, min(pop_size, 1024))
 
@@ -27,9 +27,9 @@ def write_neat_config(
         initial_connection = "partial_direct 0.05"
         num_hidden = 0
 
-    elitism = max(2, min(10, effective_pop_size // 50))
-    species_elitism = max(1, min(5, elitism // 2))
-    survival_threshold = 0.2 if effective_pop_size >= 300 else 0.3
+    elitism = max(2, min(5, effective_pop_size // 60))
+    species_elitism = max(1, min(2, elitism // 2))
+    survival_threshold = 0.2
 
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -54,24 +54,24 @@ bias_init_mean          = 0.0
 bias_init_stdev         = 1.0
 bias_max_value          = 30.0
 bias_min_value          = -30.0
-bias_mutate_power       = 0.2
+bias_mutate_power       = 0.1
 bias_mutate_rate        = 0.5
-bias_replace_rate       = 0.1
+bias_replace_rate       = 0.05
 
 compatibility_disjoint_coefficient = 1.0
 compatibility_weight_coefficient   = 0.5
 
-conn_add_prob           = 0.15
-conn_delete_prob        = 0.02
+conn_add_prob           = 0.10
+conn_delete_prob        = 0.005
 
 enabled_default         = True
-enabled_mutate_rate     = 0.01
+enabled_mutate_rate     = 0.005
 
 feed_forward            = True
 initial_connection      = {initial_connection}
 
-node_add_prob           = 0.03
-node_delete_prob        = 0.01
+node_add_prob           = 0.02
+node_delete_prob        = 0.0
 
 num_hidden              = {num_hidden}
 num_inputs              = {num_inputs}
@@ -89,16 +89,16 @@ weight_init_mean        = 0.0
 weight_init_stdev       = 1.0
 weight_max_value        = 30.0
 weight_min_value        = -30.0
-weight_mutate_power     = 0.2
+weight_mutate_power     = 0.1
 weight_mutate_rate      = 0.8
-weight_replace_rate     = 0.1
+weight_replace_rate     = 0.05
 
 [DefaultSpeciesSet]
 compatibility_threshold = 2.5
 
 [DefaultStagnation]
 species_fitness_func = max
-max_stagnation       = 50
+max_stagnation       = 75
 species_elitism      = {species_elitism}
 
 [DefaultReproduction]

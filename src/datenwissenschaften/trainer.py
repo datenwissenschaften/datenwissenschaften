@@ -19,6 +19,7 @@ from datenwissenschaften.retro.environment import get_last_environment_wrapper
 from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfig, load_config
 from datenwissenschaften.ui import configure_history, publish_metadata, start_ui
+from datenwissenschaften.ui.control import configure_training_control
 
 
 class Trainer:
@@ -32,7 +33,8 @@ class Trainer:
         self.config: RetroSpeedlabConfig = load_config(config_path)
         setup_logging(self.config.log_level)
         self.total_timesteps = self.config.training.total_timesteps
-        self.callbacks = self._default_callbacks() + (additional_callbacks or [])
+        self._additional_callbacks = list(additional_callbacks or [])
+        self.callbacks = self._default_callbacks() + self._additional_callbacks
         self._state: dict[str, Any] = {}
         self._savestate = self.config.training.savestate
 
@@ -56,6 +58,12 @@ class Trainer:
         if self.config.training.savestate:
             history_dir /= self.config.training.savestate
         configure_history(history_dir / "history.json")
+        configure_training_control(
+            game=self.config.training.game,
+            model_dir=self.config.paths.models_dir / self.config.training.game,
+            restart_supported=bool(getattr(model, "supports_ui_restart", False)),
+            on_reset=self._reset_for_restart,
+        )
         if start_ui(self.config.ui) is None:
             return
         env = model.get_env() if callable(getattr(model, "get_env", None)) else getattr(model, "env", None)
@@ -71,6 +79,11 @@ class Trainer:
         )
         publish_metadata("model", get_model_metadata(model))
         publish_metadata("environment", self._environment_metadata(env))
+
+    def _reset_for_restart(self) -> None:
+        self._state.clear()
+        self._savestate = self.config.training.savestate
+        self.callbacks[:] = self._default_callbacks() + self._additional_callbacks
 
     @staticmethod
     def _environment_metadata(env) -> dict[str, Any]:
