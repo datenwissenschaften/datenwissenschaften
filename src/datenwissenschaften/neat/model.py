@@ -212,6 +212,7 @@ class NEATModel:
                 "connection_add_probability": genome.conn_add_prob,
                 "connection_delete_probability": genome.conn_delete_prob,
             },
+            replace=True,
         )
 
     def _reset_training_state(self) -> None:

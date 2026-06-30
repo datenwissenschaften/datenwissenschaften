@@ -45,7 +45,6 @@ const wins = computed(() => filtered.value.filter(row => row.won === true).lengt
 const winRate = computed(() => filtered.value.length ? wins.value / filtered.value.length * 100 : 0)
 const average = key => computed(() => filtered.value.length ? filtered.value.reduce((sum, row) => sum + (Number(row[key]) || 0), 0) / filtered.value.length : 0)
 const avgFitness = average('fitness')
-const avgSteps = average('training_steps')
 const fitnessHistory = computed(() => {
   let sum = 0
   const history = stateHistory.value.map((row, index) => {
@@ -145,7 +144,6 @@ const label = key => key.replaceAll('_', ' ')
       <article class="panel metric"><p>Latest fitness</p><strong>{{ fmt(latest?.fitness, 2) }}</strong><small>mean {{ fmt(avgFitness, 2) }}</small></article>
       <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>within selection</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ filtered.length }} episodes</small></article>
-      <article class="panel metric"><p>Avg training steps</p><strong>{{ fmt(avgSteps) }}</strong><small>{{ fmt(latest?.total_steps) }} latest total</small></article>
     </section>
 
     <section class="charts">
@@ -183,9 +181,9 @@ const label = key => key.replaceAll('_', ' ')
 
     <section class="panel episodes-card">
       <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>Recent episodes</h2></div><span class="count">{{ episodes.length }} retained</span></div>
-      <div class="table-scroll"><table><thead><tr><th>#</th><th>Env</th><th>Training state</th><th>Fitness</th><th>Training steps</th><th>Total steps</th><th>Won</th><th>Final state</th></tr></thead>
-        <tbody><tr v-for="row in reversed.slice(0, 100)" :key="row.index"><td class="dim">{{ row.index }}</td><td>{{ row.env }}</td><td><span class="state">{{ row.training_state }}</span></td><td class="fitness">{{ fmt(row.fitness, 2) }}</td><td>{{ fmt(row.training_steps) }}</td><td>{{ fmt(row.total_steps) }}</td><td><span :class="['status', row.won === true ? 'success' : 'neutral']">{{ row.won == null ? '—' : row.won ? 'Won' : 'No' }}</span></td><td>{{ row.final_state || '—' }}</td></tr>
-        <tr v-if="!reversed.length"><td colspan="8" class="empty-row">Waiting for the evaluator to complete an episode.</td></tr></tbody>
+      <div class="table-scroll"><table><thead><tr><th>#</th><th>Env</th><th>Training state</th><th>Fitness</th><th>Won</th><th>Final state</th></tr></thead>
+        <tbody><tr v-for="row in reversed.slice(0, 100)" :key="row.index"><td class="dim">{{ row.index }}</td><td>{{ row.env }}</td><td><span class="state">{{ row.training_state }}</span></td><td class="fitness">{{ fmt(row.fitness, 2) }}</td><td><span :class="['status', row.won === true ? 'success' : 'neutral']">{{ row.won == null ? '—' : row.won ? 'Won' : 'No' }}</span></td><td>{{ row.final_state || '—' }}</td></tr>
+        <tr v-if="!reversed.length"><td colspan="6" class="empty-row">Waiting for the evaluator to complete an episode.</td></tr></tbody>
       </table></div>
     </section>
     <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} episodes in view</footer>

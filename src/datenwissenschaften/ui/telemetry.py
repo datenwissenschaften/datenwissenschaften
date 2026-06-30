@@ -75,10 +75,14 @@ class TelemetryStore:
             self._generations.append({"timestamp": _timestamp(), **_json_value(values)})
             self._mark_dirty()
 
-    def publish_metadata(self, section: str, values: dict[str, Any]) -> None:
+    def publish_metadata(self, section: str, values: dict[str, Any], *, replace: bool = False) -> None:
         with self._lock:
-            current = self._metadata.setdefault(section, {})
-            current.update(_json_value(values))
+            serialized = _json_value(values)
+            if replace:
+                self._metadata[section] = serialized
+            else:
+                current = self._metadata.setdefault(section, {})
+                current.update(serialized)
             self._mark_dirty()
 
     def snapshot(self) -> dict[str, Any]:
@@ -184,8 +188,8 @@ def publish_generation(**values: Any) -> None:
     _store.publish_generation(values)
 
 
-def publish_metadata(section: str, values: dict[str, Any]) -> None:
-    _store.publish_metadata(section, values)
+def publish_metadata(section: str, values: dict[str, Any], *, replace: bool = False) -> None:
+    _store.publish_metadata(section, values, replace=replace)
 
 
 def _json_value(value: Any) -> Any:
