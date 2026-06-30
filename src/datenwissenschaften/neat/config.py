@@ -12,8 +12,8 @@ def write_neat_config(
         raise ValueError("num_inputs must be positive.")
     if num_outputs < 1:
         raise ValueError("num_outputs must be positive.")
-    if pop_size < 1:
-        raise ValueError("pop_size must be positive.")
+    if pop_size < 128:
+        raise ValueError("pop_size must be positive and at least 128.")
 
     effective_pop_size = max(128, min(pop_size, 1024))
 

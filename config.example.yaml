@@ -17,4 +17,6 @@ upload:
   url: https://speedlab.datenwissenschaften.com/api
   api_key: null
 
-ui: enable
+ui:
+  enable: true
+  port: 18080

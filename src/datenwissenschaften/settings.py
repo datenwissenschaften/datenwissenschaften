@@ -39,7 +39,7 @@ class UploadSettings:
 class UISettings:
     enabled: bool = False
     host: str = "127.0.0.1"
-    port: int = 8765
+    port: int = 18_080
     max_episodes: int = 5_000
 
 
@@ -171,13 +171,15 @@ def _ui_settings(value: Any) -> UISettings:
     if not isinstance(value, dict):
         raise RuntimeError("Configuration value 'ui' must be a string, boolean, or mapping.")
 
-    enabled = value.get("enabled", True)
+    if "enable" in value and "enabled" in value:
+        raise RuntimeError("Use only one of 'ui.enable' or the legacy 'ui.enabled' value.")
+    enabled = value.get("enable", value.get("enabled", True))
     if not isinstance(enabled, bool):
-        raise RuntimeError("Configuration value 'ui.enabled' must be a boolean.")
+        raise RuntimeError("Configuration value 'ui.enable' must be a boolean.")
     host = value.get("host", "127.0.0.1")
     if not isinstance(host, str) or not host.strip():
         raise RuntimeError("Configuration value 'ui.host' must be a non-empty string.")
-    port = value.get("port", 8765)
+    port = value.get("port", 18_080)
     max_episodes = value.get("max_episodes", 5_000)
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65_535:
         raise RuntimeError("Configuration value 'ui.port' must be between 1 and 65535.")
