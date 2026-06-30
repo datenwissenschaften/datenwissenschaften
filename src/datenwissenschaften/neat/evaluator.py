@@ -16,17 +16,11 @@ class NEATEvaluator:
         *,
         training_state: str,
         controller_genomes: dict[str, object] | None = None,
-        max_steps: int = 20_000,
-        max_no_progress_steps: int = 600,
-        episodes_per_genome: int = 3,
         callback: BaseCallback | None = None,
     ):
         self.env = env
         self.training_state = training_state
         self.controller_genomes = dict(controller_genomes or {})
-        self.max_steps = max_steps
-        self.max_no_progress_steps = max_no_progress_steps
-        self.episodes_per_genome = episodes_per_genome
         self.callback = callback
         self.continue_training = True
         self.restart_requested = False
@@ -37,47 +31,29 @@ class NEATEvaluator:
         genome_items = list(genomes)
         num_envs = self.env.num_envs
         self.generation_episodes_completed = 0
-        self.generation_episodes_total = len(genome_items) * self.episodes_per_genome
+        self.generation_episodes_total = len(genome_items)
         self._publish_generation_progress()
 
         for _, genome in genome_items:
-            genome.fitness = 0.0
+            genome.fitness = -10_000.0
 
-        fitness_sums = {genome_id: 0.0 for genome_id, _ in genome_items}
-        episode_counts = {genome_id: 0 for genome_id, _ in genome_items}
+        for start in range(0, len(genome_items), num_envs):
+            batch = genome_items[start : start + num_envs]
+            result = self.evaluate_batch(batch, config)
 
-        for episode_index in range(self.episodes_per_genome):
-            logger.debug(f"Evaluating NEAT episode pass {episode_index + 1}/{self.episodes_per_genome}")
-
-            for start in range(0, len(genome_items), num_envs):
-                batch = genome_items[start : start + num_envs]
-
-                result = self.evaluate_batch(batch, config)
-
-                if result is None:
-                    self.continue_training = False
-                    break
-
-                for genome_id, episode_fitness in result.items():
-                    fitness_sums[genome_id] += episode_fitness
-                    episode_counts[genome_id] += 1
-
-                highest_states = self.env.env_method("highest_progress_state")
-                state_names = self.env.env_method("training_state_names")[0]
-                training_index = state_names.index(self.training_state)
-
-                if any(state_names.index(state_name) > training_index for state_name in highest_states):
-                    break
-
-            if not self.continue_training:
+            if result is None:
+                self.continue_training = False
                 break
 
-        for genome_id, genome in genome_items:
-            count = episode_counts[genome_id]
-            if count == 0:
-                genome.fitness = -10_000.0
-            else:
-                genome.fitness = fitness_sums[genome_id] / count
+            for genome_id, genome in batch:
+                genome.fitness = result[genome_id]
+
+            highest_states = self.env.env_method("highest_progress_state")
+            state_names = self.env.env_method("training_state_names")[0]
+            training_index = state_names.index(self.training_state)
+
+            if any(state_names.index(state_name) > training_index for state_name in highest_states):
+                break
 
     def evaluate_batch(self, genomes, config) -> dict[int, float] | None:
         if model_reset_requested():
@@ -112,14 +88,12 @@ class NEATEvaluator:
             logger.debug(f"Evaluating {len(genomes)} NEAT networks as a {candidate_batch.device.type} batch")
 
         active = [True] * len(genomes)
-        entered_training_state = [state_name == self.training_state for state_name in current_states[: len(genomes)]]
 
         training_steps = [0] * len(genomes)
         total_steps = [0] * len(genomes)
 
         episode_fitness = [0.0] * len(genomes)
         best_episode_fitness = [0.0] * len(genomes)
-        steps_without_progress = [0] * len(genomes)
 
         while any(active):
             if model_reset_requested():
@@ -138,7 +112,6 @@ class NEATEvaluator:
                 state_name = current_states[i]
 
                 if state_name == self.training_state:
-                    entered_training_state[i] = True
                     if candidate_outputs is not None:
                         actions.append(int(np.argmax(candidate_outputs[i])))
                         continue
@@ -170,22 +143,8 @@ class NEATEvaluator:
 
                     if episode_fitness[i] > best_episode_fitness[i]:
                         best_episode_fitness[i] = episode_fitness[i]
-                        steps_without_progress[i] = 0
-                    else:
-                        steps_without_progress[i] += 1
 
-                state_after_step = infos[i].get("state")
-
-                left_training_state = (
-                    entered_training_state[i]
-                    and state_before_step == self.training_state
-                    and state_after_step != self.training_state
-                )
-
-                timed_out = total_steps[i] >= self.max_steps
-                no_progress_timeout = steps_without_progress[i] >= self.max_no_progress_steps
-
-                if bool(dones[i]) or left_training_state or timed_out or no_progress_timeout:
+                if bool(dones[i]):
                     active[i] = False
 
                     _, genome = genomes[i]
@@ -197,8 +156,6 @@ class NEATEvaluator:
                         training_steps=training_steps[i],
                         total_steps=total_steps[i],
                         info=infos[i],
-                        timed_out=timed_out,
-                        no_progress_timeout=no_progress_timeout,
                     )
 
             if self.callback is not None:
@@ -222,8 +179,6 @@ class NEATEvaluator:
         training_steps: int,
         total_steps: int,
         info: dict,
-        timed_out: bool,
-        no_progress_timeout: bool,
     ) -> None:
         episode = {
             "env": env_index,
@@ -233,8 +188,6 @@ class NEATEvaluator:
             "total_steps": total_steps,
             "won": None if info.get("won") is None else bool(info.get("won")),
             "final_state": info.get("state"),
-            "timed_out": timed_out,
-            "no_progress_timeout": no_progress_timeout,
         }
         publish_episode(**episode)
         self.generation_episodes_completed += 1
@@ -247,9 +200,7 @@ class NEATEvaluator:
             f"training_steps={training_steps} "
             f"total_steps={total_steps} "
             f"won={info.get('won')} "
-            f"final_state={info.get('state')} "
-            f"timed_out={timed_out} "
-            f"no_progress_timeout={no_progress_timeout}"
+            f"final_state={info.get('state')}"
         )
 
     def _publish_generation_progress(self) -> None:

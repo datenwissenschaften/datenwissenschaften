@@ -126,9 +126,6 @@ class NEATModel:
                     self.env,
                     training_state=state_name,
                     controller_genomes=dict(self.winners),
-                    max_steps=20_000,
-                    max_no_progress_steps=600,
-                    episodes_per_genome=3,
                     callback=training_callback,
                 )
                 while generations_remaining > 0:
@@ -214,9 +211,6 @@ class NEATModel:
                 "node_delete_probability": genome.node_delete_prob,
                 "connection_add_probability": genome.conn_add_prob,
                 "connection_delete_probability": genome.conn_delete_prob,
-                "episodes_per_genome": 3,
-                "max_episode_steps": 20_000,
-                "max_no_progress_steps": 600,
             },
         )
 

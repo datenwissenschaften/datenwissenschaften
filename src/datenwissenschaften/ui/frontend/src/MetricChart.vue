@@ -5,6 +5,7 @@ const props = defineProps({
   rows: { type: Array, default: () => [] },
   series: { type: Array, required: true },
   height: { type: Number, default: 240 },
+  includeZero: { type: Boolean, default: false },
 })
 
 const width = 1000
@@ -16,9 +17,17 @@ const domain = computed(() => {
   if (!values.value.length) return [0, 1]
   let min = Math.min(...values.value)
   let max = Math.max(...values.value)
-  if (min === max) { min -= Math.max(Math.abs(min) * .1, 1); max += Math.max(Math.abs(max) * .1, 1) }
+  if (props.includeZero) {
+    min = Math.min(min, 0)
+    max = Math.max(max, 0)
+  }
+  if (min === max) {
+    if (props.includeZero && min === 0) return [0, 1]
+    min -= Math.max(Math.abs(min) * .1, 1)
+    max += Math.max(Math.abs(max) * .1, 1)
+  }
   const breathing = (max - min) * .08
-  return [min - breathing, max + breathing]
+  return [props.includeZero && min === 0 ? 0 : min - breathing, props.includeZero && max === 0 ? 0 : max + breathing]
 })
 const x = index => pad.left + (props.rows.length <= 1 ? plotWidth / 2 : index * plotWidth / (props.rows.length - 1))
 const y = value => pad.top + (domain.value[1] - value) * plotHeight.value / (domain.value[1] - domain.value[0])

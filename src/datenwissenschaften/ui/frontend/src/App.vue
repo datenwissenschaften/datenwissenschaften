@@ -36,7 +36,8 @@ onBeforeUnmount(() => window.clearInterval(timer))
 
 const episodes = computed(() => snapshot.value.episodes || [])
 const states = computed(() => [...new Set(episodes.value.map(row => row.training_state).filter(Boolean))])
-const filtered = computed(() => episodes.value.filter(row => stateFilter.value === 'all' || row.training_state === stateFilter.value).slice(-windowSize.value))
+const stateHistory = computed(() => episodes.value.filter(row => stateFilter.value === 'all' || row.training_state === stateFilter.value))
+const filtered = computed(() => stateHistory.value.slice(-windowSize.value))
 const reversed = computed(() => [...filtered.value].reverse())
 const latest = computed(() => filtered.value.at(-1))
 const best = computed(() => filtered.value.length ? Math.max(...filtered.value.map(row => Number(row.fitness) || 0)) : null)
@@ -45,7 +46,14 @@ const winRate = computed(() => filtered.value.length ? wins.value / filtered.val
 const average = key => computed(() => filtered.value.length ? filtered.value.reduce((sum, row) => sum + (Number(row[key]) || 0), 0) / filtered.value.length : 0)
 const avgFitness = average('fitness')
 const avgSteps = average('training_steps')
-const timeoutRate = computed(() => filtered.value.length ? filtered.value.filter(row => row.timed_out || row.no_progress_timeout).length / filtered.value.length * 100 : 0)
+const fitnessHistory = computed(() => {
+  let sum = 0
+  const history = stateHistory.value.map((row, index) => {
+    sum += Number(row.fitness) || 0
+    return { ...row, mean_fitness: sum / (index + 1) }
+  })
+  return history.slice(-windowSize.value)
+})
 const model = computed(() => snapshot.value.metadata?.model || {})
 const ppo = computed(() => model.value.ppo || {})
 const neat = computed(() => snapshot.value.metadata?.neat || {})
@@ -94,11 +102,7 @@ const resetModel = async () => {
   }
 }
 
-const fitnessSeries = [{ key: 'fitness', label: 'Fitness / reward', color: '#8cf5c6' }]
-const stepSeries = [
-  { key: 'training_steps', label: 'Training steps', color: '#70a7ff' },
-  { key: 'total_steps', label: 'Total steps', color: '#b68cff' },
-]
+const fitnessSeries = [{ key: 'mean_fitness', label: 'Mean fitness', color: '#8cf5c6' }]
 const fmt = (value, digits = 0) => value == null ? '—' : Intl.NumberFormat('en', { maximumFractionDigits: digits }).format(value)
 const display = value => {
   if (value == null || value === '') return '—'
@@ -140,19 +144,14 @@ const label = key => key.replaceAll('_', ' ')
     <section class="kpis">
       <article class="panel metric"><p>Latest fitness</p><strong>{{ fmt(latest?.fitness, 2) }}</strong><small>mean {{ fmt(avgFitness, 2) }}</small></article>
       <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>within selection</small></article>
-      <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} / {{ filtered.length }} episodes</small></article>
+      <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ filtered.length }} episodes</small></article>
       <article class="panel metric"><p>Avg training steps</p><strong>{{ fmt(avgSteps) }}</strong><small>{{ fmt(latest?.total_steps) }} latest total</small></article>
-      <article class="panel metric"><p>Timeout rate</p><strong :class="{ warning: timeoutRate > 20 }">{{ fmt(timeoutRate, 1) }}<em>%</em></strong><small>no-progress</small></article>
     </section>
 
     <section class="charts">
       <article class="panel chart-card wide">
-        <div class="card-heading"><div><p class="eyebrow">REWARD SIGNAL</p><h2>Fitness over time</h2></div><div class="legend"><i style="--color:#8cf5c6"></i>Fitness</div></div>
-        <MetricChart :rows="filtered" :series="fitnessSeries" />
-      </article>
-      <article class="panel chart-card">
-        <div class="card-heading"><div><p class="eyebrow">EPISODE LENGTH</p><h2>Step budget</h2></div><div class="legend"><span><i style="--color:#70a7ff"></i>Training</span><span><i style="--color:#b68cff"></i>Total</span></div></div>
-        <MetricChart :rows="filtered" :series="stepSeries" />
+        <div class="card-heading"><div><p class="eyebrow">REWARD SIGNAL</p><h2>Fitness over time</h2></div><div class="legend"><i style="--color:#8cf5c6"></i>Mean fitness</div></div>
+        <MetricChart :rows="fitnessHistory" :series="fitnessSeries" :include-zero="true" />
       </article>
     </section>
 
@@ -184,9 +183,9 @@ const label = key => key.replaceAll('_', ' ')
 
     <section class="panel episodes-card">
       <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>Recent episodes</h2></div><span class="count">{{ episodes.length }} retained</span></div>
-      <div class="table-scroll"><table><thead><tr><th>#</th><th>Env</th><th>Training state</th><th>Fitness</th><th>Training steps</th><th>Total steps</th><th>Won</th><th>Final state</th><th>Termination</th></tr></thead>
-        <tbody><tr v-for="row in reversed.slice(0, 100)" :key="row.index"><td class="dim">{{ row.index }}</td><td>{{ row.env }}</td><td><span class="state">{{ row.training_state }}</span></td><td class="fitness">{{ fmt(row.fitness, 2) }}</td><td>{{ fmt(row.training_steps) }}</td><td>{{ fmt(row.total_steps) }}</td><td><span :class="['status', row.won === true ? 'success' : 'neutral']">{{ row.won == null ? '—' : row.won ? 'Won' : 'No' }}</span></td><td>{{ row.final_state || '—' }}</td><td><span v-if="row.no_progress_timeout" class="status danger">No progress</span><span v-else-if="row.timed_out" class="status warning-bg">Timed out</span><span v-else class="status neutral">Finished</span></td></tr>
-        <tr v-if="!reversed.length"><td colspan="9" class="empty-row">Waiting for the evaluator to complete an episode.</td></tr></tbody>
+      <div class="table-scroll"><table><thead><tr><th>#</th><th>Env</th><th>Training state</th><th>Fitness</th><th>Training steps</th><th>Total steps</th><th>Won</th><th>Final state</th></tr></thead>
+        <tbody><tr v-for="row in reversed.slice(0, 100)" :key="row.index"><td class="dim">{{ row.index }}</td><td>{{ row.env }}</td><td><span class="state">{{ row.training_state }}</span></td><td class="fitness">{{ fmt(row.fitness, 2) }}</td><td>{{ fmt(row.training_steps) }}</td><td>{{ fmt(row.total_steps) }}</td><td><span :class="['status', row.won === true ? 'success' : 'neutral']">{{ row.won == null ? '—' : row.won ? 'Won' : 'No' }}</span></td><td>{{ row.final_state || '—' }}</td></tr>
+        <tr v-if="!reversed.length"><td colspan="8" class="empty-row">Waiting for the evaluator to complete an episode.</td></tr></tbody>
       </table></div>
     </section>
     <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} episodes in view</footer>
