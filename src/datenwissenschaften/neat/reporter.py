@@ -5,6 +5,8 @@ from statistics import mean, stdev
 import neat
 from loguru import logger
 
+from datenwissenschaften.ui.telemetry import publish_metadata
+
 
 class AdaptiveConfigReporter(neat.reporting.BaseReporter):
     def __init__(self, *, population_size: int, total_generations: int):
@@ -114,6 +116,7 @@ class LoguruReporter(neat.reporting.BaseReporter):
 
     def start_generation(self, generation):
         self.generation = generation
+        publish_metadata("neat", {"current_generation": generation})
         logger.info(f"Running generation {generation}")
         self.generation_start_time = time.time()
 

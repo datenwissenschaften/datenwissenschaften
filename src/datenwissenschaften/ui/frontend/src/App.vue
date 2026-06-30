@@ -57,6 +57,21 @@ const runtimeDetails = computed(() => {
 const run = computed(() => snapshot.value.metadata?.run || {})
 const server = computed(() => snapshot.value.server || {})
 const generation = computed(() => snapshot.value.generations?.at(-1))
+const currentGeneration = computed(() => neat.value.current_generation ?? generation.value?.generation)
+const generationEpisodesCompleted = computed(() => Number(neat.value.generation_episodes_completed) || 0)
+const generationEpisodesTotal = computed(() => Number(neat.value.generation_episodes_total) || 0)
+const generationProgress = computed(() => generationEpisodesTotal.value
+  ? Math.min(100, generationEpisodesCompleted.value / generationEpisodesTotal.value * 100)
+  : 0)
+const neatDetails = computed(() => {
+  const {
+    current_generation: _currentGeneration,
+    generation_episodes_completed: _generationEpisodesCompleted,
+    generation_episodes_total: _generationEpisodesTotal,
+    ...details
+  } = neat.value
+  return details
+})
 const activeAlgorithm = computed(() => entries(neat.value).length ? 'neat' : entries(ppo.value).length ? 'ppo' : null)
 const control = computed(() => snapshot.value.control || {})
 
@@ -152,8 +167,13 @@ const label = key => key.replaceAll('_', ' ')
         <p v-else class="placeholder">No PPO parameters on the active model.</p>
       </article>
       <article v-else-if="activeAlgorithm === 'neat'" class="panel detail-card">
-        <div class="card-heading"><div><p class="eyebrow">EVOLUTION</p><h2>NEAT</h2></div><span class="chip">gen {{ generation?.generation ?? '—' }}</span></div>
-        <dl v-if="entries(neat).length"><template v-for="([key, value]) in entries(neat)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
+        <div class="card-heading"><div><p class="eyebrow">EVOLUTION</p><h2>NEAT</h2></div><span class="chip">gen {{ currentGeneration ?? '—' }}</span></div>
+        <div v-if="generationEpisodesTotal" class="generation-progress">
+          <div><span>Current generation</span><strong>{{ fmt(generationEpisodesCompleted) }} / {{ fmt(generationEpisodesTotal) }} episodes</strong></div>
+          <div class="progress-track"><i :style="{ width: `${generationProgress}%` }"></i></div>
+          <small>{{ fmt(generationProgress, 1) }}% complete</small>
+        </div>
+        <dl v-if="entries(neatDetails).length"><template v-for="([key, value]) in entries(neatDetails)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
         <p v-else class="placeholder">NEAT details appear when evolution starts.</p>
       </article>
       <article v-else class="panel detail-card">

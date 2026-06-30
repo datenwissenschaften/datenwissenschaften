@@ -285,7 +285,16 @@ class NEATModel:
             settings_path=settings_path,
         )
 
-        model.population_size = payload["population_size"]
+        saved_population_size = int(payload["population_size"])
+        if saved_population_size != model.population_size:
+            logger.warning(
+                "NEAT population size changed "
+                f"from {saved_population_size} to {model.population_size}. "
+                "Deleting incompatible model artifacts and restarting training."
+            )
+            settings.empty_all_paths(settings_path)
+            raise ValueError(f"NEAT population size changed from {saved_population_size} to {model.population_size}.")
+
         model.best_genome = payload.get("best_genome")
         if model.best_genome is None:
             candidates = [genome for genome in [*model.winners.values(), model.winner] if genome is not None]

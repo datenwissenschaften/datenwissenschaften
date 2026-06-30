@@ -6,7 +6,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from datenwissenschaften import settings
 from datenwissenschaften.neat.torch_network import TorchFeedForwardBatch
 from datenwissenschaften.ui.control import model_reset_requested
-from datenwissenschaften.ui.telemetry import publish_episode
+from datenwissenschaften.ui.telemetry import publish_episode, publish_metadata
 
 
 class NEATEvaluator:
@@ -30,10 +30,15 @@ class NEATEvaluator:
         self.callback = callback
         self.continue_training = True
         self.restart_requested = False
+        self.generation_episodes_completed = 0
+        self.generation_episodes_total = 0
 
     def evaluate_generation(self, genomes, config) -> None:
         genome_items = list(genomes)
         num_envs = self.env.num_envs
+        self.generation_episodes_completed = 0
+        self.generation_episodes_total = len(genome_items) * self.episodes_per_genome
+        self._publish_generation_progress()
 
         for _, genome in genome_items:
             genome.fitness = 0.0
@@ -232,6 +237,8 @@ class NEATEvaluator:
             "no_progress_timeout": no_progress_timeout,
         }
         publish_episode(**episode)
+        self.generation_episodes_completed += 1
+        self._publish_generation_progress()
         logger.debug(
             "episode "
             f"env={env_index} "
@@ -243,4 +250,13 @@ class NEATEvaluator:
             f"final_state={info.get('state')} "
             f"timed_out={timed_out} "
             f"no_progress_timeout={no_progress_timeout}"
+        )
+
+    def _publish_generation_progress(self) -> None:
+        publish_metadata(
+            "neat",
+            {
+                "generation_episodes_completed": self.generation_episodes_completed,
+                "generation_episodes_total": self.generation_episodes_total,
+            },
         )
