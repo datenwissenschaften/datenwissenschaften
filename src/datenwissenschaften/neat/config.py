@@ -19,12 +19,12 @@ def write_neat_config(
 
     if num_inputs <= 256:
         initial_connection = "full_direct"
-        num_hidden = 8
+        num_hidden = 0
     elif num_inputs <= 512:
-        initial_connection = "partial_direct 0.25"
-        num_hidden = 8
+        initial_connection = "partial_direct 0.15"
+        num_hidden = 0
     else:
-        initial_connection = "partial_direct 0.05"
+        initial_connection = "partial_direct 0.03"
         num_hidden = 0
 
     elitism = max(2, min(5, effective_pop_size // 60))
@@ -61,7 +61,7 @@ bias_replace_rate       = 0.05
 compatibility_disjoint_coefficient = 1.0
 compatibility_weight_coefficient   = 0.5
 
-conn_add_prob           = 0.10
+conn_add_prob           = 0.03
 conn_delete_prob        = 0.005
 
 enabled_default         = True
@@ -70,7 +70,7 @@ enabled_mutate_rate     = 0.005
 feed_forward            = True
 initial_connection      = {initial_connection}
 
-node_add_prob           = 0.02
+node_add_prob           = 0.005
 node_delete_prob        = 0.0
 
 num_hidden              = {num_hidden}
