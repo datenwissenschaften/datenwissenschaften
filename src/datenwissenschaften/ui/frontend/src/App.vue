@@ -65,6 +65,9 @@ const runtimeDetails = computed(() => {
 })
 const run = computed(() => snapshot.value.metadata?.run || {})
 const server = computed(() => snapshot.value.server || {})
+const versionLabel = computed(() => server.value.version === 'DEVELOPMENT'
+  ? 'DEVELOPMENT'
+  : server.value.version ? `v${server.value.version}` : '—')
 const generation = computed(() => snapshot.value.generations?.at(-1))
 const currentGeneration = computed(() => neat.value.current_generation ?? generation.value?.generation)
 const generationEpisodesCompleted = computed(() => Number(neat.value.generation_episodes_completed) || 0)
@@ -128,7 +131,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
     <header class="topbar">
       <div class="brand">
         <div class="mark"><span></span><span></span><span></span></div>
-        <div><p class="eyebrow">DATENWISSENSCHAFTEN · v{{ server.version || '—' }}</p><h1>Training Observatory</h1></div>
+        <div><p class="eyebrow">DATENWISSENSCHAFTEN · {{ versionLabel }}</p><h1>Training Observatory</h1></div>
       </div>
       <div class="run-summary">
         <span>{{ run.game || 'Awaiting run' }}</span>

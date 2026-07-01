@@ -4,7 +4,6 @@ import json
 import mimetypes
 import secrets
 import threading
-import tomllib
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.metadata import PackageNotFoundError, version
@@ -22,12 +21,7 @@ def _datenwissenschaften_version() -> str:
     try:
         return version("datenwissenschaften")
     except PackageNotFoundError:
-        try:
-            pyproject_path = Path(__file__).resolve().parents[3] / "pyproject.toml"
-            with pyproject_path.open("rb") as pyproject_file:
-                return str(tomllib.load(pyproject_file)["project"]["version"])
-        except (KeyError, OSError, tomllib.TOMLDecodeError):
-            return "unknown"
+        return "DEVELOPMENT"
 
 
 DATENWISSENSCHAFTEN_VERSION = _datenwissenschaften_version()
