@@ -6,7 +6,7 @@ const snapshot = ref({ episodes: [], generations: [], metadata: {} })
 const connected = ref(false)
 const error = ref('')
 const stateFilter = ref('all')
-const windowSize = ref(200)
+const expandedEpisode = ref(null)
 const showResetDialog = ref(false)
 const resetting = ref(false)
 const resetError = ref('')
@@ -37,21 +37,23 @@ onBeforeUnmount(() => window.clearInterval(timer))
 const episodes = computed(() => snapshot.value.episodes || [])
 const states = computed(() => [...new Set(episodes.value.map(row => row.training_state).filter(Boolean))])
 const stateHistory = computed(() => episodes.value.filter(row => stateFilter.value === 'all' || row.training_state === stateFilter.value))
-const filtered = computed(() => stateHistory.value.slice(-windowSize.value))
+const filtered = computed(() => stateHistory.value)
 const reversed = computed(() => [...filtered.value].reverse())
 const latest = computed(() => filtered.value.at(-1))
 const best = computed(() => filtered.value.length ? Math.max(...filtered.value.map(row => Number(row.fitness) || 0)) : null)
 const wins = computed(() => filtered.value.filter(row => row.won === true).length)
 const winRate = computed(() => filtered.value.length ? wins.value / filtered.value.length * 100 : 0)
-const average = key => computed(() => filtered.value.length ? filtered.value.reduce((sum, row) => sum + (Number(row[key]) || 0), 0) / filtered.value.length : 0)
-const avgFitness = average('fitness')
+const timedEpisodes = computed(() => filtered.value.filter(row => Number.isFinite(Number(row.duration_seconds))))
+const avgDuration = computed(() => timedEpisodes.value.length
+  ? timedEpisodes.value.reduce((sum, row) => sum + Number(row.duration_seconds), 0) / timedEpisodes.value.length
+  : null)
 const fitnessHistory = computed(() => {
   let sum = 0
   const history = stateHistory.value.map((row, index) => {
     sum += Number(row.fitness) || 0
     return { ...row, mean_fitness: sum / (index + 1) }
   })
-  return history.slice(-windowSize.value)
+  return history
 })
 const model = computed(() => snapshot.value.metadata?.model || {})
 const ppo = computed(() => model.value.ppo || {})
@@ -103,6 +105,11 @@ const resetModel = async () => {
 
 const fitnessSeries = [{ key: 'mean_fitness', label: 'Mean fitness', color: '#8cf5c6' }]
 const fmt = (value, digits = 0) => value == null ? '—' : Intl.NumberFormat('en', { maximumFractionDigits: digits }).format(value)
+const duration = value => {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
+  const seconds = Math.max(0, Math.round(Number(value)))
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
 const display = value => {
   if (value == null || value === '') return '—'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
@@ -112,6 +119,8 @@ const display = value => {
 }
 const entries = object => Object.entries(object || {}).filter(([, value]) => value != null && value !== 'None')
 const label = key => key.replaceAll('_', ' ')
+const ramEntries = row => Object.entries(row.ram || {})
+const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row.index ? null : row.index }
 </script>
 
 <template>
@@ -133,7 +142,6 @@ const label = key => key.replaceAll('_', ' ')
     <section class="controls panel">
       <div><p class="eyebrow">OBSERVATION WINDOW</p><strong>Episode telemetry</strong></div>
       <label>State<select v-model="stateFilter"><option value="all">All states</option><option v-for="state in states" :key="state">{{ state }}</option></select></label>
-      <label>Range<select v-model.number="windowSize"><option :value="50">Last 50</option><option :value="200">Last 200</option><option :value="500">Last 500</option><option :value="5000">All retained</option></select></label>
       <button class="reset-button" :disabled="!control.restart_supported || control.reset_pending || resetting" @click="showResetDialog = true">
         {{ control.reset_pending || resetting ? 'Restarting…' : 'Delete model' }}
       </button>
@@ -141,9 +149,9 @@ const label = key => key.replaceAll('_', ' ')
     </section>
 
     <section class="kpis">
-      <article class="panel metric"><p>Latest fitness</p><strong>{{ fmt(latest?.fitness, 2) }}</strong><small>mean {{ fmt(avgFitness, 2) }}</small></article>
-      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>within selection</small></article>
+      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>current generation</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ filtered.length }} episodes</small></article>
+      <article class="panel metric"><p>Avg training time</p><strong>{{ duration(avgDuration) }}</strong><small>{{ duration(latest?.duration_seconds) }} latest</small></article>
     </section>
 
     <section class="charts">
@@ -180,13 +188,16 @@ const label = key => key.replaceAll('_', ' ')
     </section>
 
     <section class="panel episodes-card">
-      <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>Recent episodes</h2></div><span class="count">{{ episodes.length }} retained</span></div>
-      <div class="table-scroll"><table><thead><tr><th>#</th><th>Env</th><th>Training state</th><th>Fitness</th><th>Won</th><th>Final state</th></tr></thead>
-        <tbody><tr v-for="row in reversed.slice(0, 100)" :key="row.index"><td class="dim">{{ row.index }}</td><td>{{ row.env }}</td><td><span class="state">{{ row.training_state }}</span></td><td class="fitness">{{ fmt(row.fitness, 2) }}</td><td><span :class="['status', row.won === true ? 'success' : 'neutral']">{{ row.won == null ? '—' : row.won ? 'Won' : 'No' }}</span></td><td>{{ row.final_state || '—' }}</td></tr>
+      <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>Current generation episodes</h2></div><span class="count">{{ episodes.length }} episodes</span></div>
+      <div class="table-scroll"><table><thead><tr><th>#</th><th>Training state</th><th>Fitness</th><th>Won</th><th>Final state</th><th>Details</th></tr></thead>
+        <tbody><template v-for="row in reversed.slice(0, 100)" :key="row.index">
+          <tr :class="{ expanded: expandedEpisode === row.index }"><td class="dim">{{ row.index }}</td><td><span class="state">{{ row.training_state }}</span></td><td class="fitness">{{ fmt(row.fitness, 2) }}</td><td><span :class="['status', row.won === true ? 'success' : 'neutral']">{{ row.won == null ? '—' : row.won ? 'Won' : 'No' }}</span></td><td>{{ row.final_state || '—' }}</td><td><button v-if="ramEntries(row).length" type="button" class="ram-toggle" :aria-expanded="expandedEpisode === row.index" @click="toggleRam(row)">{{ expandedEpisode === row.index ? 'Hide RAM' : 'Show RAM' }}</button><span v-else class="dim">—</span></td></tr>
+          <tr v-if="expandedEpisode === row.index" class="ram-detail"><td colspan="6"><dl><template v-for="([key, value]) in ramEntries(row)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl></td></tr>
+        </template>
         <tr v-if="!reversed.length"><td colspan="6" class="empty-row">Waiting for the evaluator to complete an episode.</td></tr></tbody>
       </table></div>
     </section>
-    <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} episodes in view</footer>
+    <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} current generation episodes</footer>
 
     <div v-if="showResetDialog" class="modal-backdrop" @click.self="showResetDialog = false">
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">

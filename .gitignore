@@ -221,6 +221,7 @@ __marimo__/
 # Custom
 backup/
 src/datenwissenschaften/ui/frontend/node_modules/
+src/datenwissenschaften/ui/static/
 
 # Agents
 .agents

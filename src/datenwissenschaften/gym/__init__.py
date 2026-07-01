@@ -142,6 +142,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             {
                 "won": current_state._won(),
                 "state": self.state_machine.state_name,
+                "ram": ram.to_dict(),
                 "progress": type(current_state).progress,
                 "frames_without_progress": self._frames_without_progress,
             },

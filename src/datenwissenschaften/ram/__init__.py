@@ -35,6 +35,16 @@ class RamInfo:
 
         return cls(**values)
 
+    @final
+    def to_dict(self) -> dict[str, int | list[int]]:
+        values = {}
+
+        for name in self.ram_map():
+            value = getattr(self, name)
+            values[name] = list(value) if isinstance(value, list) else int(value)
+
+        return values
+
     def features(self) -> list[float]:
         result = []
 

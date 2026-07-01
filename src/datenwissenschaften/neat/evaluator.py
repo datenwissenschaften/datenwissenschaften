@@ -1,3 +1,5 @@
+import time
+
 import neat
 import numpy as np
 from loguru import logger
@@ -91,6 +93,7 @@ class NEATEvaluator:
 
         training_steps = [0] * len(genomes)
         total_steps = [0] * len(genomes)
+        episode_started_at = time.monotonic()
 
         episode_fitness = [0.0] * len(genomes)
         best_episode_fitness = [0.0] * len(genomes)
@@ -155,6 +158,7 @@ class NEATEvaluator:
                         genome=genome,
                         training_steps=training_steps[i],
                         total_steps=total_steps[i],
+                        duration_seconds=time.monotonic() - episode_started_at,
                         info=infos[i],
                     )
 
@@ -178,6 +182,7 @@ class NEATEvaluator:
         genome,
         training_steps: int,
         total_steps: int,
+        duration_seconds: float,
         info: dict,
     ) -> None:
         episode = {
@@ -186,8 +191,10 @@ class NEATEvaluator:
             "fitness": float(genome.fitness),
             "training_steps": training_steps,
             "total_steps": total_steps,
+            "duration_seconds": duration_seconds,
             "won": None if info.get("won") is None else bool(info.get("won")),
             "final_state": info.get("state"),
+            "ram": info.get("ram", {}),
         }
         publish_episode(**episode)
         self.generation_episodes_completed += 1
@@ -199,6 +206,7 @@ class NEATEvaluator:
             f"fitness={genome.fitness:.2f} "
             f"training_steps={training_steps} "
             f"total_steps={total_steps} "
+            f"duration_seconds={duration_seconds:.3f} "
             f"won={info.get('won')} "
             f"final_state={info.get('state')}"
         )

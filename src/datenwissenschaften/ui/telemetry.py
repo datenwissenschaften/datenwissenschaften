@@ -25,7 +25,7 @@ class TelemetryStore:
         self._lock = threading.RLock()
         self._write_lock = threading.Lock()
         self._episodes: deque[dict[str, Any]] = deque(maxlen=max_episodes)
-        self._generations: deque[dict[str, Any]] = deque(maxlen=1_000)
+        self._generations: deque[dict[str, Any]] = deque(maxlen=1)
         self._metadata: dict[str, Any] = {}
         self._started_at = _timestamp()
         self._sequence = 0
@@ -61,10 +61,13 @@ class TelemetryStore:
     def publish_episode(self, values: dict[str, Any]) -> None:
         with self._lock:
             self._sequence += 1
+            neat = self._metadata.get("neat", {})
+            generation = neat.get("current_generation") if isinstance(neat, dict) else None
             self._episodes.append(
                 {
                     "index": self._sequence,
                     "timestamp": _timestamp(),
+                    **({"generation": generation} if generation is not None else {}),
                     **_json_value(values),
                 }
             )
@@ -78,6 +81,12 @@ class TelemetryStore:
     def publish_metadata(self, section: str, values: dict[str, Any], *, replace: bool = False) -> None:
         with self._lock:
             serialized = _json_value(values)
+            if section == "neat" and "current_generation" in serialized:
+                current = self._metadata.get("neat", {})
+                previous_generation = current.get("current_generation") if isinstance(current, dict) else None
+                if previous_generation is not None and previous_generation != serialized["current_generation"]:
+                    self._episodes.clear()
+                    self._generations.clear()
             if replace:
                 self._metadata[section] = serialized
             else:
@@ -145,9 +154,16 @@ class TelemetryStore:
             metadata = payload.get("metadata", {})
             if not isinstance(episodes, list) or not isinstance(generations, list) or not isinstance(metadata, dict):
                 raise ValueError("history fields have invalid types")
-            self._episodes.extend(item for item in episodes if isinstance(item, dict))
-            self._generations.extend(item for item in generations if isinstance(item, dict))
             self._metadata.update(metadata)
+            neat = metadata.get("neat", {})
+            current_generation = neat.get("current_generation") if isinstance(neat, dict) else None
+            if current_generation is None:
+                self._episodes.extend(item for item in episodes if isinstance(item, dict))
+            else:
+                self._episodes.extend(
+                    item for item in episodes if isinstance(item, dict) and item.get("generation") == current_generation
+                )
+            self._generations.extend(item for item in generations if isinstance(item, dict))
             self._sequence = max(
                 (item.get("index", 0) for item in self._episodes if isinstance(item.get("index"), int)),
                 default=0,

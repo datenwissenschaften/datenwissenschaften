@@ -22,6 +22,19 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/datenwissenschaften/ui/frontend/package-lock.json
+
+      - name: Build static assets
+        working-directory: src/datenwissenschaften/ui/frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
@@ -36,7 +49,7 @@ jobs:
           import re
           import urllib.error
           import urllib.request
-          
+
           def get_project_name():
               with open("pyproject.toml", "r") as f:
                   content = f.read()
@@ -76,21 +89,21 @@ jobs:
                   if e.code == 404:
                       return False
                   raise
-          
+
           project_name = get_project_name()
           current_str = get_current_version()
           previous_str = get_previous_version()
-          
+
           if not project_name:
               print("Could not find project name in pyproject.toml")
               exit(1)
-          
+
           if not current_str:
               print("Could not find version in pyproject.toml")
               exit(1)
-          
+
           print(f"Current version in pyproject.toml: {current_str}")
-          
+
           bumped = False
           manually_changed_release = (
               previous_str is not None
@@ -110,7 +123,7 @@ jobs:
                   subprocess.run(["poetry", "version", "patch"], check=True)
                   current_str = get_current_version()
                   bumped = True
-          
+
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"bumped={'true' if bumped else 'false'}\n")
               f.write(f"new_version={current_str}\n")
