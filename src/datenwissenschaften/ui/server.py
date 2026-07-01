@@ -4,8 +4,10 @@ import json
 import mimetypes
 import secrets
 import threading
+import tomllib
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.metadata import PackageNotFoundError, version
 from importlib.resources import files
 from pathlib import Path, PurePosixPath
 
@@ -14,6 +16,21 @@ from loguru import logger
 from datenwissenschaften.settings import UISettings
 from datenwissenschaften.ui.control import control_metadata, request_model_reset
 from datenwissenschaften.ui.telemetry import get_store
+
+
+def _datenwissenschaften_version() -> str:
+    try:
+        return version("datenwissenschaften")
+    except PackageNotFoundError:
+        try:
+            pyproject_path = Path(__file__).resolve().parents[3] / "pyproject.toml"
+            with pyproject_path.open("rb") as pyproject_file:
+                return str(tomllib.load(pyproject_file)["project"]["version"])
+        except (KeyError, OSError, tomllib.TOMLDecodeError):
+            return "unknown"
+
+
+DATENWISSENSCHAFTEN_VERSION = _datenwissenschaften_version()
 
 
 class DashboardServer:
@@ -74,6 +91,7 @@ class _DashboardHandler(BaseHTTPRequestHandler):
                 "host": settings.host,
                 "port": settings.port,
                 "bind_address": f"{settings.host}:{settings.port}",
+                "version": DATENWISSENSCHAFTEN_VERSION,
             }
             self._send_json(snapshot)
             return

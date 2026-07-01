@@ -128,7 +128,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
     <header class="topbar">
       <div class="brand">
         <div class="mark"><span></span><span></span><span></span></div>
-        <div><p class="eyebrow">DATENWISSENSCHAFTEN</p><h1>Training Observatory</h1></div>
+        <div><p class="eyebrow">DATENWISSENSCHAFTEN · v{{ server.version || '—' }}</p><h1>Training Observatory</h1></div>
       </div>
       <div class="run-summary">
         <span>{{ run.game || 'Awaiting run' }}</span>
