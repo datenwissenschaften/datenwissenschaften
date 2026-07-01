@@ -61,8 +61,9 @@ class Trainer:
         configure_training_control(
             game=self.config.training.game,
             model_dir=self.config.paths.models_dir / self.config.training.game,
+            savestate_dir=self.config.paths.savestate_dir,
             restart_supported=bool(getattr(model, "supports_ui_restart", False)),
-            on_reset=self._reset_for_restart,
+            on_reset=lambda: self._reset_for_restart(model),
         )
         if start_ui(self.config.ui) is None:
             return
@@ -80,10 +81,13 @@ class Trainer:
         publish_metadata("model", get_model_metadata(model))
         publish_metadata("environment", self._environment_metadata(env))
 
-    def _reset_for_restart(self) -> None:
+    def _reset_for_restart(self, model) -> None:
         self._state.clear()
         self._savestate = self.config.training.savestate
         self.callbacks[:] = self._default_callbacks() + self._additional_callbacks
+        env = model.get_env() if callable(getattr(model, "get_env", None)) else getattr(model, "env", None)
+        if env is not None:
+            env.env_method("clear_training_progress")
 
     @staticmethod
     def _environment_metadata(env) -> dict[str, Any]:

@@ -123,7 +123,7 @@ class TelemetryStore:
                 logger.warning(f"Could not persist training UI history to {path}: {error}")
 
     def reset_for_restart(self, delete_model_directory: Callable[[], None]) -> None:
-        """Delete model files without allowing the history writer to recreate them mid-reset."""
+        """Delete training artifacts without allowing the history writer to recreate them mid-reset."""
         with self._write_lock:
             self._persist_event.clear()
             delete_model_directory()

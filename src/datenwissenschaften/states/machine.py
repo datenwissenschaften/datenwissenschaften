@@ -63,6 +63,9 @@ class StateMachine(Generic[T]):
     def delete_savestate(self, state_type: type[State[T]]) -> bool:
         return self._get_or_create_state(state_type).delete_savestate()
 
+    def clear_saved_progress(self, state_type: type[State[T]]) -> None:
+        self._get_or_create_state(state_type).clear_saved_progress()
+
     def mark_beaten(self, state_type: type[State[T]]) -> bool:
         return self._get_or_create_state(state_type).mark_beaten()
 

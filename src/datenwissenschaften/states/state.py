@@ -40,6 +40,10 @@ class State(ABC, Generic[T]):
         self.savestate = None
         return existed
 
+    def clear_saved_progress(self) -> None:
+        self.savestate = None
+        self.beaten = False
+
     def mark_beaten(self) -> bool:
         changed = not self.beaten
         self.beaten = True

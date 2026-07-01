@@ -188,6 +188,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         deleted = self.state_machine.delete_savestate(state_cls)
         return self._delete_savestate_file(state_name) or deleted
 
+    def clear_training_progress(self) -> None:
+        for state_cls in self._training_classes():
+            self.state_machine.clear_saved_progress(state_cls)
+
     def translate_action(self, action: WrapperActType):
         return action
 

@@ -203,7 +203,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">
         <p class="eyebrow danger-text">DESTRUCTIVE ACTION</p>
         <h2 id="reset-title">Delete {{ run.game }} model?</h2>
-        <p>All checkpoints and model history for this game will be deleted. The current generation will stop and training will restart from generation zero.</p>
+        <p>All checkpoints and model history for this game, plus all automatic savestates in the configured savestate directory, will be deleted. The current generation will stop and training will restart from generation zero.</p>
         <p v-if="resetError" class="error">{{ resetError }}</p>
         <div class="dialog-actions">
           <button class="cancel-button" :disabled="resetting" @click="showResetDialog = false">Cancel</button>
