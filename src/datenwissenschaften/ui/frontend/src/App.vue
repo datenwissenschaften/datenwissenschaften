@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import MetricChart from './MetricChart.vue'
+import FitnessHistogram from './FitnessHistogram.vue'
 
 const snapshot = ref({ episodes: [], generations: [], metadata: {} })
 const connected = ref(false)
@@ -47,14 +47,13 @@ const timedEpisodes = computed(() => filtered.value.filter(row => Number.isFinit
 const avgDuration = computed(() => timedEpisodes.value.length
   ? timedEpisodes.value.reduce((sum, row) => sum + Number(row.duration_seconds), 0) / timedEpisodes.value.length
   : null)
-const fitnessHistory = computed(() => {
-  let sum = 0
-  const history = stateHistory.value.map((row, index) => {
-    sum += Number(row.fitness) || 0
-    return { ...row, mean_fitness: sum / (index + 1) }
-  })
-  return history
-})
+const fitnessValues = computed(() => stateHistory.value
+  .filter(row => row.fitness != null)
+  .map(row => Number(row.fitness))
+  .filter(Number.isFinite))
+const fitnessBucketCount = computed(() => fitnessValues.value.length
+  ? Math.ceil(Math.log2(fitnessValues.value.length) + 1)
+  : 1)
 const model = computed(() => snapshot.value.metadata?.model || {})
 const ppo = computed(() => model.value.ppo || {})
 const neat = computed(() => snapshot.value.metadata?.neat || {})
@@ -106,7 +105,6 @@ const resetModel = async () => {
   }
 }
 
-const fitnessSeries = [{ key: 'mean_fitness', label: 'Mean fitness', color: '#8cf5c6' }]
 const fmt = (value, digits = 0) => value == null ? '—' : Intl.NumberFormat('en', { maximumFractionDigits: digits }).format(value)
 const duration = value => {
   if (value == null || !Number.isFinite(Number(value))) return '—'
@@ -159,8 +157,8 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
 
     <section class="charts">
       <article class="panel chart-card wide">
-        <div class="card-heading"><div><p class="eyebrow">REWARD SIGNAL</p><h2>Fitness over time</h2></div><div class="legend"><i style="--color:#8cf5c6"></i>Mean fitness</div></div>
-        <MetricChart :rows="fitnessHistory" :series="fitnessSeries" :include-zero="true" />
+        <div class="card-heading"><div><p class="eyebrow">REWARD SIGNAL</p><h2>Fitness distribution</h2></div><div class="legend"><i style="--color:#8cf5c6"></i>{{ fitnessBucketCount }} {{ fitnessBucketCount === 1 ? 'bucket' : 'buckets' }} · {{ fitnessValues.length }} episodes</div></div>
+        <FitnessHistogram :values="fitnessValues" :bucket-count="fitnessBucketCount" />
       </article>
     </section>
 
