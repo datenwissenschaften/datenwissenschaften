@@ -1,49 +1,101 @@
-# datenwissenschaften: Retro Speedlab Core 🚀
+# datenwissenschaften
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
-**datenwissenschaften** is the core engine powering [Retro Speedlab](https://github.com/datenwissenschaften/retro-speedlab), a high-performance Reinforcement Learning (RL) toolkit for classic video games. Built on top of `stable-baselines3` and `stable-retro`, it provides the underlying infrastructure for training, monitoring, and recording RL agents.
+The reinforcement-learning engine behind [Retro Speedlab](https://github.com/datenwissenschaften/retro-speedlab).
 
-## ⚠️ Important Note
+`datenwissenschaften` turns classic-game emulators into reproducible training systems. It provides visual and
+state-aware environments, recurrent and evolutionary agents, parallel execution, durable checkpoints, episode
+recording, and a live browser dashboard in one focused Python package.
 
-This package is intended as the internal library for the Retro Speedlab project. For the full experience—including automated runners, training scripts, and comprehensive documentation—please use the main repository:
+> This repository contains the reusable engine. For game runners, end-to-end examples, and user-facing
+> documentation, start with [Retro Speedlab](https://github.com/datenwissenschaften/retro-speedlab).
 
-👉 **[https://github.com/datenwissenschaften/retro-speedlab](https://github.com/datenwissenschaften/retro-speedlab)**
+## Why this engine
 
-## ✨ Features
+- **Exploration for sparse rewards** — multi-input CNN-LSTM PPO combines visual frames, normalized RAM, temporal
+  memory, and normalized, clipped, annealed Random Network Distillation (RND).
+- **State-aware neuroevolution** — NEAT trains and routes independent controllers across declared game states.
+- **Efficient execution** — vectorized environments, automatic worker selection, CUDA tuning, and CPU fallback.
+- **Reliable training runs** — atomic checkpoints, resumable model state, automatic savestates, and `.bk2` replay
+  capture.
+- **Operational visibility** — a local Vue dashboard reports episode outcomes, reward distributions, environment
+  details, PPO parameters, RND progress, and NEAT generations.
+- **Game-oriented infrastructure** — ROM discovery, RAM models, state machines, visual encoders, and configurable
+  action translation.
 
-*   **🎮 Command Center**: A rich terminal dashboard for real-time training metrics.
-*   **🏋️ Orchestrated Training**: Simplified RL workflows and session management.
-*   **⚡ GPU acceleration**: CUDA tuning for PPO plus batched GPU inference for NEAT, with CPU fallback.
-*   **📊 Smart Callbacks**: Automatic checkpointing and replay recording (`.bk2`).
-*   **🛠️ Robust Infrastructure**: Streamlined environment and ROM management.
+## Model choices
 
-## 🚀 Installation
+| Model | Best suited to | Characteristics |
+| --- | --- | --- |
+| `RecurrentRNDModel` | Sparse-reward NES games and partially observable state | Automatic visual + RAM inputs, NES-tuned recurrent PPO, LSTM memory, intrinsic RND exploration |
+| `NEATModel` | Compact engineered features and explicit state-by-state evolution | Separate populations and winning controllers per training state |
+| Custom SB3 model | Experiments that need a standard Stable-Baselines3 algorithm | Integrates through the same builder, trainer, callbacks, and dashboard |
+
+`RecurrentRNDModel` is the recommended starting point for visual agents. RND encourages the policy to visit novel
+observations, while its influence decays during training so learned external rewards increasingly drive behavior.
+The predictor, fixed target, optimizer, reward statistics, and annealing progress are all preserved in checkpoints.
+Selecting it also clears incompatible per-game NEAT artifacts before loading or creating the recurrent model.
+Environment wrappers always use RGB observations and one emulator step per selected action; these are fixed engine
+defaults rather than game-level options.
+The default profile uses longer 512-step rollouts, a 512-unit LSTM, `gamma=0.999`, `gae_lambda=0.98`, and a slower
+10-million-step RND decay. These settings preserve more temporal context and delayed reward information than the
+shorter arcade baseline while retaining conservative PPO updates.
+
+## Installation
+
+The package requires Python 3.12.
 
 ```bash
 pip install datenwissenschaften
 ```
 
-## Configuration
+For local development:
 
-Copy `config.example.yaml` to `config.yaml` and adjust its values. Application settings are read from YAML rather than
-environment variables. APIs that load configuration also accept an explicit `config_path` when the file is stored
-elsewhere. Relative paths in the file are resolved relative to the configuration file.
+```bash
+git clone https://github.com/datenwissenschaften/datenwissenschaften.git
+cd datenwissenschaften
+poetry install
+cp config.example.yaml config.yaml
+```
 
-Set `training.num_envs` to `auto` to select parallel environment workers from CPU affinity, population size, and the
-systemd/cgroup memory limit. An explicit positive integer continues to override automatic selection.
+## Training dashboard
 
-Set `ui.enable: true` to run the local Vue training dashboard at `http://127.0.0.1:18080`. It charts episode fitness
-and step counts, shows termination outcomes, and reports environment, PPO, and NEAT configuration details. The `ui`
-mapping accepts `enable`, `host`, `port`, and `max_episodes` values. Dashboard history
-is restored from and atomically persisted to `models/<game>/<savestate>/history.json` (relative to the configured
-models directory). Set `host: 0.0.0.0` to listen on all network interfaces; use the machine's IP address rather than
-`0.0.0.0` when opening the dashboard from another device.
+Enable the dashboard with `ui.enable: true`, then open [http://127.0.0.1:18080](http://127.0.0.1:18080). It refreshes
+live training telemetry without interrupting the learners and distinguishes between PPO + RND and NEAT runs.
 
-## 📜 License
+Dashboard history is restored from and atomically persisted to
+`models/<game>/<savestate>/history.json`. The `ui` mapping accepts `enable`, `host`, `port`, and `max_episodes`.
+Binding to `0.0.0.0` makes the dashboard reachable on the local network; use that only on a trusted network and open
+it through the machine's actual IP address.
 
-This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for details.
+## How a run fits together
 
----
-Developed with ❤️ by [datenwissenschaften](https://www.datenwissenschaften.com).
+1. A game package defines RAM structures, training states, rewards, and action translation.
+2. The environment factory creates vectorized emulator workers and processed visual observations.
+3. A model builder creates or restores the selected policy.
+4. The trainer coordinates learning, checkpoints, replay capture, telemetry, and optional uploads.
+5. The dashboard exposes the active run without coupling the learner to a separate monitoring service.
+
+## Development
+
+Run Python quality checks:
+
+```bash
+ruff check src
+black --check src
+python -m compileall -q src
+```
+
+Build the dashboard assets after changing the Vue frontend:
+
+```bash
+cd src/datenwissenschaften/ui/frontend
+npm ci
+npm run build
+```
+
+## License
+
+Copyright © datenwissenschaften contributors. Distributed under the [GNU General Public License v3.0](LICENSE).

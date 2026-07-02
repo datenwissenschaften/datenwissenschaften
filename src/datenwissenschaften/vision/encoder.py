@@ -31,9 +31,12 @@ class FixedVisualEncoder:
         image = np.asarray(observation, dtype=np.float32)
 
         if image.ndim == 3:
-            if image.shape[0] != 1:
-                raise ValueError("FixedVisualEncoder expects a grayscale observation with one channel.")
-            image = image[0]
+            if image.shape[0] == 1:
+                image = image[0]
+            elif image.shape[0] == 3:
+                image = np.tensordot(np.asarray([0.299, 0.587, 0.114], dtype=np.float32), image, axes=(0, 0))
+            else:
+                raise ValueError("FixedVisualEncoder expects channel-first RGB or grayscale observations.")
 
         if image.ndim != 2:
             raise ValueError(f"Expected observation shape (1, H, W) or (H, W), got {image.shape}.")

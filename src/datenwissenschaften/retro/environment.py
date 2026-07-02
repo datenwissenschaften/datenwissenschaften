@@ -64,9 +64,6 @@ class RetroEnvironmentFactory:
         get_savestate: SavestateProvider,
         set_savestate: SavestateSetter,
         obs_size: tuple[int, int],
-        action_repeat: int,
-        grayscale: bool = True,
-        hybrid_obs: bool = False,
     ) -> None:
         self.paths = paths
         self.wrappers = wrappers
@@ -75,9 +72,6 @@ class RetroEnvironmentFactory:
         self.get_savestate = get_savestate
         self.set_savestate = set_savestate
         self.obs_size = obs_size
-        self.action_repeat = action_repeat
-        self.grayscale = grayscale
-        self.hybrid_obs = hybrid_obs
 
     def create(self, number: int):
         record_dir = self.paths.record_dir / str(number)
@@ -103,9 +97,6 @@ class RetroEnvironmentFactory:
         return wrapper_cls(
             env,
             obs_size=self.obs_size,
-            grayscale=self.grayscale,
-            hybrid_obs=self.hybrid_obs,
-            action_repeat=self.action_repeat,
         )
 
 

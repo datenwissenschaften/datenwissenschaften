@@ -20,15 +20,15 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     start_state_cls: type[State[T]]
     training_state_classes: tuple[type[State[T]], ...] = ()
     ram_info_cls: type[T]
+    action_repeat = 1
+    grayscale = False
 
     def __init__(
         self,
         env,
         *,
         obs_size: tuple[int, int],
-        action_repeat: int,
-        hybrid_obs: bool,
-        grayscale: bool,
+        **_legacy_options,
     ):
         super().__init__(env)
 
@@ -36,9 +36,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         self.action_space = env.action_space
         self.obs_size = obs_size
-        self.action_repeat = action_repeat
-        self.hybrid_obs = hybrid_obs
-        self.grayscale = grayscale
         self.savestate_dir = load_paths_from_config().savestate_dir
 
         self.last_ram: T | None = None
@@ -53,11 +50,13 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         channels = 1 if self.grayscale else 3
 
-        self.observation_space = gym.spaces.Box(
-            low=0,
-            high=255,
-            shape=(channels, *self.obs_size),
-            dtype=np.uint8,
+        visual_space = gym.spaces.Box(low=0, high=255, shape=(channels, *self.obs_size), dtype=np.uint8)
+        ram_size = sum(length for _, length in self.ram_info_cls.ram_map().values())
+        self.observation_space = gym.spaces.Dict(
+            {
+                "visual": visual_space,
+                "ram": gym.spaces.Box(low=0.0, high=1.0, shape=(ram_size,), dtype=np.float32),
+            }
         )
 
     def reset(self, **kwargs):
@@ -81,7 +80,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.state_machine.reset(ram, frame, observation, state_cls)
         self._update_progress_tracking()
 
-        return observation, {}
+        return self._agent_observation(observation, ram), {}
 
     def step(self, action: WrapperActType):
         frame = None
@@ -135,7 +134,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         current_state = self.state_machine.current_state
 
         return (
-            observation,
+            self._agent_observation(observation, ram),
             reward,
             terminated,
             truncated,
@@ -154,6 +153,13 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def policy_input(self) -> tuple[np.ndarray, str]:
         features = np.asarray(self.state_machine.features(), dtype=np.float32)
         return features, self.state_machine.state_name
+
+    @staticmethod
+    def _agent_observation(observation: np.ndarray, ram: RamInfo) -> dict[str, np.ndarray]:
+        return {
+            "visual": observation,
+            "ram": np.asarray(ram.features(), dtype=np.float32),
+        }
 
     def state_name(self) -> str:
         return self.state_machine.state_name

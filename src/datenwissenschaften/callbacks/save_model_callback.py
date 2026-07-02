@@ -5,6 +5,7 @@ from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften.runtime import get_runtime
+from datenwissenschaften.ui.telemetry import publish_metadata
 
 
 def atomic_save(model, model_path: str) -> None:
@@ -38,6 +39,7 @@ class SaveModelCallback(BaseCallback):
         runtime = get_runtime()
         model_path = runtime.get_model_path(runtime.game)
         atomic_save(self.model, model_path)
+        publish_metadata("model", runtime.get_model_metadata(self.model), replace=True)
 
-        logger.info(f"Checkpoint saved at {self.num_timesteps:,} steps: {os.path.basename(model_path)}.zip")
+        logger.debug(f"Checkpoint saved at {self.num_timesteps:,} steps: {os.path.basename(model_path)}.zip")
         return True

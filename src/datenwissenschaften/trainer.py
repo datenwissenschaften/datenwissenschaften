@@ -9,6 +9,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from datenwissenschaften.accelerator import configure_accelerator
 from datenwissenschaften.callbacks import (
     BestEpisodeCallback,
+    EpisodeTelemetryCallback,
     SaveModelCallback,
     StopTrainingAtTimestepsCallback,
 )
@@ -123,6 +124,7 @@ class Trainer:
     def _default_callbacks(self) -> list[BaseCallback]:
         return [
             SaveModelCallback(),
+            EpisodeTelemetryCallback(),
             BestEpisodeCallback(self.total_timesteps),
             UploadEpisodeCallback(self.config.upload),
             StopTrainingAtTimestepsCallback(self.total_timesteps),
@@ -141,7 +143,6 @@ class Trainer:
                 ignored_states={game: set()},
                 default_states={game: self._savestate or ""},
                 obs_size=(96, 96),
-                action_repeat=1,
                 get_game=lambda: game,
                 get_savestate=lambda: self._savestate or "",
                 set_savestate=self._set_savestate,

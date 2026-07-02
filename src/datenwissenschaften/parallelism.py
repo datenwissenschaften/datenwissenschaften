@@ -18,7 +18,6 @@ def optimal_env_count(
     cpu_count: int | None = None,
     memory_limit: int | None = None,
 ) -> int:
-    """Choose safe environment parallelism for a CPU/GPU training process."""
     if population_size < 1:
         raise ValueError("population_size must be positive.")
 

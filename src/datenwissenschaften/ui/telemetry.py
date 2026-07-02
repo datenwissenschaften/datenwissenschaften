@@ -30,6 +30,7 @@ class TelemetryStore:
         self._started_at = _timestamp()
         self._sequence = 0
         self._history_path: Path | None = None
+        self._history_version = 0
         self._persist_event = threading.Event()
         self._writer_thread: threading.Thread | None = None
 
@@ -44,6 +45,7 @@ class TelemetryStore:
             if self._history_path == path:
                 return
             self._history_path = path
+            self._history_version += 1
             self._episodes.clear()
             self._generations.clear()
             self._metadata.clear()
@@ -107,9 +109,11 @@ class TelemetryStore:
                 }
             )
 
-    def flush(self) -> None:
+    def flush(self, expected_version: int | None = None) -> None:
         with self._write_lock:
             with self._lock:
+                if expected_version is not None and expected_version != self._history_version:
+                    return
                 if self._history_path is None:
                     return
                 path = self._history_path
@@ -123,16 +127,19 @@ class TelemetryStore:
                 logger.warning(f"Could not persist training UI history to {path}: {error}")
 
     def reset_for_restart(self, delete_model_directory: Callable[[], None]) -> None:
-        """Delete training artifacts without allowing the history writer to recreate them mid-reset."""
         with self._write_lock:
             self._persist_event.clear()
+            with self._lock:
+                history_path = self._history_path
             delete_model_directory()
+            if history_path is not None:
+                history_path.unlink(missing_ok=True)
             with self._lock:
                 self._episodes.clear()
                 self._generations.clear()
                 self._sequence = 0
                 self._started_at = _timestamp()
-                self._mark_dirty()
+                self._history_version += 1
 
     def _snapshot_locked(self) -> dict[str, Any]:
         return {
@@ -180,9 +187,13 @@ class TelemetryStore:
     def _persist_loop(self) -> None:
         while True:
             self._persist_event.wait()
+            with self._lock:
+                version = self._history_version
             time.sleep(0.25)
-            self._persist_event.clear()
-            self.flush()
+            with self._lock:
+                if version == self._history_version:
+                    self._persist_event.clear()
+            self.flush(expected_version=version)
 
 
 _store = TelemetryStore()

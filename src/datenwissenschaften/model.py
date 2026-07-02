@@ -54,6 +54,22 @@ def get_model_metadata(model: Any) -> dict[str, Any]:
     if ppo:
         ppo["policy"] = _class_path(model.policy) if getattr(model, "policy", None) is not None else None
         metadata["ppo"] = ppo
+    rnd_fields = (
+        "rnd_output_size",
+        "rnd_learning_rate",
+        "rnd_update_proportion",
+        "rnd_gamma",
+        "rnd_intrinsic_coefficient",
+        "rnd_final_intrinsic_coefficient",
+        "rnd_anneal_steps",
+        "rnd_reward_clip",
+    )
+    rnd = {field: getattr(model, field) for field in rnd_fields if hasattr(model, field)}
+    if rnd:
+        active_rnd = getattr(model, "rnd", None)
+        rnd["observations_seen"] = int(active_rnd.observations_seen.item()) if active_rnd is not None else 0
+        rnd["current_intrinsic_coefficient"] = active_rnd.coefficient if active_rnd is not None else None
+        metadata["rnd"] = rnd
     return metadata
 
 
@@ -84,6 +100,9 @@ def load_or_create_model(
     config = load_config(config_path)
     model_path = get_model_path(str(config.paths.models_dir), config.training.game)
     model_zip_path = f"{model_path}.zip"
+    cleanup = getattr(build_model, "cleanup_incompatible_artifacts", None)
+    if callable(cleanup):
+        cleanup(config)
 
     if not os.path.exists(model_zip_path):
         logger.info(f"No existing model found at {model_zip_path}. Starting fresh training session.")
@@ -95,7 +114,8 @@ def load_or_create_model(
     except Exception as error:
         logger.warning(f"Failed to load model: {error}")
         logger.info("Starting fresh training session.")
-        return build_model(venv)
+        Path(model_zip_path).unlink(missing_ok=True)
+    return build_model(venv)
 
 
 class ModelBuilder:

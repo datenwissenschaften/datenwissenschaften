@@ -102,14 +102,6 @@ def preserve_global_champion(
     best_fitness: float,
     best_genome: Any,
 ) -> tuple[float, Any]:
-    """Track the all-time champion and ensure it survives reproduction.
-
-    ``Population.run(..., 1)`` returns after reproduction and speciation. New
-    offspring therefore have no fitness and cannot be ranked as "worst". We
-    replace the newest unevaluated offspring, falling back to the lowest-fitness
-    elite only when a generation consists entirely of elites. Speciation is
-    repeated because species membership contains genome objects, not only keys.
-    """
     winner_fitness = getattr(winner, "fitness", None)
     if winner_fitness is not None and float(winner_fitness) > best_fitness:
         best_fitness = float(winner_fitness)

@@ -56,6 +56,7 @@ const fitnessBucketCount = computed(() => fitnessValues.value.length
   : 1)
 const model = computed(() => snapshot.value.metadata?.model || {})
 const ppo = computed(() => model.value.ppo || {})
+const rnd = computed(() => model.value.rnd || {})
 const neat = computed(() => snapshot.value.metadata?.neat || {})
 const environment = computed(() => snapshot.value.metadata?.environment || {})
 const runtimeDetails = computed(() => {
@@ -150,7 +151,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
     </section>
 
     <section class="kpis">
-      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>current generation</small></article>
+      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ activeAlgorithm === 'neat' ? 'current generation' : 'observed episodes' }}</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ filtered.length }} episodes</small></article>
       <article class="panel metric"><p>Avg training time</p><strong>{{ duration(avgDuration) }}</strong><small>{{ duration(latest?.duration_seconds) }} latest</small></article>
     </section>
@@ -162,17 +163,21 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
       </article>
     </section>
 
-    <section class="details-grid two-column">
+    <section :class="['details-grid', { 'two-column': !entries(rnd).length }]">
       <article class="panel detail-card">
         <div class="card-heading"><div><p class="eyebrow">RUNTIME</p><h2>Environment</h2></div><span class="chip">{{ environment.num_envs || run.configured_envs || '—' }} envs</span></div>
         <dl><template v-for="([key, value]) in entries(runtimeDetails)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
       </article>
       <article v-if="activeAlgorithm === 'ppo'" class="panel detail-card">
-        <div class="card-heading"><div><p class="eyebrow">POLICY OPTIMIZATION</p><h2>PPO</h2></div><span class="chip" :class="{ muted: !entries(ppo).length }">{{ entries(ppo).length ? 'Configured' : 'Not active' }}</span></div>
+        <div class="card-heading"><div><p class="eyebrow">POLICY OPTIMIZATION</p><h2>{{ entries(rnd).length ? 'Recurrent PPO' : 'PPO' }}</h2></div><span class="chip" :class="{ muted: !entries(ppo).length }">{{ entries(ppo).length ? 'Configured' : 'Not active' }}</span></div>
         <dl v-if="entries(ppo).length"><template v-for="([key, value]) in entries(ppo)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
         <p v-else class="placeholder">No PPO parameters on the active model.</p>
       </article>
-      <article v-else-if="activeAlgorithm === 'neat'" class="panel detail-card">
+      <article v-if="activeAlgorithm === 'ppo' && entries(rnd).length" class="panel detail-card">
+        <div class="card-heading"><div><p class="eyebrow">INTRINSIC EXPLORATION</p><h2>Random Network Distillation</h2></div><span class="chip">Active</span></div>
+        <dl><template v-for="([key, value]) in entries(rnd)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
+      </article>
+      <article v-if="activeAlgorithm === 'neat'" class="panel detail-card">
         <div class="card-heading"><div><p class="eyebrow">EVOLUTION</p><h2>NEAT</h2></div><span class="chip">gen {{ currentGeneration ?? '—' }}</span></div>
         <div v-if="generationEpisodesTotal" class="generation-progress">
           <div><span>Current generation</span><strong>{{ fmt(generationEpisodesCompleted) }} / {{ fmt(generationEpisodesTotal) }} episodes</strong></div>
@@ -182,14 +187,14 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
         <dl v-if="entries(neatDetails).length"><template v-for="([key, value]) in entries(neatDetails)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
         <p v-else class="placeholder">NEAT details appear when evolution starts.</p>
       </article>
-      <article v-else class="panel detail-card">
+      <article v-if="!activeAlgorithm" class="panel detail-card">
         <div class="card-heading"><div><p class="eyebrow">MODEL</p><h2>Algorithm</h2></div><span class="chip muted">Waiting</span></div>
         <p class="placeholder">Algorithm details appear when PPO or NEAT starts.</p>
       </article>
     </section>
 
     <section class="panel episodes-card">
-      <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>Current generation episodes</h2></div><span class="count">{{ episodes.length }} episodes</span></div>
+      <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>{{ activeAlgorithm === 'neat' ? 'Current generation episodes' : 'Recent episodes' }}</h2></div><span class="count">{{ episodes.length }} episodes</span></div>
       <div class="table-scroll"><table><thead><tr><th>#</th><th>Training state</th><th>Fitness</th><th>Won</th><th>Final state</th><th>Details</th></tr></thead>
         <tbody><template v-for="row in reversed.slice(0, 100)" :key="row.index">
           <tr :class="{ expanded: expandedEpisode === row.index }"><td class="dim">{{ row.index }}</td><td><span class="state">{{ row.training_state }}</span></td><td class="fitness">{{ fmt(row.fitness, 2) }}</td><td><span :class="['status', row.won === true ? 'success' : 'neutral']">{{ row.won == null ? '—' : row.won ? 'Won' : 'No' }}</span></td><td>{{ row.final_state || '—' }}</td><td><button v-if="ramEntries(row).length" type="button" class="ram-toggle" :aria-expanded="expandedEpisode === row.index" @click="toggleRam(row)">{{ expandedEpisode === row.index ? 'Hide RAM' : 'Show RAM' }}</button><span v-else class="dim">—</span></td></tr>
@@ -198,13 +203,13 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
         <tr v-if="!reversed.length"><td colspan="6" class="empty-row">Waiting for the evaluator to complete an episode.</td></tr></tbody>
       </table></div>
     </section>
-    <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} current generation episodes</footer>
+    <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} {{ activeAlgorithm === 'neat' ? 'current generation' : 'observed' }} episodes</footer>
 
     <div v-if="showResetDialog" class="modal-backdrop" @click.self="showResetDialog = false">
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">
         <p class="eyebrow danger-text">DESTRUCTIVE ACTION</p>
         <h2 id="reset-title">Delete {{ run.game }} model?</h2>
-        <p>All checkpoints and model history for this game, plus all automatic savestates in the configured savestate directory, will be deleted. The current generation will stop and training will restart from generation zero.</p>
+        <p>All checkpoints and model history for this game, plus all automatic savestates in the configured savestate directory, will be deleted. The active training run will stop and restart from zero.</p>
         <p v-if="resetError" class="error">{{ resetError }}</p>
         <div class="dialog-actions">
           <button class="cancel-button" :disabled="resetting" @click="showResetDialog = false">Cancel</button>

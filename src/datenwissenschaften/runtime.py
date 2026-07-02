@@ -15,7 +15,6 @@ class RetroSpeedlabRuntime:
     ignored_states: Mapping[str, set[str]]
     default_states: Mapping[str, str]
     obs_size: tuple[int, int]
-    action_repeat: int
     get_game: Callable[[], str]
     get_savestate: Callable[[], str]
     set_savestate: Callable[[str], None]
