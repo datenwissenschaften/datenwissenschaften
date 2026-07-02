@@ -97,6 +97,17 @@ class TelemetryStore:
                 current.update(serialized)
             self._mark_dirty()
 
+    def clear_metadata(self, section: str, *, clear_history: bool = False) -> None:
+        with self._lock:
+            removed = self._metadata.pop(section, None)
+            if removed is not None and clear_history:
+                self._episodes.clear()
+                self._generations.clear()
+                self._sequence = 0
+                self._started_at = _timestamp()
+            if removed is not None:
+                self._mark_dirty()
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             return deepcopy(
@@ -210,6 +221,10 @@ def get_store() -> TelemetryStore:
 
 def configure_history(path: Path) -> None:
     _store.configure_history(path)
+
+
+def clear_metadata(section: str, *, clear_history: bool = False) -> None:
+    _store.clear_metadata(section, clear_history=clear_history)
 
 
 def publish_episode(**values: Any) -> None:

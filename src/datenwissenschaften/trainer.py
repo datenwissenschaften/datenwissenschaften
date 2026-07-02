@@ -19,7 +19,7 @@ from datenwissenschaften.model import get_model_metadata, get_model_path
 from datenwissenschaften.retro.environment import get_last_environment_wrapper
 from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfig, load_config
-from datenwissenschaften.ui import configure_history, publish_metadata, start_ui
+from datenwissenschaften.ui import clear_metadata, configure_history, publish_metadata, start_ui
 from datenwissenschaften.ui.control import configure_training_control
 
 
@@ -79,7 +79,10 @@ class Trainer:
                 "configured_envs": self.config.training.num_envs,
             },
         )
-        publish_metadata("model", get_model_metadata(model))
+        model_metadata = get_model_metadata(model)
+        if "ppo" in model_metadata:
+            clear_metadata("neat", clear_history=True)
+        publish_metadata("model", model_metadata, replace=True)
         publish_metadata("environment", self._environment_metadata(env))
 
     def _reset_for_restart(self, model) -> None:
