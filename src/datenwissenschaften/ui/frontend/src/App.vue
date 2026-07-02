@@ -84,7 +84,7 @@ const neatDetails = computed(() => {
   } = neat.value
   return details
 })
-const activeAlgorithm = computed(() => entries(neat.value).length ? 'neat' : entries(ppo.value).length ? 'ppo' : null)
+const activeAlgorithm = computed(() => entries(ppo.value).length ? 'ppo' : entries(neat.value).length ? 'neat' : null)
 const control = computed(() => snapshot.value.control || {})
 
 const resetModel = async () => {
