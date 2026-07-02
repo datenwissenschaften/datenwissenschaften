@@ -146,6 +146,11 @@ class UploadEpisodeCallback(BaseCallback):
         if not best_episode_path or not os.path.exists(best_episode_path):
             return True
 
+        started_from_initial = runtime.get_state_value("best_episode_started_from_initial_savestate")
+        if str(started_from_initial).strip().lower() != "true":
+            logger.debug("Skipping episode upload because it started from an automatic savestate.")
+            return True
+
         metadata = dict(runtime.get_model_metadata(self.model))
         metadata["num_timesteps"] = self.num_timesteps
         metadata["game"] = runtime.game

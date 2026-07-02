@@ -121,6 +121,10 @@ class BestEpisodeCallback(BaseCallback):
         runtime = get_runtime()
         runtime.set_state_value("best_time_until_won", episode.time_until_won)
         runtime.set_state_value("best_episode", episode.bk2_path)
+        runtime.set_state_value(
+            "best_episode_started_from_initial_savestate",
+            episode.started_from_initial_savestate is True,
+        )
 
     def _bk2_path(self, env_index: int, episode_index: int) -> str:
         runtime = get_runtime()

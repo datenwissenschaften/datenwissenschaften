@@ -47,6 +47,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_ram: T | None = None
         self.last_frame: np.ndarray | None = None
         self.last_observation: np.ndarray | None = None
+        self._started_from_initial_savestate = True
 
         self._last_progress: float | int | None = None
         self._frames_without_progress = 0
@@ -73,6 +74,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         self._load_savestates()
         state_cls = self._highest_savestate_state()
+        self._started_from_initial_savestate = state_cls is None
         if state_cls is not None:
             frame = self._restore_savestate(self.state_machine.savestate(state_cls))
 
@@ -150,6 +152,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "ram": ram.to_dict(),
                 "progress": type(current_state).progress,
                 "frames_without_progress": self._frames_without_progress,
+                "started_from_initial_savestate": self._started_from_initial_savestate,
             },
         )
 
