@@ -7,17 +7,23 @@ from datenwissenschaften.helpers.position import Position
 
 
 class TemplateDetector:
-    def __init__(self, template_path: str, threshold: float = 0.85, method: int = cv2.TM_CCOEFF_NORMED) -> None:
-        self.template_path = template_path
+    def __init__(
+        self,
+        template_path: str | Path,
+        threshold: float = 0.85,
+        method: int = cv2.TM_CCOEFF_NORMED,
+    ) -> None:
+        self.template_path = self._resolve_template_path(template_path)
         self.threshold = threshold
         self.method = method
         self.position = None
         self.seen = None
+        self.score = None
         self.__post_init__()
 
     def __post_init__(self) -> None:
         self.template = cv2.imread(
-            str(Path(self.template_path)),
+            self.template_path,
             cv2.IMREAD_COLOR,
         )
 
@@ -26,17 +32,12 @@ class TemplateDetector:
 
         self.template_h, self.template_w = self.template.shape[:2]
 
-    # def score(self, frame: np.ndarray) -> float:
-    #     result = cv2.matchTemplate(
-    #         frame,
-    #         self.template,
-    #         self.method,
-    #     )
-    #
-    #
-    #     _, score, _, _ = cv2.minMaxLoc(result)
-    #
-    #     return score
+    @staticmethod
+    def _resolve_template_path(template_path: str | Path) -> str:
+        path = Path(template_path).expanduser()
+        if path.is_absolute() or path.is_file():
+            return str(path.resolve())
+        return str((Path.cwd() / "assets" / path).resolve())
 
     def detect(self, frame: np.ndarray) -> None:
         result = cv2.matchTemplate(
@@ -50,7 +51,10 @@ class TemplateDetector:
         if score < self.threshold:
             self.position = None
             self.seen = False
+            self.score = None
             return
+
+        self.score = score
 
         x, y = location
 
