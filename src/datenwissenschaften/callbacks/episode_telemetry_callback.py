@@ -2,7 +2,6 @@ import time
 
 from stable_baselines3.common.callbacks import BaseCallback
 
-from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.ui.telemetry import publish_episode
 
 
@@ -13,7 +12,7 @@ class EpisodeTelemetryCallback(BaseCallback):
         self.started_at: list[float] = []
         self.fitness: list[float] = []
         self.steps: list[int] = []
-        self.training_state = ""
+        self.training_states: list[str | None] = []
 
     def _on_training_start(self) -> None:
         self.enabled = hasattr(self.model, "rollout_buffer")
@@ -22,7 +21,7 @@ class EpisodeTelemetryCallback(BaseCallback):
         self.started_at = [now] * count
         self.fitness = [0.0] * count
         self.steps = [0] * count
-        self.training_state = get_runtime().savestate
+        self.training_states = self._state_names(count)
 
     def _on_step(self) -> bool:
         if not self.enabled:
@@ -45,7 +44,7 @@ class EpisodeTelemetryCallback(BaseCallback):
             total_steps = int(monitor_episode.get("l", self.steps[index]))
             publish_episode(
                 env=index,
-                training_state=self.training_state or info.get("state"),
+                training_state=self.training_states[index] or info.get("state"),
                 fitness=fitness,
                 training_steps=total_steps,
                 total_steps=total_steps,
@@ -58,4 +57,17 @@ class EpisodeTelemetryCallback(BaseCallback):
             self.fitness[index] = 0.0
             self.steps[index] = 0
 
+        if any(bool(done) for done in dones):
+            current_states = self._state_names(len(self.training_states))
+            for index, done in enumerate(dones):
+                if bool(done):
+                    self.training_states[index] = current_states[index]
+
         return True
+
+    def _state_names(self, count: int) -> list[str | None]:
+        try:
+            names = self.training_env.env_method("state_name")
+        except (AttributeError, TypeError, ValueError):
+            return [None] * count
+        return [str(name) if name else None for name in names[:count]] + [None] * max(0, count - len(names))

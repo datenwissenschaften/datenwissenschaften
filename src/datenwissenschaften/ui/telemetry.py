@@ -3,6 +3,7 @@ from __future__ import annotations
 import atexit
 import json
 import math
+import shutil
 import threading
 import time
 from collections import deque
@@ -126,14 +127,18 @@ class TelemetryStore:
             except OSError as error:
                 logger.warning(f"Could not persist training UI history to {path}: {error}")
 
-    def reset_for_restart(self, delete_model_directory: Callable[[], None]) -> None:
+    def reset_for_restart(self, delete_training_artifacts: Callable[[], None]) -> None:
         with self._write_lock:
             self._persist_event.clear()
             with self._lock:
                 history_path = self._history_path
-            delete_model_directory()
+            delete_training_artifacts()
             if history_path is not None:
-                history_path.unlink(missing_ok=True)
+                history_directory = history_path.parent
+                if history_directory.is_dir():
+                    shutil.rmtree(history_directory)
+                else:
+                    history_directory.unlink(missing_ok=True)
             with self._lock:
                 self._episodes.clear()
                 self._generations.clear()
