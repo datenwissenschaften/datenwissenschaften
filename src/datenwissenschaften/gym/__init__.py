@@ -140,6 +140,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             raise RuntimeError("No observation produced during step().")
 
         current_state = self.state_machine.current_state
+        won = current_state._won()
+        if won:
+            self._mark_beaten(type(current_state))
 
         return (
             self._agent_observation(observation, ram),
@@ -147,7 +150,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             terminated,
             truncated,
             {
-                "won": current_state._won(),
+                "won": won,
                 "state": self.state_machine.state_name,
                 "ram": ram.to_dict(),
                 "progress": type(current_state).progress,
