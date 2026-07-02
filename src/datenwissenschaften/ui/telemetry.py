@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import atexit
 import json
-import math
 import shutil
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
+
+from datenwissenschaften.serialization import to_json_value
 
 
 def _timestamp() -> str:
@@ -71,19 +71,19 @@ class TelemetryStore:
                     "index": self._sequence,
                     "timestamp": _timestamp(),
                     **({"generation": generation} if generation is not None else {}),
-                    **_json_value(values),
+                    **to_json_value(values),
                 }
             )
             self._mark_dirty()
 
     def publish_generation(self, values: dict[str, Any]) -> None:
         with self._lock:
-            self._generations.append({"timestamp": _timestamp(), **_json_value(values)})
+            self._generations.append({"timestamp": _timestamp(), **to_json_value(values)})
             self._mark_dirty()
 
     def publish_metadata(self, section: str, values: dict[str, Any], *, replace: bool = False) -> None:
         with self._lock:
-            serialized = _json_value(values)
+            serialized = to_json_value(values)
             if section == "neat" and "current_generation" in serialized:
                 current = self._metadata.get("neat", {})
                 previous_generation = current.get("current_generation") if isinstance(current, dict) else None
@@ -237,24 +237,6 @@ def publish_generation(**values: Any) -> None:
 
 def publish_metadata(section: str, values: dict[str, Any], *, replace: bool = False) -> None:
     _store.publish_metadata(section, values, replace=replace)
-
-
-def _json_value(value: Any) -> Any:
-    if value is None or isinstance(value, (str, bool, int)):
-        return value
-    if isinstance(value, float):
-        return value if math.isfinite(value) else str(value)
-    if isinstance(value, Path):
-        return str(value)
-    if is_dataclass(value) and not isinstance(value, type):
-        return _json_value(asdict(value))
-    if isinstance(value, dict):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_json_value(item) for item in value]
-    if callable(value):
-        return getattr(value, "__name__", str(value))
-    return str(value)
 
 
 atexit.register(_store.flush)

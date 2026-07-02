@@ -11,6 +11,7 @@ from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften.runtime import get_runtime
+from datenwissenschaften.serialization import to_json_value
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, UploadSettings, load_config
 
 
@@ -162,7 +163,7 @@ class UploadEpisodeCallback(BaseCallback):
         ).json()["signing_key"]
 
         signer = Signer(signing_key)
-        metadata_json = json.dumps(metadata, indent=4, sort_keys=True)
+        metadata_json = json.dumps(to_json_value(metadata), indent=4, sort_keys=True)
         signed_metadata = signer.sign(metadata_json.encode("utf-8"))
 
         try:

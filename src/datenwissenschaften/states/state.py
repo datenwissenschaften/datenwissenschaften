@@ -96,6 +96,7 @@ class State(ABC, Generic[T]):
     def _truncated(self) -> bool:
         pass
 
+    @abstractmethod
     def _won(self) -> bool:
         return False
 
