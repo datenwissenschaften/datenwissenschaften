@@ -28,13 +28,19 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         env,
         *,
         obs_size: tuple[int, int],
+        action_table: np.ndarray | None = None,
         **_legacy_options,
     ):
         super().__init__(env)
 
         self.state_machine = StateMachine[T](self.start_state_cls())
 
-        self.action_space = env.action_space
+        if action_table is not None:
+            if len(action_table) == 0:
+                raise ValueError("Action table must not be empty")
+
+        self.action_space = gym.spaces.Discrete(len(action_table)) if action_table is not None else env.action_space
+        self.action_table = action_table
         self.obs_size = obs_size
         self.savestate_dir = load_paths_from_config().savestate_dir
 
@@ -199,7 +205,20 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self.state_machine.clear_saved_progress(state_cls)
 
     def translate_action(self, action: WrapperActType):
-        return action
+        if self.action_table is None:
+            return action
+
+        if not isinstance(action, (int, np.integer)) or isinstance(action, (bool, np.bool_)):
+            raise TypeError(f"Action must be an integer, got {type(action).__name__}")
+
+        action_index = int(action)
+        if not self.action_space.contains(action_index):
+            raise ValueError(f"Action {action_index} is outside {self.action_space}")
+
+        if action_index >= len(self.action_table):
+            raise ValueError(f"Action {action_index} has no entry in the action table")
+
+        return self.action_table[action_index]
 
     def _read_ram(self) -> T:
         return self.ram_info_cls.from_ram(self.env.unwrapped.get_ram())
