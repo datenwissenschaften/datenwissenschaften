@@ -1,0 +1,91 @@
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import ClassVar, Sequence, TypeVar
+
+from datenwissenschaften.helpers.position import Position
+from datenwissenschaften.ram import RamInfo
+from datenwissenschaften.states.state import State
+from datenwissenschaften.states.target_memory import TargetMemory
+from datenwissenschaften.vision.template_detector import TemplateDetector
+
+T = TypeVar("T", bound=RamInfo)
+
+
+class TargetState(State[T], ABC):
+    description = ""
+    progress = -1
+
+    template_file: ClassVar[str]
+    stay_near_distance = 80.0
+    target_missing_penalty = 2.0
+    step_penalty = 0.05
+    proximity_reward_scale = 0.05
+
+    target_missing_steps: int
+
+    def __init__(self) -> None:
+        self.target_detector = TemplateDetector(self.template_file)
+        self.target_memory = TargetMemory.shared(
+            self._target_memory_path(),
+            origin=self._coordinate_origin(),
+            scale=self._coordinate_scale(),
+        )
+
+    def auxiliary_features(self, ram: T | None = None) -> list[float]:
+        coordinates = None if ram is None else self._actor_coordinates(ram)
+        return self.target_memory.features(coordinates)
+
+    def remember_detected_target(self) -> bool:
+        if not self.target_detector.seen or self.target_detector.position is None:
+            return False
+        coordinates = self._detected_target_coordinates(self.target_detector.position, self.ram)
+        return self.target_memory.remember(coordinates)
+
+    def _on_reset(self) -> None:
+        self.target_missing_steps = 0
+        super()._on_reset()
+        self._reset_state()
+
+    def _reset_state(self) -> None:
+        pass
+
+    def _reward(self) -> float:
+        self.target_detector.detect(self.frame)
+        distance = self.target_detector.distance(self._actor_viewport_position(self.ram))
+        return self._target_reward(distance)
+
+    def _target_reward(self, distance: float | None) -> float:
+        reward = -self.step_penalty
+        if distance is None:
+            self.target_missing_steps += 1
+            reward -= self.target_missing_penalty
+        else:
+            self.target_missing_steps = 0
+            reward += max(0.0, self.stay_near_distance - distance) * self.proximity_reward_scale
+        return reward + self._additional_target_reward(distance)
+
+    def _additional_target_reward(self, distance: float | None) -> float:
+        return 0.0
+
+    def _coordinate_scale(self) -> float | Sequence[float]:
+        return 1.0
+
+    @abstractmethod
+    def _target_memory_path(self) -> str | Path:
+        pass
+
+    @abstractmethod
+    def _coordinate_origin(self) -> Sequence[float]:
+        pass
+
+    @abstractmethod
+    def _actor_coordinates(self, ram: T) -> Sequence[float]:
+        pass
+
+    @abstractmethod
+    def _actor_viewport_position(self, ram: T) -> Position:
+        pass
+
+    @abstractmethod
+    def _detected_target_coordinates(self, detected_position: Position, ram: T) -> Sequence[float]:
+        pass

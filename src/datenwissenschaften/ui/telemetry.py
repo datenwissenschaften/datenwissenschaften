@@ -22,7 +22,7 @@ def _timestamp() -> str:
 
 
 class TelemetryStore:
-    def __init__(self, max_episodes: int = 5_000) -> None:
+    def __init__(self, max_episodes: int | None = None) -> None:
         self._lock = threading.RLock()
         self._write_lock = threading.Lock()
         self._episodes: deque[dict[str, Any]] = deque(maxlen=max_episodes)
@@ -35,7 +35,7 @@ class TelemetryStore:
         self._persist_event = threading.Event()
         self._writer_thread: threading.Thread | None = None
 
-    def resize(self, max_episodes: int) -> None:
+    def resize(self, max_episodes: int | None) -> None:
         with self._lock:
             self._episodes = deque(self._episodes, maxlen=max_episodes)
 

@@ -59,12 +59,20 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         visual_space = gym.spaces.Box(low=0, high=255, shape=(channels, *self.obs_size), dtype=np.uint8)
         ram_size = sum(length for _, length in self.ram_info_cls.ram_map().values())
-        self.observation_space = gym.spaces.Dict(
-            {
-                "visual": visual_space,
-                "ram": gym.spaces.Box(low=0.0, high=1.0, shape=(ram_size,), dtype=np.float32),
-            }
-        )
+        observation_spaces: dict[str, gym.Space] = {
+            "visual": visual_space,
+            "ram": gym.spaces.Box(low=0.0, high=1.0, shape=(ram_size,), dtype=np.float32),
+        }
+        auxiliary_features = self.state_machine.current_state.auxiliary_features()
+        self.auxiliary_feature_count = len(auxiliary_features)
+        if self.auxiliary_feature_count:
+            observation_spaces["auxiliary"] = gym.spaces.Box(
+                low=-1.0,
+                high=1.0,
+                shape=(self.auxiliary_feature_count,),
+                dtype=np.float32,
+            )
+        self.observation_space = gym.spaces.Dict(observation_spaces)
 
     def reset(self, **kwargs):
         frame, _ = self.env.reset(**kwargs)
@@ -166,12 +174,20 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         features = np.asarray(self.state_machine.features(), dtype=np.float32)
         return features, self.state_machine.state_name
 
-    @staticmethod
-    def _agent_observation(observation: np.ndarray, ram: RamInfo) -> dict[str, np.ndarray]:
-        return {
+    def _agent_observation(self, observation: np.ndarray, ram: RamInfo) -> dict[str, np.ndarray]:
+        agent_observation = {
             "visual": observation,
             "ram": np.asarray(ram.features(), dtype=np.float32),
         }
+        auxiliary_features = self.state_machine.current_state.auxiliary_features(ram)
+        if len(auxiliary_features) != self.auxiliary_feature_count:
+            raise RuntimeError(
+                f"{self.state_machine.state_name} produced {len(auxiliary_features)} auxiliary features; "
+                f"expected {self.auxiliary_feature_count}"
+            )
+        if auxiliary_features:
+            agent_observation["auxiliary"] = np.asarray(auxiliary_features, dtype=np.float32)
+        return agent_observation
 
     def state_name(self) -> str:
         return self.state_machine.state_name

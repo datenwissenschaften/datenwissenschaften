@@ -79,7 +79,10 @@ class State(ABC, Generic[T]):
         return reward, terminated, truncated, next_state
 
     def features(self) -> list[float]:
-        return self.visual_encoder.encode(self.observation, self.ram)
+        return self.visual_encoder.encode(self.observation, self.ram) + self.auxiliary_features(self.ram)
+
+    def auxiliary_features(self, ram: T | None = None) -> list[float]:
+        return []
 
     def _on_reset(self) -> None:
         pass

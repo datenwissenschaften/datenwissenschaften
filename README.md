@@ -67,6 +67,7 @@ live training telemetry without interrupting the learners and distinguishes betw
 
 Dashboard history is restored from and atomically persisted to
 `models/<game>/<savestate>/history.json`. The `ui` mapping accepts `enable`, `host`, `port`, and `max_episodes`.
+Episode history is unlimited by default; set `max_episodes` to a positive integer to impose a limit.
 Binding to `0.0.0.0` makes the dashboard reachable on the local network; use that only on a trusted network and open
 it through the machine's actual IP address.
 

@@ -40,7 +40,7 @@ class UISettings:
     enabled: bool = False
     host: str = "127.0.0.1"
     port: int = 18_080
-    max_episodes: int = 5_000
+    max_episodes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -180,9 +180,11 @@ def _ui_settings(value: Any) -> UISettings:
     if not isinstance(host, str) or not host.strip():
         raise RuntimeError("Configuration value 'ui.host' must be a non-empty string.")
     port = value.get("port", 18_080)
-    max_episodes = value.get("max_episodes", 5_000)
+    max_episodes = value.get("max_episodes")
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65_535:
         raise RuntimeError("Configuration value 'ui.port' must be between 1 and 65535.")
-    if not isinstance(max_episodes, int) or isinstance(max_episodes, bool) or max_episodes < 1:
-        raise RuntimeError("Configuration value 'ui.max_episodes' must be a positive integer.")
+    if max_episodes is not None and (
+        not isinstance(max_episodes, int) or isinstance(max_episodes, bool) or max_episodes < 1
+    ):
+        raise RuntimeError("Configuration value 'ui.max_episodes' must be null or a positive integer.")
     return UISettings(enabled=enabled, host=host.strip(), port=port, max_episodes=max_episodes)
