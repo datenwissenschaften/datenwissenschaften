@@ -106,7 +106,12 @@ class BestEpisodeCallback(BaseCallback):
         return None
 
     def _is_new_best(self, episode: EpisodeRecord, previous_best_time_until_won: int | None) -> bool:
-        if not episode.bk2_path or not episode.won or episode.time_until_won is None:
+        if (
+            not episode.bk2_path
+            or not episode.won
+            or episode.time_until_won is None
+            or not episode.started_from_initial_savestate
+        ):
             return False
         if previous_best_time_until_won is None:
             return True
