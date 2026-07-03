@@ -24,7 +24,7 @@ class TemplateDetector:
     def __post_init__(self) -> None:
         self.template = cv2.imread(
             self.template_path,
-            cv2.IMREAD_COLOR,
+            cv2.IMREAD_GRAYSCALE,
         )
 
         if self.template is None:
@@ -40,8 +40,9 @@ class TemplateDetector:
         return str((Path.cwd() / "assets" / path).resolve())
 
     def detect(self, frame: np.ndarray) -> None:
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY) if frame.ndim == 3 else frame
         result = cv2.matchTemplate(
-            frame,
+            gray_frame,
             self.template,
             self.method,
         )
