@@ -1,11 +1,11 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FitnessHistogram from './FitnessHistogram.vue'
 
 const snapshot = ref({ episodes: [], generations: [], metadata: {} })
 const connected = ref(false)
 const error = ref('')
-const stateFilter = ref('all')
+const stateFilter = ref('')
 const expandedEpisode = ref(null)
 const showResetDialog = ref(false)
 const resetting = ref(false)
@@ -35,8 +35,14 @@ onMounted(() => { load(); timer = window.setInterval(load, 1500) })
 onBeforeUnmount(() => window.clearInterval(timer))
 
 const episodes = computed(() => snapshot.value.episodes || [])
-const states = computed(() => [...new Set(episodes.value.map(row => row.training_state).filter(Boolean))])
-const stateHistory = computed(() => episodes.value.filter(row => stateFilter.value === 'all' || row.training_state === stateFilter.value))
+const states = computed(() => [...new Set(episodes.value.map(row => row.training_state).filter(Boolean))]
+  .sort((left, right) => left.localeCompare(right)))
+watch(states, availableStates => {
+  if (!availableStates.includes(stateFilter.value)) {
+    stateFilter.value = episodes.value.map(row => row.training_state).filter(Boolean).at(-1) || ''
+  }
+}, { immediate: true })
+const stateHistory = computed(() => episodes.value.filter(row => row.training_state === stateFilter.value))
 const filtered = computed(() => stateHistory.value)
 const reversed = computed(() => [...filtered.value].reverse())
 const latest = computed(() => filtered.value.at(-1))
@@ -143,7 +149,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
 
     <section class="controls panel">
       <div><p class="eyebrow">OBSERVATION WINDOW</p><strong>Episode telemetry</strong></div>
-      <label>State<select v-model="stateFilter"><option value="all">All states</option><option v-for="state in states" :key="state">{{ state }}</option></select></label>
+      <label>State<select v-model="stateFilter"><option v-for="state in states" :key="state">{{ state }}</option></select></label>
       <button class="reset-button" :disabled="!control.restart_supported || control.reset_pending || resetting" @click="showResetDialog = true">
         {{ control.reset_pending || resetting ? 'Restarting…' : 'Delete model' }}
       </button>

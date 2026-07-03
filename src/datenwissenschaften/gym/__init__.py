@@ -387,7 +387,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             beaten_count = min(self.savestate_beaten_threshold, self._beaten_count(state_name) + 1)
             self._write_beaten_count(state_name, beaten_count)
             if beaten_count < self.savestate_beaten_threshold:
-                logger.info(
+                logger.debug(
                     f"Recorded savestate victory for {state_name} "
                     f"({beaten_count}/{self.savestate_beaten_threshold})"
                 )
