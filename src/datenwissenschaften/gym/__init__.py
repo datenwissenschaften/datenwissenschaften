@@ -9,7 +9,7 @@ from gymnasium.core import WrapperActType
 from loguru import logger
 
 from datenwissenschaften.ram import RamInfo
-from datenwissenschaften.settings import load_paths_from_config
+from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_paths_from_config
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
 
@@ -29,6 +29,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         *,
         obs_size: tuple[int, int],
         action_table: np.ndarray | None = None,
+        config_path: str | Path = DEFAULT_CONFIG_PATH,
         **_legacy_options,
     ):
         super().__init__(env)
@@ -42,7 +43,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.action_space = gym.spaces.Discrete(len(action_table)) if action_table is not None else env.action_space
         self.action_table = action_table
         self.obs_size = obs_size
-        self.savestate_dir = load_paths_from_config().savestate_dir
+        self.savestate_dir = load_paths_from_config(config_path).savestate_dir
 
         self.last_ram: T | None = None
         self.last_frame: np.ndarray | None = None
