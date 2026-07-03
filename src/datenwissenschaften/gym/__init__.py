@@ -1,4 +1,7 @@
+import fcntl
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
@@ -9,7 +12,7 @@ from gymnasium.core import WrapperActType
 from loguru import logger
 
 from datenwissenschaften.ram import RamInfo
-from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_paths_from_config
+from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
 
@@ -43,7 +46,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.action_space = gym.spaces.Discrete(len(action_table)) if action_table is not None else env.action_space
         self.action_table = action_table
         self.obs_size = obs_size
-        self.savestate_dir = load_paths_from_config(config_path).savestate_dir
+        config = load_config(config_path)
+        self.savestate_dir = config.paths.savestate_dir
+        self.savestate_beaten_threshold = config.training.savestate_beaten_threshold
 
         self.last_ram: T | None = None
         self.last_frame: np.ndarray | None = None
@@ -130,13 +135,13 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
             state_after_step = type(self.state_machine.current_state)
             if state_after_step.progress > state_before_step.progress:
-                self._mark_beaten(state_before_step)
-                self._load_savestate(state_after_step)
+                if self._mark_beaten(state_before_step):
+                    self._load_savestate(state_after_step)
 
-                savestate = self.env.unwrapped.em.get_state()
-                if self.state_machine.save_current_state(savestate):
-                    self._write_savestate(state_after_step.__name__, savestate)
-                    logger.info(f"Saved automatic savestate for {state_after_step.__name__}")
+                    savestate = self.env.unwrapped.em.get_state()
+                    if self.state_machine.save_current_state(savestate):
+                        self._write_savestate(state_after_step.__name__, savestate)
+                        logger.info(f"Saved automatic savestate for {state_after_step.__name__}")
 
             reward += state_reward
             terminated = env_terminated or state_terminated
@@ -225,8 +230,15 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         except KeyError as error:
             raise ValueError(f"Unknown training state: {state_name}") from error
 
-        deleted = self.state_machine.delete_savestate(state_cls)
-        return self._delete_savestate_file(state_name) or deleted
+        with self._beaten_lock(state_name):
+            deleted = self.state_machine.delete_savestate(state_cls)
+            deleted = self._delete_savestate_file(state_name) or deleted
+            try:
+                self._beaten_path(state_name).unlink()
+                deleted = True
+            except FileNotFoundError:
+                pass
+            return deleted
 
     def clear_training_progress(self) -> None:
         for state_cls in self._training_classes():
@@ -337,7 +349,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self._load_savestate(state_cls)
 
     def _load_savestate(self, state_cls: type[State[T]]) -> bool:
-        if self._beaten_path(state_cls.__name__).is_file():
+        if self._beaten_count(state_cls.__name__) >= self.savestate_beaten_threshold:
             self.state_machine.mark_beaten(state_cls)
             self._delete_savestate_file(state_cls.__name__)
             return False
@@ -366,15 +378,60 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def _beaten_path(self, state_name: str) -> Path:
         return self.savestate_dir / f"{state_name}.beaten"
 
-    def _mark_beaten(self, state_cls: type[State[T]]) -> None:
-        self.state_machine.mark_beaten(state_cls)
-        self._delete_savestate_file(state_cls.__name__)
+    def _beaten_lock_path(self, state_name: str) -> Path:
+        return self.savestate_dir / f".{state_name}.beaten.lock"
 
-        path = self._beaten_path(state_cls.__name__)
+    def _mark_beaten(self, state_cls: type[State[T]]) -> bool:
+        state_name = state_cls.__name__
+        with self._beaten_lock(state_name):
+            beaten_count = min(self.savestate_beaten_threshold, self._beaten_count(state_name) + 1)
+            self._write_beaten_count(state_name, beaten_count)
+            if beaten_count < self.savestate_beaten_threshold:
+                logger.info(
+                    f"Recorded savestate victory for {state_name} "
+                    f"({beaten_count}/{self.savestate_beaten_threshold})"
+                )
+                return False
+
+            self.state_machine.mark_beaten(state_cls)
+            self._delete_savestate_file(state_name)
+            logger.debug(
+                f"Marked savestate as beaten for {state_name} " f"({beaten_count}/{self.savestate_beaten_threshold})"
+            )
+            return True
+
+    def _beaten_count(self, state_name: str) -> int:
+        path = self._beaten_path(state_name)
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            return 0
+
+        if not value:
+            return self.savestate_beaten_threshold
+        try:
+            return max(0, int(value))
+        except ValueError:
+            logger.warning(f"Invalid beaten count in {path}; treating the savestate as beaten")
+            return self.savestate_beaten_threshold
+
+    def _write_beaten_count(self, state_name: str, beaten_count: int) -> None:
+        path = self._beaten_path(state_name)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.touch(exist_ok=True)
+        temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        temporary_path.write_text(str(beaten_count), encoding="utf-8")
+        temporary_path.replace(path)
 
-        logger.debug(f"Marked savestate as beaten for {state_cls.__name__}")
+    @contextmanager
+    def _beaten_lock(self, state_name: str) -> Iterator[None]:
+        path = self._beaten_lock_path(state_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a+b") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     def _delete_savestate_file(self, state_name: str) -> bool:
         try:

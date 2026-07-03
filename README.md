@@ -43,6 +43,10 @@ The default profile uses longer 512-step rollouts, a 512-unit LSTM, `gamma=0.999
 10-million-step RND decay. These settings preserve more temporal context and delayed reward information than the
 shorter arcade baseline while retaining conservative PPO updates.
 
+Set `training.savestate_beaten_threshold` to the number of victories required before a training state is marked as
+beaten and the next automatic savestate is promoted. Each `<State>.beaten` file stores the current victory count;
+the default threshold is `1`.
+
 ## Installation
 
 The package requires Python 3.12.

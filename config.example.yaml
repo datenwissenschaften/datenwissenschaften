@@ -7,6 +7,7 @@ paths:
 training:
   game: Airstriker-Genesis-v0
   savestate: null
+  savestate_beaten_threshold: 1
   total_timesteps: 1000000
   num_envs: auto
   population_size: 100

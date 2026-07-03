@@ -75,6 +75,7 @@ class Trainer:
             {
                 "game": self.config.training.game,
                 "savestate": self.config.training.savestate,
+                "savestate_beaten_threshold": self.config.training.savestate_beaten_threshold,
                 "total_timesteps": self.total_timesteps,
                 "population_size": self.config.training.population_size,
                 "configured_envs": self.config.training.num_envs,

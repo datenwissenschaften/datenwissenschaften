@@ -26,6 +26,7 @@ class TrainingSettings:
     total_timesteps: int
     population_size: int
     savestate: str | None
+    savestate_beaten_threshold: int
     num_envs: int
 
 
@@ -83,6 +84,7 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             game=_string(training, "game"),
             total_timesteps=_positive_int(training, "total_timesteps"),
             savestate=_nullable_string(training, "savestate"),
+            savestate_beaten_threshold=_positive_int(training, "savestate_beaten_threshold", default=1),
             num_envs=_environment_count(training, "num_envs", population_size),
             population_size=population_size,
         ),
@@ -137,8 +139,8 @@ def _nullable_string(values: dict[str, Any], key: str) -> str | None:
     return _optional_string(values, key)
 
 
-def _positive_int(values: dict[str, Any], key: str) -> int:
-    value = values.get(key)
+def _positive_int(values: dict[str, Any], key: str, *, default: int | None = None) -> int:
+    value = values.get(key, default)
     if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         raise RuntimeError(f"Configuration value '{key}' must be a positive integer.")
     return value
