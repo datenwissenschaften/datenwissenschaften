@@ -107,74 +107,79 @@ class NEATModel:
 
         try:
             continue_training = True
-            for state_index, state_name in enumerate(state_names):
-                if state_index < self._highest_progress_index(state_names):
-                    logger.info(f"Skipping beaten training state {state_name}")
-                    continue
+            while generations_remaining > 0 and continue_training:
+                for state_index, state_name in enumerate(state_names):
+                    if state_index < self._highest_progress_index(state_names):
+                        logger.info(f"Skipping beaten training state {state_name}")
+                        continue
 
-                population = self._load_population(state_name, config)
-                logger.info(
-                    f"Training NEAT population for {state_name} "
-                    f"from generation {population.generation} "
-                    f"({generations_remaining} generations in timestep budget)"
-                )
-                self.populations[state_name] = population
-                self.population = population
-                self._add_reporters(population, state_name, total_generations)
-
-                evaluator = NEATEvaluator(
-                    self.env,
-                    training_state=state_name,
-                    controller_genomes=dict(self.winners),
-                    callback=training_callback,
-                )
-                while generations_remaining > 0:
-                    if training_callback is not None:
-                        training_callback.on_rollout_start()
-                    winner = population.run(evaluator.evaluate_generation, 1)
-                    model_reset = consume_model_reset()
-                    if model_reset is not None:
-                        logger.warning("Stopping current NEAT generation for a requested model reset")
-                        continue_training = False
-                        break
-                    self._preserve_global_champion(population, winner)
-                    generations_remaining -= 1
-                    self.generations_completed[state_name] = population.generation
-                    publish_generation(
-                        training_state=state_name,
-                        generation=population.generation,
-                        winner_fitness=float(getattr(winner, "fitness", 0.0) or 0.0),
-                        species=len(population.species.species),
+                    population = self._load_population(state_name, config)
+                    logger.info(
+                        f"Training NEAT population for {state_name} "
+                        f"from generation {population.generation} "
+                        f"({generations_remaining} generations in timestep budget)"
                     )
-                    self.winners[state_name] = winner
-                    self.winner = winner
-                    self._networks.clear()
-                    self._torch_network_batches.clear()
-                    self._save_all()
-                    if training_callback is not None:
-                        training_callback.on_rollout_end()
+                    self.populations[state_name] = population
+                    self.population = population
+                    self._add_reporters(population, state_name, total_generations)
 
-                    if not evaluator.continue_training:
-                        if evaluator.restart_requested and not restart_attempted:
-                            logger.warning(
-                                "Restarting NEAT training from scratch after incompatible controller genomes."
-                            )
-                            self._reset_training_state()
-                            return self.learn(
-                                total_timesteps=total_timesteps,
-                                callback=callback,
-                                _restart_attempted=True,
-                                **kwargs,
-                            )
-                        continue_training = False
+                    evaluator = NEATEvaluator(
+                        self.env,
+                        training_state=state_name,
+                        controller_genomes=dict(self.winners),
+                        callback=training_callback,
+                    )
+                    while generations_remaining > 0:
+                        if training_callback is not None:
+                            training_callback.on_rollout_start()
+                        winner = population.run(evaluator.evaluate_generation, 1)
+                        model_reset = consume_model_reset()
+                        if model_reset is not None:
+                            logger.warning("Stopping current NEAT generation for a requested model reset")
+                            continue_training = False
+                            break
+                        self._preserve_global_champion(population, winner)
+                        generations_remaining -= 1
+                        self.generations_completed[state_name] = population.generation
+                        publish_generation(
+                            training_state=state_name,
+                            generation=population.generation,
+                            winner_fitness=float(getattr(winner, "fitness", 0.0) or 0.0),
+                            species=len(population.species.species),
+                        )
+                        self.winners[state_name] = winner
+                        self.winner = winner
+                        self._networks.clear()
+                        self._torch_network_batches.clear()
+                        self._save_all()
+                        if training_callback is not None:
+                            training_callback.on_rollout_end()
+
+                        if not evaluator.continue_training:
+                            if evaluator.restart_requested and not restart_attempted:
+                                logger.warning(
+                                    "Restarting NEAT training from scratch after incompatible controller genomes."
+                                )
+                                self._reset_training_state()
+                                return self.learn(
+                                    total_timesteps=total_timesteps,
+                                    callback=callback,
+                                    _restart_attempted=True,
+                                    **kwargs,
+                                )
+                            continue_training = False
+                            break
+
+                        next_state_index = self._highest_progress_index(state_names)
+                        if next_state_index != state_index:
+                            if next_state_index == 0:
+                                logger.info("Returning to initial-state training with no active automatic savestate")
+                            else:
+                                logger.info(f"Advancing training beyond beaten state {state_name}")
+                            break
+
+                    if generations_remaining == 0 or not continue_training:
                         break
-
-                    if self._highest_progress_index(state_names) > state_index:
-                        logger.info(f"Advancing training beyond beaten state {state_name}")
-                        break
-
-                if generations_remaining == 0 or not continue_training:
-                    break
         finally:
             if training_callback is not None:
                 training_callback.on_training_end()

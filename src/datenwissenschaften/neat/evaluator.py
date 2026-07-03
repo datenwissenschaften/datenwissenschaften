@@ -54,7 +54,7 @@ class NEATEvaluator:
             state_names = self.env.env_method("training_state_names")[0]
             training_index = state_names.index(self.training_state)
 
-            if any(state_names.index(state_name) > training_index for state_name in highest_states):
+            if any(state_names.index(state_name) != training_index for state_name in highest_states):
                 break
 
     def evaluate_batch(self, genomes, config) -> dict[int, float] | None:

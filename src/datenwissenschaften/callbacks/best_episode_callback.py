@@ -137,7 +137,11 @@ class BestEpisodeCallback(BaseCallback):
         return os.path.join(runtime.record_dir, str(env_index), filename)
 
     def _best_won_episode(self, episodes: list[EpisodeRecord]) -> EpisodeRecord | None:
-        won_episodes = [episode for episode in episodes if episode.won and episode.time_until_won is not None]
+        won_episodes = [
+            episode
+            for episode in episodes
+            if episode.won and episode.time_until_won is not None and episode.started_from_initial_savestate is True
+        ]
         if not won_episodes:
             return None
         return min(won_episodes, key=self._time_until_won)
