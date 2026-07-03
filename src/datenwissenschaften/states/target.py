@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import ClassVar, Sequence, TypeVar
+from typing import ClassVar, TypeVar
 
 from datenwissenschaften.helpers.position import Position
 from datenwissenschaften.ram import RamInfo
@@ -27,18 +27,19 @@ class TargetState(State[T], ABC):
         self.target_detector = TemplateDetector(self.template_file)
         self.target_memory = TargetMemory.shared(
             self._target_memory_path(),
-            origin=self._coordinate_origin(),
-            scale=self._coordinate_scale(),
+            origin=(0.0, 0.0),
+            scale=float(Position.screen_size),
         )
 
     def auxiliary_features(self, ram: T | None = None) -> list[float]:
-        coordinates = None if ram is None else self._actor_coordinates(ram)
+        coordinates = None if ram is None else self._actor_position(ram).coordinates
         return self.target_memory.features(coordinates)
 
     def remember_detected_target(self) -> bool:
         if not self.target_detector.seen or self.target_detector.position is None:
             return False
-        coordinates = self._detected_target_coordinates(self.target_detector.position, self.ram)
+        actor_position = self._actor_position(self.ram)
+        coordinates = self.target_detector.position.on_screen(actor_position.screen).coordinates
         return self.target_memory.remember(coordinates)
 
     def _on_reset(self) -> None:
@@ -51,7 +52,7 @@ class TargetState(State[T], ABC):
 
     def _reward(self) -> float:
         self.target_detector.detect(self.frame)
-        distance = self.target_detector.distance(self._actor_viewport_position(self.ram))
+        distance = self.target_detector.distance(self._actor_position(self.ram).viewport)
         return self._target_reward(distance)
 
     def _target_reward(self, distance: float | None) -> float:
@@ -67,25 +68,10 @@ class TargetState(State[T], ABC):
     def _additional_target_reward(self, distance: float | None) -> float:
         return 0.0
 
-    def _coordinate_scale(self) -> float | Sequence[float]:
-        return 1.0
-
     @abstractmethod
     def _target_memory_path(self) -> str | Path:
         pass
 
     @abstractmethod
-    def _coordinate_origin(self) -> Sequence[float]:
-        pass
-
-    @abstractmethod
-    def _actor_coordinates(self, ram: T) -> Sequence[float]:
-        pass
-
-    @abstractmethod
-    def _actor_viewport_position(self, ram: T) -> Position:
-        pass
-
-    @abstractmethod
-    def _detected_target_coordinates(self, detected_position: Position, ram: T) -> Sequence[float]:
+    def _actor_position(self, ram: T) -> Position:
         pass

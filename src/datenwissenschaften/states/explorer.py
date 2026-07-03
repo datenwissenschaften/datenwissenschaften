@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections.abc import Hashable
 from typing import TypeVar
 
 from datenwissenschaften.ram import RamInfo
@@ -17,20 +16,22 @@ class Explorer(TargetState[T], ABC):
     position_discovery_reward = 1.0
     target_found_reward = 100.0
 
-    visited_areas: set[Hashable]
-    visited_positions: set[Hashable]
+    visited_areas: set[tuple[int, int]]
+    visited_positions: set[tuple[int, int]]
 
     def _on_reset(self) -> None:
-        self.visited_areas = {self._area_key(self.ram)}
-        self.visited_positions = {self._position_key(self.ram)}
+        position = self._actor_position(self.ram)
+        self.visited_areas = {position.screen}
+        self.visited_positions = {position.coordinates}
         super()._on_reset()
 
     def _target_reward(self, distance: float | None) -> float:
-        current_area = self._area_key(self.ram)
+        position = self._actor_position(self.ram)
+        current_area = position.screen
         area_is_unseen = current_area not in self.visited_areas
         self.visited_areas.add(current_area)
 
-        current_position = self._position_key(self.ram)
+        current_position = position.coordinates
         position_is_unseen = current_position not in self.visited_positions
         self.visited_positions.add(current_position)
 
@@ -47,14 +48,6 @@ class Explorer(TargetState[T], ABC):
 
     def _won(self) -> bool:
         return False
-
-    @abstractmethod
-    def _area_key(self, ram: T) -> Hashable:
-        pass
-
-    @abstractmethod
-    def _position_key(self, ram: T) -> Hashable:
-        pass
 
     @abstractmethod
     def _target_state(self) -> type[State[T]]:

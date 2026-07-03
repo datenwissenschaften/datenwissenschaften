@@ -19,6 +19,28 @@ class Position:
         return self.screen_y * self.screen_size + self.position_y
 
     @property
+    def coordinates(self) -> tuple[int, int]:
+        return self.x, self.y
+
+    @property
+    def screen(self) -> tuple[int, int]:
+        return self.screen_x, self.screen_y
+
+    @property
+    def viewport(self) -> "Position":
+        return Position(self.position_x, self.position_y, screen_size=self.screen_size)
+
+    def on_screen(self, screen: tuple[int, int]) -> "Position":
+        screen_x, screen_y = screen
+        return Position(
+            self.position_x,
+            self.position_y,
+            screen_x,
+            screen_y,
+            self.screen_size,
+        )
+
+    @property
     def is_zero(self) -> bool:
         return self.position_x == 0 and self.position_y == 0 and self.screen_x == 0 and self.screen_y == 0
 
