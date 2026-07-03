@@ -11,6 +11,7 @@ from datenwissenschaften.callbacks import (
     BestEpisodeCallback,
     EpisodeTelemetryCallback,
     SaveModelCallback,
+    SavestateStagnationCallback,
     StopTrainingAtTimestepsCallback,
 )
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
@@ -129,6 +130,7 @@ class Trainer:
             SaveModelCallback(),
             EpisodeTelemetryCallback(),
             BestEpisodeCallback(self.total_timesteps),
+            SavestateStagnationCallback(self.total_timesteps),
             UploadEpisodeCallback(self.config.upload),
             StopTrainingAtTimestepsCallback(self.total_timesteps),
         ]

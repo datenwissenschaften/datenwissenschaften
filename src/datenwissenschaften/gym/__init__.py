@@ -210,6 +210,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         state_cls = self._highest_savestate_state()
         return state_cls.__name__ if state_cls is not None else self.start_state_cls.__name__
 
+    def active_savestate_state(self) -> str | None:
+        self._load_savestates()
+        state_cls = self._highest_savestate_state()
+        return state_cls.__name__ if state_cls is not None else None
+
     def frames_without_progress(self) -> int:
         return self._frames_without_progress
 
