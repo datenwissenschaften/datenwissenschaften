@@ -11,6 +11,7 @@ import numpy as np
 from gymnasium.core import WrapperActType
 from loguru import logger
 
+from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.ram import RamInfo
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.states.machine import StateMachine
@@ -47,13 +48,16 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.action_table = action_table
         self.obs_size = obs_size
         config = load_config(config_path)
+        setup_logging(config.log_level)
         self.savestate_dir = config.paths.savestate_dir
         self.savestate_beaten_threshold = config.training.savestate_beaten_threshold
+        self.initial_savestate = config.training.savestate
 
         self.last_ram: T | None = None
         self.last_frame: np.ndarray | None = None
         self.last_observation: np.ndarray | None = None
         self._started_from_initial_savestate = True
+        self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
 
         self._last_progress: float | int | None = None
         self._frames_without_progress = 0
@@ -89,6 +93,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._load_savestates()
         state_cls = self._highest_savestate_state()
         self._started_from_initial_savestate = state_cls is None
+        self._episode_start_state = (
+            state_cls.__name__ if state_cls is not None else self.initial_savestate or self.start_state_cls.__name__
+        )
         if state_cls is not None:
             frame = self._restore_savestate(self.state_machine.savestate(state_cls))
 
@@ -197,6 +204,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
     def state_name(self) -> str:
         return self.state_machine.state_name
+
+    def episode_start_state(self) -> str:
+        return self._episode_start_state
 
     def training_state_names(self) -> list[str]:
         return [state_cls.__name__ for state_cls in self._training_classes()]

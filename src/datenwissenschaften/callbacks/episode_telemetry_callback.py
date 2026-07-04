@@ -66,8 +66,13 @@ class EpisodeTelemetryCallback(BaseCallback):
         return True
 
     def _state_names(self, count: int) -> list[str | None]:
-        try:
-            names = self.training_env.env_method("state_name")
-        except (AttributeError, TypeError, ValueError):
+        names = None
+        for method_name in ("episode_start_state", "state_name"):
+            try:
+                names = self.training_env.env_method(method_name)
+                break
+            except (AttributeError, TypeError, ValueError):
+                continue
+        if names is None:
             return [None] * count
         return [str(name) if name else None for name in names[:count]] + [None] * max(0, count - len(names))
