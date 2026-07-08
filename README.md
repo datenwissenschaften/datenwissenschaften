@@ -69,9 +69,10 @@ cp config.example.yaml config.yaml
 Enable the dashboard with `ui.enable: true`, then open [http://127.0.0.1:18080](http://127.0.0.1:18080). It refreshes
 live training telemetry without interrupting the learners and distinguishes between PPO + RND and NEAT runs.
 
-Dashboard history is restored from and atomically persisted to
-`models/<game>/<savestate>/history.json`. The `ui` mapping accepts `enable`, `host`, `port`, and `max_episodes`.
-Episode history is unlimited by default; set `max_episodes` to a positive integer to impose a limit.
+Dashboard history is restored from and persisted to Redis. The default Redis URL is
+`redis://127.0.0.1:6379/0`, and history keys use the `datenwissenschaften:history` prefix. The `ui` mapping accepts
+`enable`, `host`, `port`, `max_episodes`, `redis_url`, and `history_key_prefix`. Episode history is unlimited by
+default; set `max_episodes` to a positive integer to impose a limit.
 Binding to `0.0.0.0` makes the dashboard reachable on the local network; use that only on a trusted network and open
 it through the machine's actual IP address.
 

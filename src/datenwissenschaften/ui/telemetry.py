@@ -2,19 +2,24 @@ from __future__ import annotations
 
 import atexit
 import json
-import shutil
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
 from copy import deepcopy
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
 from datenwissenschaften.serialization import to_json_value
+
+try:
+    from redis import Redis
+    from redis.exceptions import RedisError
+except ImportError:
+    Redis = None
+    RedisError = Exception
 
 
 def _timestamp() -> str:
@@ -30,7 +35,8 @@ class TelemetryStore:
         self._metadata: dict[str, Any] = {}
         self._started_at = _timestamp()
         self._sequence = 0
-        self._history_path: Path | None = None
+        self._history_key: str | None = None
+        self._redis: Any | None = None
         self._history_version = 0
         self._persist_event = threading.Event()
         self._writer_thread: threading.Thread | None = None
@@ -39,13 +45,32 @@ class TelemetryStore:
         with self._lock:
             self._episodes = deque(self._episodes, maxlen=max_episodes)
 
-    def configure_history(self, path: Path) -> None:
-        path = path.expanduser().resolve()
+    def configure_history(
+        self,
+        scope: str,
+        *,
+        redis_url: str = "redis://127.0.0.1:6379/0",
+        key_prefix: str = "datenwissenschaften:history",
+    ) -> None:
+        history_key = f"{key_prefix.rstrip(':')}:{scope}"
         self.flush()
         with self._lock:
-            if self._history_path == path:
+            if self._history_key == history_key:
                 return
-            self._history_path = path
+            if Redis is None:
+                raise RuntimeError("Redis history storage requires the 'redis' package. Run `poetry install`.")
+            redis_client = Redis.from_url(
+                redis_url,
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+            )
+            try:
+                redis_client.ping()
+            except RedisError as error:
+                raise RuntimeError(f"Could not connect to Redis history store at {redis_url}: {error}") from error
+            self._redis = redis_client
+            self._history_key = history_key
             self._history_version += 1
             self._episodes.clear()
             self._generations.clear()
@@ -126,30 +151,28 @@ class TelemetryStore:
             with self._lock:
                 if expected_version is not None and expected_version != self._history_version:
                     return
-                if self._history_path is None:
+                if self._redis is None or self._history_key is None:
                     return
-                path = self._history_path
+                redis_client = self._redis
+                history_key = self._history_key
                 payload = self._snapshot_locked()
             try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                temporary_path = path.with_name(f".{path.name}.tmp")
-                temporary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-                temporary_path.replace(path)
-            except OSError as error:
-                logger.warning(f"Could not persist training UI history to {path}: {error}")
+                redis_client.set(history_key, json.dumps(payload, separators=(",", ":")))
+            except RedisError as error:
+                logger.warning(f"Could not persist training UI history to Redis key {history_key}: {error}")
 
     def reset_for_restart(self, delete_training_artifacts: Callable[[], None]) -> None:
         with self._write_lock:
             self._persist_event.clear()
             with self._lock:
-                history_path = self._history_path
+                redis_client = self._redis
+                history_key = self._history_key
             delete_training_artifacts()
-            if history_path is not None:
-                history_directory = history_path.parent
-                if history_directory.is_dir():
-                    shutil.rmtree(history_directory)
-                else:
-                    history_directory.unlink(missing_ok=True)
+            if redis_client is not None and history_key is not None:
+                try:
+                    redis_client.delete(history_key)
+                except RedisError as error:
+                    logger.warning(f"Could not delete training UI history from Redis key {history_key}: {error}")
             with self._lock:
                 self._episodes.clear()
                 self._generations.clear()
@@ -168,10 +191,13 @@ class TelemetryStore:
         }
 
     def _load_history_locked(self) -> None:
-        if self._history_path is None or not self._history_path.is_file():
+        if self._redis is None or self._history_key is None:
             return
         try:
-            payload = json.loads(self._history_path.read_text(encoding="utf-8"))
+            serialized = self._redis.get(self._history_key)
+            if serialized is None:
+                return
+            payload = json.loads(serialized)
             episodes = payload.get("episodes", [])
             generations = payload.get("generations", [])
             metadata = payload.get("metadata", {})
@@ -192,12 +218,12 @@ class TelemetryStore:
                 default=0,
             )
             self._started_at = payload.get("started_at") or self._started_at
-            logger.info(f"Loaded {len(self._episodes)} training episodes from {self._history_path}")
-        except (OSError, ValueError, json.JSONDecodeError) as error:
-            logger.warning(f"Ignoring unreadable training UI history {self._history_path}: {error}")
+            logger.info(f"Loaded {len(self._episodes)} training episodes from Redis key {self._history_key}")
+        except (RedisError, ValueError, json.JSONDecodeError) as error:
+            logger.warning(f"Ignoring unreadable training UI history in Redis key {self._history_key}: {error}")
 
     def _mark_dirty(self) -> None:
-        if self._history_path is not None:
+        if self._history_key is not None:
             self._persist_event.set()
 
     def _persist_loop(self) -> None:
@@ -219,8 +245,13 @@ def get_store() -> TelemetryStore:
     return _store
 
 
-def configure_history(path: Path) -> None:
-    _store.configure_history(path)
+def configure_history(
+    scope: str,
+    *,
+    redis_url: str = "redis://127.0.0.1:6379/0",
+    key_prefix: str = "datenwissenschaften:history",
+) -> None:
+    _store.configure_history(scope, redis_url=redis_url, key_prefix=key_prefix)
 
 
 def clear_metadata(section: str, *, clear_history: bool = False) -> None:

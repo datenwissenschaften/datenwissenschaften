@@ -42,6 +42,8 @@ class UISettings:
     host: str = "127.0.0.1"
     port: int = 18_080
     max_episodes: int | None = None
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    history_key_prefix: str = "datenwissenschaften:history"
 
 
 @dataclass(frozen=True)
@@ -183,10 +185,23 @@ def _ui_settings(value: Any) -> UISettings:
         raise RuntimeError("Configuration value 'ui.host' must be a non-empty string.")
     port = value.get("port", 18_080)
     max_episodes = value.get("max_episodes")
+    redis_url = value.get("redis_url", "redis://127.0.0.1:6379/0")
+    history_key_prefix = value.get("history_key_prefix", "datenwissenschaften:history")
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65_535:
         raise RuntimeError("Configuration value 'ui.port' must be between 1 and 65535.")
     if max_episodes is not None and (
         not isinstance(max_episodes, int) or isinstance(max_episodes, bool) or max_episodes < 1
     ):
         raise RuntimeError("Configuration value 'ui.max_episodes' must be null or a positive integer.")
-    return UISettings(enabled=enabled, host=host.strip(), port=port, max_episodes=max_episodes)
+    if not isinstance(redis_url, str) or not redis_url.strip():
+        raise RuntimeError("Configuration value 'ui.redis_url' must be a non-empty string.")
+    if not isinstance(history_key_prefix, str) or not history_key_prefix.strip():
+        raise RuntimeError("Configuration value 'ui.history_key_prefix' must be a non-empty string.")
+    return UISettings(
+        enabled=enabled,
+        host=host.strip(),
+        port=port,
+        max_episodes=max_episodes,
+        redis_url=redis_url.strip(),
+        history_key_prefix=history_key_prefix.strip(),
+    )

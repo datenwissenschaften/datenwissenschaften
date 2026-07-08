@@ -56,10 +56,14 @@ class Trainer:
     def _start_ui(self, model) -> None:
         if not self.config.ui.enabled:
             return
-        history_dir = self.config.paths.models_dir / self.config.training.game
+        history_scope = self.config.training.game
         if self.config.training.savestate:
-            history_dir /= self.config.training.savestate
-        configure_history(history_dir / "history.json")
+            history_scope = f"{history_scope}:{self.config.training.savestate}"
+        configure_history(
+            history_scope,
+            redis_url=self.config.ui.redis_url,
+            key_prefix=self.config.ui.history_key_prefix,
+        )
         configure_training_control(
             game=self.config.training.game,
             model_dir=self.config.paths.models_dir / self.config.training.game,
