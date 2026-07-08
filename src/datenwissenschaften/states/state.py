@@ -1,10 +1,12 @@
-from abc import ABC, abstractmethod
+from abc import ABC
+from pathlib import Path
 from typing import Generic, TypeVar
 
 import numpy as np
 
 from datenwissenschaften.ram import RamInfo
 from datenwissenschaften.vision.hybrid_encoder import HybridEncoder
+from datenwissenschaften.vision.template_detector import TemplateDetector
 
 T = TypeVar("T", bound=RamInfo)
 
@@ -19,6 +21,12 @@ class State(ABC, Generic[T]):
     savestate: bytes | None = None
     progress: int
     beaten: bool = False
+
+    def __init__(self) -> None:
+        if not hasattr(self, "target_detector") and hasattr(self, "template_file"):
+            template_path = Path("assets") / self.template_file
+            if template_path.exists():
+                self.target_detector = TemplateDetector(self.template_file)
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -87,19 +95,15 @@ class State(ABC, Generic[T]):
     def _on_reset(self) -> None:
         pass
 
-    @abstractmethod
     def _reward(self) -> float:
-        pass
+        return 0.0
 
-    @abstractmethod
     def _terminated(self) -> bool:
-        pass
+        return False
 
-    @abstractmethod
     def _truncated(self) -> bool:
-        pass
+        return False
 
-    @abstractmethod
     def _won(self) -> bool:
         return False
 

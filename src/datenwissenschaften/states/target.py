@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from pathlib import Path
 from typing import ClassVar, TypeVar
 
@@ -25,6 +25,7 @@ class TargetState(State[T], ABC):
 
     def __init__(self) -> None:
         self.target_detector = TemplateDetector(self.template_file)
+        super().__init__()
         self.target_memory = TargetMemory.shared(
             self._target_memory_path(),
             origin=(0.0, 0.0),
@@ -68,10 +69,13 @@ class TargetState(State[T], ABC):
     def _additional_target_reward(self, distance: float | None) -> float:
         return 0.0
 
-    @abstractmethod
     def _target_memory_path(self) -> str | Path:
-        pass
+        return Path("working/target_memory") / f"{Path(self.template_file).stem}.json"
 
-    @abstractmethod
     def _actor_position(self, ram: T) -> Position:
-        pass
+        return Position(
+            getattr(ram, "position_x", 0),
+            getattr(ram, "position_y", 0),
+            getattr(ram, "screen_x", 0),
+            getattr(ram, "screen_y", 0),
+        )
