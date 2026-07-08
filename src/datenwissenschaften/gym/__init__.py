@@ -164,6 +164,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         won = current_state._won()
         if won:
             self._mark_beaten(type(current_state))
+            terminated = True
 
         return (
             self._agent_observation(observation, ram),
