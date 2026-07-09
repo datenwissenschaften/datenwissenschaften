@@ -61,6 +61,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_observation: np.ndarray | None = None
         self._started_from_initial_savestate = True
         self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
+        self._episode_reward_baseline = 0.0
 
         self._last_progress: float | int | None = None
         self._frames_without_progress = 0
@@ -100,6 +101,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._episode_start_state = (
             state_cls.__name__ if state_cls is not None else self.initial_savestate or self.start_state_cls.__name__
         )
+        self._episode_reward_baseline = max(0.0, float(state_cls.progress)) if state_cls is not None else 0.0
         if state_cls is not None:
             frame = self._restore_savestate(self.state_machine.savestate(state_cls))
 
@@ -118,7 +120,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def step(self, action: WrapperActType):
         frame = None
         observation = None
-        reward = 0.0
+        reward_baseline = self._consume_episode_reward_baseline()
+        reward = reward_baseline
         terminated = False
         truncated = False
 
@@ -181,6 +184,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "state": self.state_machine.state_name,
                 "ram": ram.to_dict(),
                 "progress": type(current_state).progress,
+                "reward_baseline": reward_baseline,
                 "frames_without_progress": self._frames_without_progress,
                 "started_from_initial_savestate": self._started_from_initial_savestate,
             },
@@ -238,6 +242,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
     def frames_without_progress(self) -> int:
         return self._frames_without_progress
+
+    def _consume_episode_reward_baseline(self) -> float:
+        reward = self._episode_reward_baseline
+        self._episode_reward_baseline = 0.0
+        return reward
 
     def delete_savestate(self, state_name: str) -> bool:
         classes_by_name = self._training_classes_by_name()
