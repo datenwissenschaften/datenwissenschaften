@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,11 +24,25 @@ class RetroSpeedlabPaths:
 @dataclass(frozen=True)
 class TrainingSettings:
     game: str
+    game_identity: str
     total_timesteps: int
     population_size: int
     savestate: str | None
+    savestates: tuple[str, ...]
+    savestate_rotation_seconds: int
     savestate_beaten_threshold: int
     num_envs: int
+
+    @property
+    def active_savestate(self) -> str | None:
+        if not self.savestates:
+            return self.savestate
+        index = int(time.time() // self.savestate_rotation_seconds) % len(self.savestates)
+        return self.savestates[index]
+
+    @property
+    def rotates_savestates(self) -> bool:
+        return len(self.savestates) > 1
 
 
 @dataclass(frozen=True)
@@ -74,6 +89,10 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
     base_dir = config_path.parent
 
     population_size = _positive_int(training, "population_size")
+    savestate = _nullable_string(training, "savestate") if "savestate" in training else None
+    savestates = _string_tuple(training, "savestates", default=())
+    if not savestate and not savestates:
+        raise RuntimeError("Missing required configuration value: training.savestate or training.savestates")
 
     return RetroSpeedlabConfig(
         paths=RetroSpeedlabPaths(
@@ -84,8 +103,11 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
         ),
         training=TrainingSettings(
             game=_string(training, "game"),
+            game_identity=_optional_string(training, "game_identity") or _string(training, "game"),
             total_timesteps=_positive_int(training, "total_timesteps"),
-            savestate=_nullable_string(training, "savestate"),
+            savestate=savestate,
+            savestates=savestates,
+            savestate_rotation_seconds=_positive_int(training, "savestate_rotation_seconds", default=14_400),
             savestate_beaten_threshold=_positive_int(training, "savestate_beaten_threshold", default=1),
             num_envs=_environment_count(training, "num_envs", population_size),
             population_size=population_size,
@@ -139,6 +161,23 @@ def _nullable_string(values: dict[str, Any], key: str) -> str | None:
     if key not in values:
         raise RuntimeError(f"Missing required configuration value: {key}")
     return _optional_string(values, key)
+
+
+def _string_tuple(values: dict[str, Any], key: str, *, default: tuple[str, ...]) -> tuple[str, ...]:
+    value = values.get(key, default)
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise RuntimeError(f"Configuration value '{key}' must be a list of non-empty strings.")
+
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise RuntimeError(f"Configuration value '{key}' must be a list of non-empty strings.")
+        stripped = item.strip()
+        if stripped not in result:
+            result.append(stripped)
+    return tuple(result)
 
 
 def _positive_int(values: dict[str, Any], key: str, *, default: int | None = None) -> int:

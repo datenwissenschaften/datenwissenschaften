@@ -39,7 +39,7 @@ class NEATModel:
         settings = load_config(settings_path)
         setup_logging(settings.log_level)
         self.env = env
-        game = settings.training.game
+        game = settings.training.game_identity
         self.output_dir = settings.paths.models_dir / game / "datenwissenschaften"
         self.config_path = self.output_dir / "config.ini"
         self.population_size = settings.training.population_size
@@ -64,7 +64,7 @@ class NEATModel:
     @property
     def trainer_model_path(self) -> Path:
         runtime = get_runtime()
-        return runtime.models_dir / runtime.game / "model.zip"
+        return Path(runtime.get_model_path(runtime.game)).with_suffix(".zip")
 
     @property
     def num_timesteps(self) -> int:

@@ -98,7 +98,7 @@ def load_or_create_model(
 ) -> TrainableModel:
     configure_accelerator()
     config = load_config(config_path)
-    model_path = get_model_path(str(config.paths.models_dir), config.training.game)
+    model_path = get_model_path(str(config.paths.models_dir), config.training.game_identity)
     model_zip_path = f"{model_path}.zip"
     cleanup = getattr(build_model, "cleanup_incompatible_artifacts", None)
     if callable(cleanup):

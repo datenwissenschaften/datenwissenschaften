@@ -114,7 +114,7 @@ class EnvironmentBuilder:
         config = load_config(config_path)
         self.config_path = config_path
         self.game = config.training.game
-        self.state = config.training.savestate
+        self.state = config.training.active_savestate
         self.record_dir = str(config.paths.record_dir)
         self.wrapper = wrapper
         _last_environment_wrapper = wrapper
@@ -123,7 +123,7 @@ class EnvironmentBuilder:
         self.n_envs = n_envs if n_envs is not None else config.training.num_envs
 
     def make_env(self, rank: int = 0):
-        record_dir = os.path.join(self.record_dir, str(rank))
+        record_dir = os.path.join(self.record_dir, self.game, self.state or "default", str(rank))
         os.makedirs(record_dir, exist_ok=True)
         env = retro.make(self.game, self.state, render_mode=self.render_mode, record=record_dir)
         return self.wrapper(env)

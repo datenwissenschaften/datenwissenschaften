@@ -378,7 +378,7 @@ def build_recurrent_rnd_ppo(env: VecEnv, **kwargs: Any) -> RecurrentRNDPPO:
 class RecurrentRNDModel:
     @staticmethod
     def cleanup_incompatible_artifacts(config) -> None:
-        game_dir = config.paths.models_dir / config.training.game
+        game_dir = config.paths.models_dir / config.training.game_identity
         for name in ("datenwissenschaften", "neat"):
             path = game_dir / name
             if path.is_symlink() or path.is_file():

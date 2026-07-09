@@ -49,9 +49,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.obs_size = obs_size
         config = load_config(config_path)
         setup_logging(config.log_level)
-        self.savestate_dir = config.paths.savestate_dir
+        self.initial_savestate = config.training.active_savestate
+        self.savestate_dir = (
+            config.paths.savestate_dir / config.training.game_identity / (self.initial_savestate or "default")
+        )
         self.savestate_beaten_threshold = config.training.savestate_beaten_threshold
-        self.initial_savestate = config.training.savestate
 
         self.last_ram: T | None = None
         self.last_frame: np.ndarray | None = None

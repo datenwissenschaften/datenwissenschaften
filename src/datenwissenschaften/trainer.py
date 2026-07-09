@@ -38,7 +38,7 @@ class Trainer:
         self._additional_callbacks = list(additional_callbacks or [])
         self.callbacks = self._default_callbacks() + self._additional_callbacks
         self._state: dict[str, Any] = {}
-        self._savestate = self.config.training.savestate
+        self._savestate = self.config.training.active_savestate
 
     def train(self, model) -> None:
         configure_accelerator()
@@ -56,9 +56,7 @@ class Trainer:
     def _start_ui(self, model) -> None:
         if not self.config.ui.enabled:
             return
-        history_scope = self.config.training.game
-        if self.config.training.savestate:
-            history_scope = f"{history_scope}:{self.config.training.savestate}"
+        history_scope = self.config.training.game_identity
         configure_history(
             history_scope,
             redis_url=self.config.ui.redis_url,
@@ -66,8 +64,8 @@ class Trainer:
         )
         configure_training_control(
             game=self.config.training.game,
-            model_dir=self.config.paths.models_dir / self.config.training.game,
-            savestate_dir=self.config.paths.savestate_dir,
+            model_dir=self.config.paths.models_dir / self.config.training.game_identity,
+            savestate_dir=self.config.paths.savestate_dir / self.config.training.game_identity,
             restart_supported=bool(getattr(model, "supports_ui_restart", False)),
             on_reset=lambda: self._reset_for_restart(model),
         )
@@ -78,7 +76,10 @@ class Trainer:
             "run",
             {
                 "game": self.config.training.game,
-                "savestate": self.config.training.savestate,
+                "game_identity": self.config.training.game_identity,
+                "savestate": self._savestate,
+                "savestates": list(self.config.training.savestates),
+                "savestate_rotation_seconds": self.config.training.savestate_rotation_seconds,
                 "savestate_beaten_threshold": self.config.training.savestate_beaten_threshold,
                 "total_timesteps": self.total_timesteps,
                 "population_size": self.config.training.population_size,
@@ -93,7 +94,7 @@ class Trainer:
 
     def _reset_for_restart(self, model) -> None:
         self._state.clear()
-        self._savestate = self.config.training.savestate
+        self._savestate = self.config.training.active_savestate
         self.callbacks[:] = self._default_callbacks() + self._additional_callbacks
         env = model.get_env() if callable(getattr(model, "get_env", None)) else getattr(model, "env", None)
         if env is not None:
@@ -131,18 +132,25 @@ class Trainer:
         }
 
     def _default_callbacks(self) -> list[BaseCallback]:
-        return [
+        callbacks = [
             SaveModelCallback(),
             EpisodeTelemetryCallback(),
             BestEpisodeCallback(self.total_timesteps),
             SavestateStagnationCallback(self.total_timesteps),
             UploadEpisodeCallback(self.config.upload),
+            (
+                StopTrainingAfterSecondsCallback(self.config.training.savestate_rotation_seconds)
+                if self.config.training.rotates_savestates
+                else None
+            ),
             StopTrainingAtTimestepsCallback(self.total_timesteps),
         ]
+        return [callback for callback in callbacks if callback is not None]
 
     def _configure_runtime(self) -> None:
         paths = self.config.paths
         game = self.config.training.game
+        game_identity = self.config.training.game_identity
         wrapper = get_last_environment_wrapper()
 
         # noinspection PyTypeChecker
@@ -158,7 +166,7 @@ class Trainer:
                 set_savestate=self._set_savestate,
                 get_state_value=self._get_state_value,
                 set_state_value=self._set_state_value,
-                get_model_path=lambda selected_game: get_model_path(str(paths.models_dir), selected_game),
+                get_model_path=lambda _selected_game: get_model_path(str(paths.models_dir), game_identity),
                 get_model_metadata=get_model_metadata,
             )
         )
@@ -183,7 +191,24 @@ class Trainer:
     def _state_path(self, name: str) -> Path:
         return Path(
             self.config.paths.models_dir,
-            self.config.training.game,
+            self.config.training.game_identity,
             self._savestate or "",
             f"{name}.txt",
         )
+
+
+class StopTrainingAfterSecondsCallback(BaseCallback):
+    def __init__(self, seconds: int):
+        super().__init__()
+        self.seconds = seconds
+        self._started_at: float | None = None
+
+    def _on_training_start(self) -> None:
+        import time
+
+        self._started_at = time.monotonic()
+
+    def _on_step(self) -> bool:
+        import time
+
+        return self._started_at is None or time.monotonic() - self._started_at < self.seconds
