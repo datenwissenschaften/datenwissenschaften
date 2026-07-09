@@ -134,6 +134,13 @@ jobs:
               except subprocess.CalledProcessError:
                   return ""
 
+          def parse_conventional_subject(subject):
+              match = re.match(r"^(?:[A-Za-z0-9._/-]+:\s+)?([a-zA-Z]+)(?:\([^)]+\))?(!)?:", subject)
+              if not match:
+                  return None, False
+              commit_type, breaking_marker = match.groups()
+              return commit_type.lower(), bool(breaking_marker)
+
           def recommended_increment(messages):
               increment_rank = {"patch": 1, "minor": 2, "major": 3}
               highest = None
@@ -142,12 +149,11 @@ jobs:
                   subject = next((line for line in lines if line), "")
                   if not subject:
                       continue
-                  breaking = "BREAKING CHANGE" in message or re.match(r"^[a-zA-Z]+(?:\([^)]+\))?!:", subject)
+                  commit_type, breaking_marker = parse_conventional_subject(subject)
+                  breaking = "BREAKING CHANGE" in message or breaking_marker
                   if breaking:
                       highest = "major"
                       continue
-                  match = re.match(r"^([a-zA-Z]+)(?:\([^)]+\))?:", subject)
-                  commit_type = match.group(1).lower() if match else ""
                   if commit_type == "feat":
                       candidate = "minor"
                   elif commit_type in {"fix", "perf"}:
