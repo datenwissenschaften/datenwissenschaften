@@ -71,8 +71,9 @@ live training telemetry without interrupting the learners and distinguishes betw
 
 Dashboard history is restored from and persisted to Redis. The default Redis URL is
 `redis://127.0.0.1:6379/0`, and history keys use the `datenwissenschaften:history` prefix. The `ui` mapping accepts
-`enable`, `host`, `port`, `max_episodes`, `redis_url`, and `history_key_prefix`. Episode history is unlimited by
-default; set `max_episodes` to a positive integer to impose a limit.
+`enable`, `host`, `port`, `max_episodes`, `redis_url`, and `history_key_prefix`. Snapshots retain the latest
+1,000 episodes by default and include summarized totals for discarded episodes; set `max_episodes` to another positive
+integer or `null` for unlimited retained rows.
 Binding to `0.0.0.0` makes the dashboard reachable on the local network; use that only on a trusted network and open
 it through the machine's actual IP address.
 

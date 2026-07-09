@@ -41,7 +41,7 @@ class UISettings:
     enabled: bool = False
     host: str = "127.0.0.1"
     port: int = 18_080
-    max_episodes: int | None = None
+    max_episodes: int | None = 1_000
     redis_url: str = "redis://127.0.0.1:6379/0"
     history_key_prefix: str = "datenwissenschaften:history"
 
@@ -184,7 +184,7 @@ def _ui_settings(value: Any) -> UISettings:
     if not isinstance(host, str) or not host.strip():
         raise RuntimeError("Configuration value 'ui.host' must be a non-empty string.")
     port = value.get("port", 18_080)
-    max_episodes = value.get("max_episodes")
+    max_episodes = value.get("max_episodes", 1_000)
     redis_url = value.get("redis_url", "redis://127.0.0.1:6379/0")
     history_key_prefix = value.get("history_key_prefix", "datenwissenschaften:history")
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65_535:

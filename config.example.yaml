@@ -22,5 +22,6 @@ ui:
   enable: true
   host: 0.0.0.0
   port: 18080
+  max_episodes: 1000
   redis_url: redis://127.0.0.1:6379/0
   history_key_prefix: datenwissenschaften:history

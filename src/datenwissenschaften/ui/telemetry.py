@@ -26,6 +26,89 @@ def _timestamp() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
+def _empty_summary() -> dict[str, Any]:
+    return {
+        "episodes": 0,
+        "wins": 0,
+        "timed_episodes": 0,
+        "duration_seconds_total": 0.0,
+        "best_fitness": None,
+        "latest_index": None,
+        "latest_timestamp": None,
+        "by_state": {},
+    }
+
+
+def _state_summary(summary: dict[str, Any], state: str) -> dict[str, Any]:
+    by_state = summary.setdefault("by_state", {})
+    current = by_state.get(state)
+    if not isinstance(current, dict):
+        current = _empty_summary()
+        current.pop("by_state", None)
+        by_state[state] = current
+    return current
+
+
+def _summarize_episode(summary: dict[str, Any], episode: dict[str, Any]) -> None:
+    _update_summary_bucket(summary, episode)
+    state = episode.get("training_state")
+    if isinstance(state, str) and state:
+        _update_summary_bucket(_state_summary(summary, state), episode)
+
+
+def _update_summary_bucket(bucket: dict[str, Any], episode: dict[str, Any]) -> None:
+    bucket["episodes"] = int(bucket.get("episodes", 0)) + 1
+    if episode.get("won") is True:
+        bucket["wins"] = int(bucket.get("wins", 0)) + 1
+
+    duration = episode.get("duration_seconds")
+    if isinstance(duration, int | float) and not isinstance(duration, bool):
+        bucket["timed_episodes"] = int(bucket.get("timed_episodes", 0)) + 1
+        bucket["duration_seconds_total"] = float(bucket.get("duration_seconds_total", 0.0)) + float(duration)
+
+    fitness = episode.get("fitness")
+    if isinstance(fitness, int | float) and not isinstance(fitness, bool):
+        best = bucket.get("best_fitness")
+        if best is None or float(fitness) > float(best):
+            bucket["best_fitness"] = float(fitness)
+
+    index = episode.get("index")
+    if isinstance(index, int):
+        bucket["latest_index"] = index
+    timestamp = episode.get("timestamp")
+    if isinstance(timestamp, str):
+        bucket["latest_timestamp"] = timestamp
+
+
+def _coerce_summary(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    summary = _empty_summary()
+    for key in ("episodes", "wins", "timed_episodes"):
+        if isinstance(value.get(key), int) and not isinstance(value.get(key), bool) and value[key] >= 0:
+            summary[key] = value[key]
+    if isinstance(value.get("duration_seconds_total"), int | float) and not isinstance(
+        value.get("duration_seconds_total"), bool
+    ):
+        summary["duration_seconds_total"] = float(value["duration_seconds_total"])
+    if isinstance(value.get("best_fitness"), int | float) and not isinstance(value.get("best_fitness"), bool):
+        summary["best_fitness"] = float(value["best_fitness"])
+    if isinstance(value.get("latest_index"), int):
+        summary["latest_index"] = value["latest_index"]
+    if isinstance(value.get("latest_timestamp"), str):
+        summary["latest_timestamp"] = value["latest_timestamp"]
+
+    by_state = value.get("by_state")
+    if isinstance(by_state, dict):
+        for state, state_summary in by_state.items():
+            if isinstance(state, str) and state:
+                coerced = _coerce_summary(state_summary)
+                if coerced is not None:
+                    coerced.pop("by_state", None)
+                    summary["by_state"][state] = coerced
+    return summary
+
+
 class TelemetryStore:
     def __init__(self, max_episodes: int | None = None) -> None:
         self._lock = threading.RLock()
@@ -33,6 +116,7 @@ class TelemetryStore:
         self._episodes: deque[dict[str, Any]] = deque(maxlen=max_episodes)
         self._generations: deque[dict[str, Any]] = deque(maxlen=1)
         self._metadata: dict[str, Any] = {}
+        self._summary: dict[str, Any] = _empty_summary()
         self._started_at = _timestamp()
         self._sequence = 0
         self._history_key: str | None = None
@@ -75,6 +159,7 @@ class TelemetryStore:
             self._episodes.clear()
             self._generations.clear()
             self._metadata.clear()
+            self._summary = _empty_summary()
             self._sequence = 0
             self._started_at = _timestamp()
             self._load_history_locked()
@@ -91,14 +176,14 @@ class TelemetryStore:
             self._sequence += 1
             neat = self._metadata.get("neat", {})
             generation = neat.get("current_generation") if isinstance(neat, dict) else None
-            self._episodes.append(
-                {
-                    "index": self._sequence,
-                    "timestamp": _timestamp(),
-                    **({"generation": generation} if generation is not None else {}),
-                    **to_json_value(values),
-                }
-            )
+            episode = {
+                "index": self._sequence,
+                "timestamp": _timestamp(),
+                **({"generation": generation} if generation is not None else {}),
+                **to_json_value(values),
+            }
+            self._episodes.append(episode)
+            _summarize_episode(self._summary, episode)
             self._mark_dirty()
 
     def publish_generation(self, values: dict[str, Any]) -> None:
@@ -115,6 +200,7 @@ class TelemetryStore:
                 if previous_generation is not None and previous_generation != serialized["current_generation"]:
                     self._episodes.clear()
                     self._generations.clear()
+                    self._summary = _empty_summary()
             if replace:
                 self._metadata[section] = serialized
             else:
@@ -128,6 +214,7 @@ class TelemetryStore:
             if removed is not None and clear_history:
                 self._episodes.clear()
                 self._generations.clear()
+                self._summary = _empty_summary()
                 self._sequence = 0
                 self._started_at = _timestamp()
             if removed is not None:
@@ -142,6 +229,7 @@ class TelemetryStore:
                     "updated_at": _timestamp(),
                     "episodes": list(self._episodes),
                     "generations": list(self._generations),
+                    "summary": self._snapshot_summary_locked(),
                     "metadata": self._metadata,
                 }
             )
@@ -176,6 +264,7 @@ class TelemetryStore:
             with self._lock:
                 self._episodes.clear()
                 self._generations.clear()
+                self._summary = _empty_summary()
                 self._sequence = 0
                 self._started_at = _timestamp()
                 self._history_version += 1
@@ -187,8 +276,15 @@ class TelemetryStore:
             "updated_at": _timestamp(),
             "episodes": list(self._episodes),
             "generations": list(self._generations),
+            "summary": self._snapshot_summary_locked(),
             "metadata": self._metadata,
         }
+
+    def _snapshot_summary_locked(self) -> dict[str, Any]:
+        summary = deepcopy(self._summary)
+        summary["retained_episodes"] = len(self._episodes)
+        summary["discarded_episodes"] = max(0, int(summary.get("episodes", 0)) - len(self._episodes))
+        return summary
 
     def _load_history_locked(self) -> None:
         if self._redis is None or self._history_key is None:
@@ -207,12 +303,19 @@ class TelemetryStore:
             neat = metadata.get("neat", {})
             current_generation = neat.get("current_generation") if isinstance(neat, dict) else None
             if current_generation is None:
-                self._episodes.extend(item for item in episodes if isinstance(item, dict))
+                loaded_episodes = [item for item in episodes if isinstance(item, dict)]
             else:
-                self._episodes.extend(
+                loaded_episodes = [
                     item for item in episodes if isinstance(item, dict) and item.get("generation") == current_generation
-                )
+                ]
+            self._episodes.extend(loaded_episodes)
             self._generations.extend(item for item in generations if isinstance(item, dict))
+            summary = _coerce_summary(payload.get("summary"))
+            if summary is None:
+                summary = _empty_summary()
+                for episode in loaded_episodes:
+                    _summarize_episode(summary, episode)
+            self._summary = summary
             self._sequence = max(
                 (item.get("index", 0) for item in self._episodes if isinstance(item.get("index"), int)),
                 default=0,

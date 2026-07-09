@@ -46,13 +46,21 @@ const stateHistory = computed(() => episodes.value.filter(row => row.training_st
 const filtered = computed(() => stateHistory.value)
 const reversed = computed(() => [...filtered.value].reverse())
 const latest = computed(() => filtered.value.at(-1))
-const best = computed(() => filtered.value.length ? Math.max(...filtered.value.map(row => Number(row.fitness) || 0)) : null)
-const wins = computed(() => filtered.value.filter(row => row.won === true).length)
-const winRate = computed(() => filtered.value.length ? wins.value / filtered.value.length * 100 : 0)
+const summary = computed(() => snapshot.value.summary || {})
+const stateSummary = computed(() => summary.value.by_state?.[stateFilter.value] || null)
+const activeSummary = computed(() => stateSummary.value || summary.value)
+const summarizedEpisodes = computed(() => Number(activeSummary.value.episodes) || 0)
+const best = computed(() => activeSummary.value.best_fitness ?? null)
+const wins = computed(() => Number(activeSummary.value.wins) || 0)
+const winRate = computed(() => summarizedEpisodes.value ? wins.value / summarizedEpisodes.value * 100 : 0)
 const timedEpisodes = computed(() => filtered.value.filter(row => Number.isFinite(Number(row.duration_seconds))))
 const avgDuration = computed(() => timedEpisodes.value.length
   ? timedEpisodes.value.reduce((sum, row) => sum + Number(row.duration_seconds), 0) / timedEpisodes.value.length
   : null)
+const summarizedAvgDuration = computed(() => {
+  const timed = Number(activeSummary.value.timed_episodes) || 0
+  return timed ? Number(activeSummary.value.duration_seconds_total) / timed : avgDuration.value
+})
 const fitnessValues = computed(() => stateHistory.value
   .filter(row => row.fitness != null)
   .map(row => Number(row.fitness))
@@ -158,8 +166,8 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
 
     <section class="kpis">
       <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ activeAlgorithm === 'neat' ? 'current generation' : 'observed episodes' }}</small></article>
-      <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ filtered.length }} episodes</small></article>
-      <article class="panel metric"><p>Avg training time</p><strong>{{ duration(avgDuration) }}</strong><small>{{ duration(latest?.duration_seconds) }} latest</small></article>
+      <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
+      <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latest?.duration_seconds) }} latest retained</small></article>
     </section>
 
     <section class="charts">
@@ -200,7 +208,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
     </section>
 
     <section class="panel episodes-card">
-      <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>{{ activeAlgorithm === 'neat' ? 'Current generation episodes' : 'Recent episodes' }}</h2></div><span class="count">{{ episodes.length }} episodes</span></div>
+      <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>{{ activeAlgorithm === 'neat' ? 'Current generation episodes' : 'Recent episodes' }}</h2></div><span class="count">{{ episodes.length }} retained / {{ summary.episodes || episodes.length }} total</span></div>
       <div class="table-scroll"><table><thead><tr><th>#</th><th>Training state</th><th>Fitness</th><th>Won</th><th>Final state</th><th>Details</th></tr></thead>
         <tbody><template v-for="row in reversed.slice(0, 100)" :key="row.index">
           <tr :class="{ expanded: expandedEpisode === row.index }"><td class="dim">{{ row.index }}</td><td><span class="state">{{ row.training_state }}</span></td><td class="fitness">{{ fmt(row.fitness, 2) }}</td><td><span :class="['status', row.won === true ? 'success' : 'neutral']">{{ row.won == null ? '—' : row.won ? 'Won' : 'No' }}</span></td><td>{{ row.final_state || '—' }}</td><td><button v-if="ramEntries(row).length" type="button" class="ram-toggle" :aria-expanded="expandedEpisode === row.index" @click="toggleRam(row)">{{ expandedEpisode === row.index ? 'Hide RAM' : 'Show RAM' }}</button><span v-else class="dim">—</span></td></tr>
@@ -209,7 +217,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
         <tr v-if="!reversed.length"><td colspan="6" class="empty-row">Waiting for the evaluator to complete an episode.</td></tr></tbody>
       </table></div>
     </section>
-    <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} {{ activeAlgorithm === 'neat' ? 'current generation' : 'observed' }} episodes</footer>
+    <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} retained / {{ summarizedEpisodes }} {{ activeAlgorithm === 'neat' ? 'current generation' : 'observed' }} episodes</footer>
 
     <div v-if="showResetDialog" class="modal-backdrop" @click.self="showResetDialog = false">
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">
