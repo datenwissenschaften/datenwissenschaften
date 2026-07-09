@@ -35,7 +35,9 @@ class Explorer(TargetState[T], ABC):
         position_is_unseen = current_position not in self.visited_positions
         self.visited_positions.add(current_position)
 
-        reward = self.area_discovery_reward if area_is_unseen else 0.0
+        reward = super()._target_reward(distance)
+        if area_is_unseen:
+            reward += self.area_discovery_reward
         if position_is_unseen:
             reward += self.position_discovery_reward
         if distance is not None:
