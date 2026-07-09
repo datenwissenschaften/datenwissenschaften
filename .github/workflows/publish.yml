@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -50,9 +50,17 @@ jobs:
           import urllib.error
           import urllib.request
 
-          def get_project_name():
-              with open("pyproject.toml", "r") as f:
-                  content = f.read()
+          PYPROJECT = "pyproject.toml"
+
+          def run_git(*args):
+              return subprocess.run(
+                  ["git", *args],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout.strip()
+
+          def get_project_name(content):
               match = re.search(r'^name = "([^"]+)"', content, re.MULTILINE)
               return match.group(1) if match else None
 
@@ -60,25 +68,41 @@ jobs:
               match = re.search(r'^version = "([^"]+)"', content, re.MULTILINE)
               return match.group(1) if match else None
 
+          def set_version(version):
+              with open(PYPROJECT, "r", encoding="utf-8") as f:
+                  content = f.read()
+              updated = re.sub(r'^version = "[^"]+"', f'version = "{version}"', content, count=1, flags=re.MULTILINE)
+              with open(PYPROJECT, "w", encoding="utf-8") as f:
+                  f.write(updated)
+
           def get_current_version():
-              with open("pyproject.toml", "r") as f:
+              with open(PYPROJECT, "r", encoding="utf-8") as f:
                   return get_version(f.read())
 
           def get_previous_version():
               try:
-                  content = subprocess.run(
-                      ["git", "show", "HEAD^:pyproject.toml"],
-                      check=True,
-                      capture_output=True,
-                      text=True,
-                  ).stdout
+                  content = run_git("show", f"HEAD^:{PYPROJECT}")
               except subprocess.CalledProcessError:
                   return None
               return get_version(content)
 
-          def major_minor(version):
-              match = re.match(r'^(\d+)\.(\d+)(?:\.|$)', version)
-              return tuple(map(int, match.groups())) if match else None
+          def parse_version(version):
+              match = re.match(r'^(\d+)\.(\d+)\.(\d+)(.*)$', version)
+              if not match:
+                  return None
+              major, minor, patch, suffix = match.groups()
+              return int(major), int(minor), int(patch), suffix
+
+          def bump_version(version, increment):
+              parsed = parse_version(version)
+              if parsed is None:
+                  raise ValueError(f"Version must use MAJOR.MINOR.PATCH format: {version}")
+              major, minor, patch, _ = parsed
+              if increment == "minor":
+                  return f"{major}.{minor + 1}.0"
+              if increment == "patch":
+                  return f"{major}.{minor}.{patch + 1}"
+              raise ValueError(f"Unsupported increment: {increment}")
 
           def pypi_version_exists(project_name, version):
               url = f"https://pypi.org/pypi/{project_name}/{version}/json"
@@ -90,46 +114,108 @@ jobs:
                       return False
                   raise
 
-          project_name = get_project_name()
+          def version_change_base():
+              try:
+                  commits = run_git("log", "--format=%H", "--", PYPROJECT).splitlines()
+              except subprocess.CalledProcessError:
+                  return None
+              for commit in commits:
+                  try:
+                      current = get_version(run_git("show", f"{commit}:{PYPROJECT}"))
+                      previous = get_version(run_git("show", f"{commit}^:{PYPROJECT}"))
+                  except subprocess.CalledProcessError:
+                      continue
+                  if current != previous:
+                      return commit
+              return commits[-1] if commits else None
+
+          def commit_messages_since(base):
+              if base is None:
+                  range_spec = "HEAD"
+              else:
+                  range_spec = f"{base}..HEAD"
+              try:
+                  return run_git("log", "--format=%B%x00", range_spec)
+              except subprocess.CalledProcessError:
+                  return ""
+
+          def recommended_increment(messages):
+              highest = None
+              for message in messages.split("\x00"):
+                  lines = [line.strip() for line in message.splitlines()]
+                  subject = next((line for line in lines if line), "")
+                  if not subject:
+                      continue
+                  breaking = "BREAKING CHANGE" in message or re.match(r"^[a-zA-Z]+(?:\([^)]+\))?!:", subject)
+                  if breaking:
+                      highest = "minor"
+                      continue
+                  match = re.match(r"^([a-zA-Z]+)(?:\([^)]+\))?:", subject)
+                  commit_type = match.group(1).lower() if match else ""
+                  if commit_type == "feat":
+                      highest = "minor"
+                  elif commit_type in {"fix", "perf"} and highest != "minor":
+                      highest = "patch"
+              return highest
+
+          with open(PYPROJECT, "r", encoding="utf-8") as f:
+              pyproject_content = f.read()
+
+          project_name = get_project_name(pyproject_content)
           current_str = get_current_version()
           previous_str = get_previous_version()
 
           if not project_name:
-              print("Could not find project name in pyproject.toml")
+              print(f"Could not find project name in {PYPROJECT}")
               exit(1)
 
           if not current_str:
-              print("Could not find version in pyproject.toml")
+              print(f"Could not find version in {PYPROJECT}")
               exit(1)
 
-          print(f"Current version in pyproject.toml: {current_str}")
+          if parse_version(current_str) is None:
+              print(f"Unsupported version format in {PYPROJECT}: {current_str}")
+              exit(1)
+
+          print(f"Current version in {PYPROJECT}: {current_str}")
 
           bumped = False
-          manually_changed_release = (
-              previous_str is not None
-              and major_minor(previous_str) is not None
-              and major_minor(current_str) is not None
-              and major_minor(previous_str) != major_minor(current_str)
-          )
+          publish = True
+          current_major = parse_version(current_str)[0]
+          previous_major = parse_version(previous_str)[0] if previous_str and parse_version(previous_str) else current_major
 
-          if manually_changed_release:
-              print(
-                  f"Major/minor version was manually changed from {previous_str} "
-                  f"to {current_str}. Skipping automated patch bump."
-              )
+          if previous_str is not None and current_major != previous_major:
+              print(f"Major version was manually changed from {previous_str} to {current_str}; not auto-bumping.")
           else:
-              while pypi_version_exists(project_name, current_str):
-                  print(f"Version {current_str} already exists on PyPI. Bumping patch version...")
-                  subprocess.run(["poetry", "version", "patch"], check=True)
-                  current_str = get_current_version()
+              increment = recommended_increment(commit_messages_since(version_change_base()))
+              if increment is None:
+                  print("No feat/fix/perf/major Commitizen commits found since the last version change.")
+              else:
+                  print(f"Commitizen commits recommend a {increment} bump.")
+                  current_str = bump_version(current_str, increment)
                   bumped = True
+
+          while pypi_version_exists(project_name, current_str):
+              if bumped:
+                  print(f"Version {current_str} already exists on PyPI. Bumping patch version...")
+                  current_str = bump_version(current_str, "patch")
+              else:
+                  print(f"Version {current_str} already exists on PyPI and no bump was requested. Skipping publish.")
+                  publish = False
+                  break
+
+          if bumped:
+              set_version(current_str)
+              print(f"Updated {PYPROJECT} to {current_str}")
 
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"bumped={'true' if bumped else 'false'}\n")
+              f.write(f"publish={'true' if publish else 'false'}\n")
               f.write(f"new_version={current_str}\n")
           EOF
 
       - name: Build and Publish
+        if: steps.bump.outputs.publish == 'true'
         env:
           POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
         run: poetry publish --build
@@ -140,5 +226,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add pyproject.toml
-          git commit -m "Bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
+          git commit -m "chore(release): bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
           git push
