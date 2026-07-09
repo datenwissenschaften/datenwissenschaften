@@ -47,10 +47,6 @@ class RetroSpeedlabRuntime:
     def cache_dir(self) -> Path:
         return self.paths.cache_dir
 
-    @property
-    def neat_dir(self) -> Path:
-        return self.paths.models_dir / "neat"
-
 
 _runtime: RetroSpeedlabRuntime | None = None
 

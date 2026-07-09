@@ -27,7 +27,6 @@ class TrainingSettings:
     game: str
     game_identity: str
     total_timesteps: int
-    population_size: int
     savestate: str | None
     savestates: tuple[str, ...]
     savestate_rotation_seconds: int
@@ -89,7 +88,6 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
     upload = _mapping(document, "upload")
     base_dir = config_path.parent
 
-    population_size = _positive_int(training, "population_size")
     savestate = _nullable_string(training, "savestate") if "savestate" in training else None
     savestates = _string_tuple(training, "savestates", default=())
     if not savestate and not savestates:
@@ -111,8 +109,7 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             savestates=savestates,
             savestate_rotation_seconds=_positive_int(training, "savestate_rotation_seconds", default=14_400),
             savestate_beaten_threshold=_positive_int(training, "savestate_beaten_threshold", default=1),
-            num_envs=_environment_count(training, "num_envs", population_size),
-            population_size=population_size,
+            num_envs=_environment_count(training, "num_envs"),
         ),
         log_level=_string(document, "log_level"),
         upload=UploadSettings(
@@ -189,10 +186,10 @@ def _positive_int(values: dict[str, Any], key: str, *, default: int | None = Non
     return value
 
 
-def _environment_count(values: dict[str, Any], key: str, population_size: int) -> int:
+def _environment_count(values: dict[str, Any], key: str) -> int:
     value = values.get(key)
     if isinstance(value, str) and value.casefold() == "auto":
-        return optimal_env_count(population_size)
+        return optimal_env_count()
     return _positive_int(values, key)
 
 

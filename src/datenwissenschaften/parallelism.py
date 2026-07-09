@@ -13,13 +13,13 @@ _MIN_MEMORY_RESERVE = 1024 * _MIB
 
 @lru_cache(maxsize=32)
 def optimal_env_count(
-    population_size: int,
+    worker_limit: int | None = None,
     *,
     cpu_count: int | None = None,
     memory_limit: int | None = None,
 ) -> int:
-    if population_size < 1:
-        raise ValueError("population_size must be positive.")
+    if worker_limit is not None and worker_limit < 1:
+        raise ValueError("worker_limit must be positive.")
 
     detected_cpus = cpu_count if cpu_count is not None else _available_cpu_count()
     detected_memory = memory_limit if memory_limit is not None else _memory_limit()
@@ -27,13 +27,15 @@ def optimal_env_count(
     cpu_workers = max(1, detected_cpus - 1)
     memory_reserve = max(_MIN_MEMORY_RESERVE, detected_memory // 5)
     memory_workers = max(1, (detected_memory - memory_reserve) // _WORKER_MEMORY_BUDGET)
-    selected = max(1, min(population_size, cpu_workers, memory_workers))
+    candidates = [cpu_workers, memory_workers]
+    if worker_limit is not None:
+        candidates.append(worker_limit)
+    selected = max(1, min(candidates))
 
     logger.info(
         "Auto-selected environment parallelism: "
         f"num_envs={selected}, cpus={detected_cpus}, "
-        f"memory_limit={detected_memory / 1024**3:.1f} GiB, "
-        f"population_size={population_size}"
+        f"memory_limit={detected_memory / 1024**3:.1f} GiB"
     )
     return selected
 

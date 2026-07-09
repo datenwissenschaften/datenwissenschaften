@@ -20,7 +20,7 @@ from datenwissenschaften.model import get_model_metadata, get_model_path
 from datenwissenschaften.retro.environment import get_last_environment_wrapper
 from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfig, load_config
-from datenwissenschaften.ui import clear_metadata, configure_history, publish_metadata, start_ui
+from datenwissenschaften.ui import configure_history, publish_metadata, start_ui
 from datenwissenschaften.ui.control import configure_training_control
 
 
@@ -82,13 +82,10 @@ class Trainer:
                 "savestate_rotation_seconds": self.config.training.savestate_rotation_seconds,
                 "savestate_beaten_threshold": self.config.training.savestate_beaten_threshold,
                 "total_timesteps": self.total_timesteps,
-                "population_size": self.config.training.population_size,
                 "configured_envs": self.config.training.num_envs,
             },
         )
         model_metadata = get_model_metadata(model)
-        if "ppo" in model_metadata:
-            clear_metadata("neat", clear_history=True)
         publish_metadata("model", model_metadata, replace=True)
         publish_metadata("environment", self._environment_metadata(env))
 

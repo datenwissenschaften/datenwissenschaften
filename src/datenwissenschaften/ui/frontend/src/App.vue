@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FitnessHistogram from './FitnessHistogram.vue'
 
-const snapshot = ref({ episodes: [], generations: [], metadata: {} })
+const snapshot = ref({ episodes: [], metadata: {} })
 const connected = ref(false)
 const error = ref('')
 const stateFilter = ref('')
@@ -71,7 +71,6 @@ const fitnessBucketCount = computed(() => fitnessValues.value.length
 const model = computed(() => snapshot.value.metadata?.model || {})
 const ppo = computed(() => model.value.ppo || {})
 const rnd = computed(() => model.value.rnd || {})
-const neat = computed(() => snapshot.value.metadata?.neat || {})
 const environment = computed(() => snapshot.value.metadata?.environment || {})
 const runtimeDetails = computed(() => {
   const { class: _environmentClass, ...details } = environment.value
@@ -89,23 +88,7 @@ const server = computed(() => snapshot.value.server || {})
 const versionLabel = computed(() => server.value.version === 'DEVELOPMENT'
   ? 'DEVELOPMENT'
   : server.value.version ? `v${server.value.version}` : '—')
-const generation = computed(() => snapshot.value.generations?.at(-1))
-const currentGeneration = computed(() => neat.value.current_generation ?? generation.value?.generation)
-const generationEpisodesCompleted = computed(() => Number(neat.value.generation_episodes_completed) || 0)
-const generationEpisodesTotal = computed(() => Number(neat.value.generation_episodes_total) || 0)
-const generationProgress = computed(() => generationEpisodesTotal.value
-  ? Math.min(100, generationEpisodesCompleted.value / generationEpisodesTotal.value * 100)
-  : 0)
-const neatDetails = computed(() => {
-  const {
-    current_generation: _currentGeneration,
-    generation_episodes_completed: _generationEpisodesCompleted,
-    generation_episodes_total: _generationEpisodesTotal,
-    ...details
-  } = neat.value
-  return details
-})
-const activeAlgorithm = computed(() => entries(ppo.value).length ? 'ppo' : entries(neat.value).length ? 'neat' : null)
+const activeAlgorithm = computed(() => entries(ppo.value).length ? 'ppo' : null)
 const control = computed(() => snapshot.value.control || {})
 
 const resetModel = async () => {
@@ -172,7 +155,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
     </section>
 
     <section class="kpis">
-      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ activeAlgorithm === 'neat' ? 'current generation' : 'observed episodes' }}</small></article>
+      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>observed episodes</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
       <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latest?.duration_seconds) }} latest retained</small></article>
       <article class="panel metric"><p>Savestate beaten</p><strong>{{ selectedSavestateProgress ? `${fmt(selectedBeatenCount)} / ${fmt(selectedBeatenThreshold)}` : '—' }}</strong><small>{{ selectedSavestateProgress?.beaten ? 'threshold reached' : selectedSavestateProgress?.has_savestate ? 'automatic savestate active' : 'no automatic savestate yet' }}</small></article>
@@ -199,19 +182,9 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
         <div class="card-heading"><div><p class="eyebrow">INTRINSIC EXPLORATION</p><h2>Random Network Distillation</h2></div><span class="chip">Active</span></div>
         <dl><template v-for="([key, value]) in entries(rnd)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
       </article>
-      <article v-if="activeAlgorithm === 'neat'" class="panel detail-card">
-        <div class="card-heading"><div><p class="eyebrow">EVOLUTION</p><h2>NEAT</h2></div><span class="chip">gen {{ currentGeneration ?? '—' }}</span></div>
-        <div v-if="generationEpisodesTotal" class="generation-progress">
-          <div><span>Current generation</span><strong>{{ fmt(generationEpisodesCompleted) }} / {{ fmt(generationEpisodesTotal) }} episodes</strong></div>
-          <div class="progress-track"><i :style="{ width: `${generationProgress}%` }"></i></div>
-          <small>{{ fmt(generationProgress, 1) }}% complete</small>
-        </div>
-        <dl v-if="entries(neatDetails).length"><template v-for="([key, value]) in entries(neatDetails)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
-        <p v-else class="placeholder">NEAT details appear when evolution starts.</p>
-      </article>
       <article v-if="!activeAlgorithm" class="panel detail-card">
         <div class="card-heading"><div><p class="eyebrow">MODEL</p><h2>Algorithm</h2></div><span class="chip muted">Waiting</span></div>
-        <p class="placeholder">Algorithm details appear when PPO or NEAT starts.</p>
+        <p class="placeholder">Algorithm details appear when PPO starts.</p>
       </article>
       <article v-if="savestateProgressRows.length" class="panel detail-card">
         <div class="card-heading"><div><p class="eyebrow">AUTOMATIC SAVESTATES</p><h2>Beaten counts</h2></div><span class="chip">{{ fmt(selectedBeatenThreshold) }} target</span></div>
@@ -220,7 +193,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
     </section>
 
     <section class="panel episodes-card">
-      <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>{{ activeAlgorithm === 'neat' ? 'Current generation episodes' : 'Recent episodes' }}</h2></div><span class="count">{{ episodes.length }} retained / {{ summary.episodes || episodes.length }} total</span></div>
+      <div class="card-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>Recent episodes</h2></div><span class="count">{{ episodes.length }} retained / {{ summary.episodes || episodes.length }} total</span></div>
       <div class="table-scroll"><table><thead><tr><th>#</th><th>Training state</th><th>Fitness</th><th>Won</th><th>Final state</th><th>Details</th></tr></thead>
         <tbody><template v-for="row in reversed.slice(0, 100)" :key="row.index">
           <tr :class="{ expanded: expandedEpisode === row.index }"><td class="dim">{{ row.index }}</td><td><span class="state">{{ row.training_state }}</span></td><td class="fitness">{{ fmt(row.fitness, 2) }}</td><td><span :class="['status', row.won === true ? 'success' : 'neutral']">{{ row.won == null ? '—' : row.won ? 'Won' : 'No' }}</span></td><td>{{ row.final_state || '—' }}</td><td><button v-if="ramEntries(row).length" type="button" class="ram-toggle" :aria-expanded="expandedEpisode === row.index" @click="toggleRam(row)">{{ expandedEpisode === row.index ? 'Hide RAM' : 'Show RAM' }}</button><span v-else class="dim">—</span></td></tr>
@@ -229,7 +202,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
         <tr v-if="!reversed.length"><td colspan="6" class="empty-row">Waiting for the evaluator to complete an episode.</td></tr></tbody>
       </table></div>
     </section>
-    <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} retained / {{ summarizedEpisodes }} {{ activeAlgorithm === 'neat' ? 'current generation' : 'observed' }} episodes</footer>
+    <footer>Local telemetry · refreshes every 1.5 seconds · {{ filtered.length }} retained / {{ summarizedEpisodes }} observed episodes</footer>
 
     <div v-if="showResetDialog" class="modal-backdrop" @click.self="showResetDialog = false">
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">

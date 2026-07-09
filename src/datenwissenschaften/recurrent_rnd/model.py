@@ -379,7 +379,7 @@ class RecurrentRNDModel:
     @staticmethod
     def cleanup_incompatible_artifacts(config) -> None:
         game_dir = config.paths.models_dir / config.training.game_identity
-        for name in ("datenwissenschaften", "neat"):
+        for name in ("datenwissenschaften",):
             path = game_dir / name
             if path.is_symlink() or path.is_file():
                 path.unlink(missing_ok=True)
@@ -387,7 +387,7 @@ class RecurrentRNDModel:
                 shutil.rmtree(path)
             else:
                 continue
-            logger.info(f"Removed incompatible NEAT model artifacts: {path}")
+            logger.info(f"Removed incompatible legacy model artifacts: {path}")
 
     @staticmethod
     def load(path: str, **kwargs: Any) -> RecurrentRNDPPO:

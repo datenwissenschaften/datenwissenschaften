@@ -114,7 +114,6 @@ class TelemetryStore:
         self._lock = threading.RLock()
         self._write_lock = threading.Lock()
         self._episodes: deque[dict[str, Any]] = deque(maxlen=max_episodes)
-        self._generations: deque[dict[str, Any]] = deque(maxlen=1)
         self._metadata: dict[str, Any] = {}
         self._summary: dict[str, Any] = _empty_summary()
         self._started_at = _timestamp()
@@ -157,7 +156,6 @@ class TelemetryStore:
             self._history_key = history_key
             self._history_version += 1
             self._episodes.clear()
-            self._generations.clear()
             self._metadata.clear()
             self._summary = _empty_summary()
             self._sequence = 0
@@ -174,33 +172,18 @@ class TelemetryStore:
     def publish_episode(self, values: dict[str, Any]) -> None:
         with self._lock:
             self._sequence += 1
-            neat = self._metadata.get("neat", {})
-            generation = neat.get("current_generation") if isinstance(neat, dict) else None
             episode = {
                 "index": self._sequence,
                 "timestamp": _timestamp(),
-                **({"generation": generation} if generation is not None else {}),
                 **to_json_value(values),
             }
             self._episodes.append(episode)
             _summarize_episode(self._summary, episode)
             self._mark_dirty()
 
-    def publish_generation(self, values: dict[str, Any]) -> None:
-        with self._lock:
-            self._generations.append({"timestamp": _timestamp(), **to_json_value(values)})
-            self._mark_dirty()
-
     def publish_metadata(self, section: str, values: dict[str, Any], *, replace: bool = False) -> None:
         with self._lock:
             serialized = to_json_value(values)
-            if section == "neat" and "current_generation" in serialized:
-                current = self._metadata.get("neat", {})
-                previous_generation = current.get("current_generation") if isinstance(current, dict) else None
-                if previous_generation is not None and previous_generation != serialized["current_generation"]:
-                    self._episodes.clear()
-                    self._generations.clear()
-                    self._summary = _empty_summary()
             if replace:
                 self._metadata[section] = serialized
             else:
@@ -213,7 +196,6 @@ class TelemetryStore:
             removed = self._metadata.pop(section, None)
             if removed is not None and clear_history:
                 self._episodes.clear()
-                self._generations.clear()
                 self._summary = _empty_summary()
                 self._sequence = 0
                 self._started_at = _timestamp()
@@ -228,7 +210,6 @@ class TelemetryStore:
                     "started_at": self._started_at,
                     "updated_at": _timestamp(),
                     "episodes": list(self._episodes),
-                    "generations": list(self._generations),
                     "summary": self._snapshot_summary_locked(),
                     "metadata": self._metadata,
                 }
@@ -263,7 +244,6 @@ class TelemetryStore:
                     logger.warning(f"Could not delete training UI history from Redis key {history_key}: {error}")
             with self._lock:
                 self._episodes.clear()
-                self._generations.clear()
                 self._summary = _empty_summary()
                 self._sequence = 0
                 self._started_at = _timestamp()
@@ -275,7 +255,6 @@ class TelemetryStore:
             "started_at": self._started_at,
             "updated_at": _timestamp(),
             "episodes": list(self._episodes),
-            "generations": list(self._generations),
             "summary": self._snapshot_summary_locked(),
             "metadata": self._metadata,
         }
@@ -295,21 +274,12 @@ class TelemetryStore:
                 return
             payload = json.loads(serialized)
             episodes = payload.get("episodes", [])
-            generations = payload.get("generations", [])
             metadata = payload.get("metadata", {})
-            if not isinstance(episodes, list) or not isinstance(generations, list) or not isinstance(metadata, dict):
+            if not isinstance(episodes, list) or not isinstance(metadata, dict):
                 raise ValueError("history fields have invalid types")
             self._metadata.update(metadata)
-            neat = metadata.get("neat", {})
-            current_generation = neat.get("current_generation") if isinstance(neat, dict) else None
-            if current_generation is None:
-                loaded_episodes = [item for item in episodes if isinstance(item, dict)]
-            else:
-                loaded_episodes = [
-                    item for item in episodes if isinstance(item, dict) and item.get("generation") == current_generation
-                ]
+            loaded_episodes = [item for item in episodes if isinstance(item, dict)]
             self._episodes.extend(loaded_episodes)
-            self._generations.extend(item for item in generations if isinstance(item, dict))
             summary = _coerce_summary(payload.get("summary"))
             if summary is None:
                 summary = _empty_summary()
@@ -363,10 +333,6 @@ def clear_metadata(section: str, *, clear_history: bool = False) -> None:
 
 def publish_episode(**values: Any) -> None:
     _store.publish_episode(values)
-
-
-def publish_generation(**values: Any) -> None:
-    _store.publish_generation(values)
 
 
 def publish_metadata(section: str, values: dict[str, Any], *, replace: bool = False) -> None:

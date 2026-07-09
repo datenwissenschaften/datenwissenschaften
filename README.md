@@ -6,7 +6,7 @@
 The reinforcement-learning engine behind [Retro Speedlab](https://github.com/datenwissenschaften/retro-speedlab).
 
 `datenwissenschaften` turns classic-game emulators into reproducible training systems. It provides visual and
-state-aware environments, recurrent and evolutionary agents, parallel execution, durable checkpoints, episode
+state-aware environments, recurrent PPO agents, parallel execution, durable checkpoints, episode
 recording, and a live browser dashboard in one focused Python package.
 
 > This repository contains the reusable engine. For game runners, end-to-end examples, and user-facing
@@ -16,12 +16,11 @@ recording, and a live browser dashboard in one focused Python package.
 
 - **Exploration for sparse rewards** — multi-input CNN-LSTM PPO combines visual frames, normalized RAM, temporal
   memory, and normalized, clipped, annealed Random Network Distillation (RND).
-- **State-aware neuroevolution** — NEAT trains and routes independent controllers across declared game states.
 - **Efficient execution** — vectorized environments, automatic worker selection, CUDA tuning, and CPU fallback.
 - **Reliable training runs** — atomic checkpoints, resumable model state, automatic savestates, and `.bk2` replay
   capture.
 - **Operational visibility** — a local Vue dashboard reports episode outcomes, reward distributions, environment
-  details, PPO parameters, RND progress, and NEAT generations.
+  details, PPO parameters, RND progress, and automatic-savestate progress.
 - **Game-oriented infrastructure** — ROM discovery, RAM models, state machines, visual encoders, and configurable
   action translation.
 
@@ -30,13 +29,11 @@ recording, and a live browser dashboard in one focused Python package.
 | Model | Best suited to | Characteristics |
 | --- | --- | --- |
 | `RecurrentRNDModel` | Sparse-reward NES games and partially observable state | Automatic visual + RAM inputs, NES-tuned recurrent PPO, LSTM memory, intrinsic RND exploration |
-| `NEATModel` | Compact engineered features and explicit state-by-state evolution | Separate populations and winning controllers per training state |
 | Custom SB3 model | Experiments that need a standard Stable-Baselines3 algorithm | Integrates through the same builder, trainer, callbacks, and dashboard |
 
 `RecurrentRNDModel` is the recommended starting point for visual agents. RND encourages the policy to visit novel
 observations, while its influence decays during training so learned external rewards increasingly drive behavior.
 The predictor, fixed target, optimizer, reward statistics, and annealing progress are all preserved in checkpoints.
-Selecting it also clears incompatible per-game NEAT artifacts before loading or creating the recurrent model.
 Environment wrappers always use RGB observations and one emulator step per selected action; these are fixed engine
 defaults rather than game-level options.
 The default profile uses longer 512-step rollouts, a 512-unit LSTM, `gamma=0.999`, `gae_lambda=0.98`, and a slower
@@ -45,7 +42,8 @@ shorter arcade baseline while retaining conservative PPO updates.
 
 Set `training.savestate_beaten_threshold` to the number of victories required before a training state is marked as
 beaten and the next automatic savestate is promoted. Each `<State>.beaten` file stores the current victory count;
-the default threshold is `1`.
+the default threshold is `1`. PPO telemetry and automatic-savestate safeguards use extrinsic environment reward only;
+RND curiosity remains an exploration bonus for policy updates and does not count as savestate progress.
 
 ## Installation
 
@@ -67,7 +65,7 @@ cp config.example.yaml config.yaml
 ## Training dashboard
 
 Enable the dashboard with `ui.enable: true`, then open [http://127.0.0.1:18080](http://127.0.0.1:18080). It refreshes
-live training telemetry without interrupting the learners and distinguishes between PPO + RND and NEAT runs.
+live training telemetry without interrupting the learner.
 
 Dashboard history is restored from and persisted to Redis. The default Redis URL is
 `redis://127.0.0.1:6379/0`, and history keys use the `datenwissenschaften:history` prefix. The `ui` mapping accepts
