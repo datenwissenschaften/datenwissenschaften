@@ -16,6 +16,7 @@ from datenwissenschaften.ram import RamInfo
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
+from datenwissenschaften.ui.telemetry import publish_metadata
 
 T = TypeVar("T", bound=RamInfo)
 
@@ -66,6 +67,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         self._validate_training_states()
         self._load_savestates()
+        self._publish_savestate_progress()
 
         channels = 1 if self.grayscale else 3
 
@@ -150,6 +152,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                     savestate = self.env.unwrapped.em.get_state()
                     if self.state_machine.save_current_state(savestate):
                         self._write_savestate(state_after_step.__name__, savestate)
+                        self._publish_savestate_progress()
                         logger.info(f"Saved automatic savestate for {state_after_step.__name__}")
 
             reward += state_reward
@@ -392,6 +395,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         with self._beaten_lock(state_name):
             beaten_count = min(self.savestate_beaten_threshold, self._beaten_count(state_name) + 1)
             self._write_beaten_count(state_name, beaten_count)
+            self._publish_savestate_progress()
             if beaten_count < self.savestate_beaten_threshold:
                 logger.debug(
                     f"Recorded savestate victory for {state_name} "
@@ -401,10 +405,26 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
             self.state_machine.mark_beaten(state_cls)
             self._delete_savestate_file(state_name)
+            self._publish_savestate_progress()
             logger.debug(
                 f"Marked savestate as beaten for {state_name} " f"({beaten_count}/{self.savestate_beaten_threshold})"
             )
             return True
+
+    def _savestate_progress(self) -> dict[str, dict[str, int | bool]]:
+        progress = {}
+        for state_name, state_cls in self._training_classes_by_name().items():
+            beaten_count = min(self.savestate_beaten_threshold, self._beaten_count(state_name))
+            progress[state_name] = {
+                "beaten_count": beaten_count,
+                "beaten_threshold": self.savestate_beaten_threshold,
+                "beaten": beaten_count >= self.savestate_beaten_threshold or self.state_machine.is_beaten(state_cls),
+                "has_savestate": self._savestate_path(state_name).is_file(),
+            }
+        return progress
+
+    def _publish_savestate_progress(self) -> None:
+        publish_metadata("savestate_progress", self._savestate_progress(), replace=True)
 
     def _beaten_count(self, state_name: str) -> int:
         path = self._beaten_path(state_name)

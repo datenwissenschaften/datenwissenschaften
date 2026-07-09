@@ -4,6 +4,7 @@ from typing import ClassVar, TypeVar
 
 from datenwissenschaften.helpers.position import Position
 from datenwissenschaften.ram import RamInfo
+from datenwissenschaften.settings import load_config
 from datenwissenschaften.states.state import State
 from datenwissenschaften.states.target_memory import TargetMemory
 from datenwissenschaften.vision.template_detector import TemplateDetector
@@ -70,7 +71,7 @@ class TargetState(State[T], ABC):
         return 0.0
 
     def _target_memory_path(self) -> str | Path:
-        return Path("working/target_memory") / f"{Path(self.template_file).stem}.json"
+        return load_config().paths.cache_dir / "target_memory" / f"{Path(self.template_file).stem}.json"
 
     def _actor_position(self, ram: T) -> Position:
         return Position(

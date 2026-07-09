@@ -78,6 +78,13 @@ const runtimeDetails = computed(() => {
   return { class: model.value.class || 'Unknown', ...details }
 })
 const run = computed(() => snapshot.value.metadata?.run || {})
+const savestateProgress = computed(() => snapshot.value.metadata?.savestate_progress || {})
+const savestateProgressRows = computed(() => Object.entries(savestateProgress.value)
+  .map(([state, value]) => ({ state, ...(value || {}) }))
+  .sort((left, right) => left.state.localeCompare(right.state)))
+const selectedSavestateProgress = computed(() => savestateProgress.value[stateFilter.value] || null)
+const selectedBeatenCount = computed(() => Number(selectedSavestateProgress.value?.beaten_count) || 0)
+const selectedBeatenThreshold = computed(() => Number(selectedSavestateProgress.value?.beaten_threshold) || Number(run.value.savestate_beaten_threshold) || 0)
 const server = computed(() => snapshot.value.server || {})
 const versionLabel = computed(() => server.value.version === 'DEVELOPMENT'
   ? 'DEVELOPMENT'
@@ -168,6 +175,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
       <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ activeAlgorithm === 'neat' ? 'current generation' : 'observed episodes' }}</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
       <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latest?.duration_seconds) }} latest retained</small></article>
+      <article class="panel metric"><p>Savestate beaten</p><strong>{{ selectedSavestateProgress ? `${fmt(selectedBeatenCount)} / ${fmt(selectedBeatenThreshold)}` : '—' }}</strong><small>{{ selectedSavestateProgress?.beaten ? 'threshold reached' : selectedSavestateProgress?.has_savestate ? 'automatic savestate active' : 'no automatic savestate yet' }}</small></article>
     </section>
 
     <section class="charts">
@@ -204,6 +212,10 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
       <article v-if="!activeAlgorithm" class="panel detail-card">
         <div class="card-heading"><div><p class="eyebrow">MODEL</p><h2>Algorithm</h2></div><span class="chip muted">Waiting</span></div>
         <p class="placeholder">Algorithm details appear when PPO or NEAT starts.</p>
+      </article>
+      <article v-if="savestateProgressRows.length" class="panel detail-card">
+        <div class="card-heading"><div><p class="eyebrow">AUTOMATIC SAVESTATES</p><h2>Beaten counts</h2></div><span class="chip">{{ fmt(selectedBeatenThreshold) }} target</span></div>
+        <dl><template v-for="row in savestateProgressRows" :key="row.state"><dt>{{ row.state }}</dt><dd>{{ fmt(row.beaten_count) }} / {{ fmt(row.beaten_threshold) }} · {{ row.beaten ? 'beaten' : row.has_savestate ? 'saved' : 'pending' }}</dd></template></dl>
       </article>
     </section>
 

@@ -19,6 +19,7 @@ class RetroSpeedlabPaths:
     models_dir: Path
     record_dir: Path
     savestate_dir: Path
+    cache_dir: Path
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,7 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             models_dir=_path(paths, "models", base_dir),
             record_dir=_path(paths, "recordings", base_dir),
             savestate_dir=_path(paths, "savestates", base_dir),
+            cache_dir=_path(paths, "cache", base_dir),
         ),
         training=TrainingSettings(
             game=_string(training, "game"),
@@ -123,7 +125,7 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
 
 def empty_all_paths(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
     paths = load_config(config_path).paths
-    for path in (paths.models_dir, paths.record_dir, paths.savestate_dir):
+    for path in (paths.models_dir, paths.record_dir, paths.savestate_dir, paths.cache_dir):
         if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
         else:
