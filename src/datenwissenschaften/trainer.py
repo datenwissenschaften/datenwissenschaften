@@ -31,9 +31,11 @@ class Trainer:
         *,
         additional_callbacks: Sequence[BaseCallback] | None = None,
         config_path: str | Path = DEFAULT_CONFIG_PATH,
+        state_name: str,
     ) -> None:
         self.config: RetroSpeedlabConfig = load_config(config_path)
         setup_logging(self.config.log_level)
+        self.state_name = state_name
         self.total_timesteps = self.config.training.total_timesteps
         self._additional_callbacks = list(additional_callbacks or [])
         self.callbacks = self._default_callbacks() + self._additional_callbacks
@@ -62,9 +64,10 @@ class Trainer:
             redis_url=self.config.ui.redis_url,
             key_prefix=self.config.ui.history_key_prefix,
         )
+        model_dir = self.config.paths.models_dir / self.config.training.game_identity / self.state_name
         configure_training_control(
             game=self.config.training.game,
-            model_dir=self.config.paths.models_dir / self.config.training.game_identity,
+            model_dir=model_dir,
             restart_supported=bool(getattr(model, "supports_ui_restart", False)),
             on_reset=lambda: self._reset_for_restart(model),
         )
@@ -76,6 +79,7 @@ class Trainer:
             {
                 "game": self.config.training.game,
                 "game_identity": self.config.training.game_identity,
+                "training_state": self.state_name,
                 "savestate": self._savestate,
                 "savestates": list(self.config.training.savestates),
                 "total_timesteps": self.total_timesteps,
@@ -152,7 +156,11 @@ class Trainer:
                 set_savestate=self._set_savestate,
                 get_state_value=self._get_state_value,
                 set_state_value=self._set_state_value,
-                get_model_path=lambda _selected_game: get_model_path(str(paths.models_dir), game_identity),
+                get_model_path=lambda _selected_game: get_model_path(
+                    str(paths.models_dir),
+                    game_identity,
+                    self.state_name,
+                ),
                 get_model_metadata=get_model_metadata,
             )
         )
@@ -178,6 +186,7 @@ class Trainer:
         return Path(
             self.config.paths.models_dir,
             self.config.training.game_identity,
+            self.state_name,
             self._savestate or "",
             f"{name}.txt",
         )

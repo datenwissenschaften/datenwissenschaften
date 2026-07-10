@@ -16,8 +16,8 @@ from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 ModelLoader = Callable[..., TrainableModel]
 
 
-def get_model_path(models_dir: str, game: str) -> str:
-    path = os.path.join(models_dir, game, "model")
+def get_model_path(models_dir: str, game: str, state_name: str) -> str:
+    path = os.path.join(models_dir, game, state_name, "model")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     return path
 
@@ -114,10 +114,11 @@ def load_or_create_model(
     build_model: ModelFactory,
     load_model: ModelLoader = PPO.load,
     config_path: str | Path = DEFAULT_CONFIG_PATH,
+    state_name: str,
 ) -> TrainableModel:
     configure_accelerator()
     config = load_config(config_path)
-    model_path = get_model_path(str(config.paths.models_dir), config.training.game_identity)
+    model_path = get_model_path(str(config.paths.models_dir), config.training.game_identity, state_name)
     model_zip_path = f"{model_path}.zip"
     cleanup = getattr(build_model, "cleanup_incompatible_artifacts", None)
     if callable(cleanup):
@@ -142,7 +143,7 @@ class ModelBuilder:
         self.build_model = build_model
         self.config_path = config_path
 
-    def build(self, venv: Any) -> TrainableModel:
+    def build(self, venv: Any, *, state_name: str) -> TrainableModel:
         build_model = self.build_model() if isinstance(self.build_model, type) else self.build_model
         load_model = getattr(build_model, "load", PPO.load)
         return load_or_create_model(
@@ -150,4 +151,5 @@ class ModelBuilder:
             build_model=build_model,
             load_model=load_model,
             config_path=self.config_path,
+            state_name=state_name,
         )
