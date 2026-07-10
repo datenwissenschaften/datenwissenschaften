@@ -18,9 +18,7 @@ class State(ABC, Generic[T]):
     ram: T
     frame: np.ndarray
     observation: np.ndarray
-    savestate: bytes | None = None
     progress: int
-    beaten: bool = False
 
     def __init__(self) -> None:
         if not hasattr(self, "target_detector") and hasattr(self, "template_file"):
@@ -32,31 +30,6 @@ class State(ABC, Generic[T]):
         super().__init_subclass__(**kwargs)
         if "progress" not in cls.__dict__ or not isinstance(cls.__dict__["progress"], int):
             raise TypeError(f"{cls.__name__} must define an integer progress value.")
-
-    def save(self, savestate: bytes) -> bool:
-        if self.beaten or self.savestate is not None:
-            return False
-
-        self.savestate = bytes(savestate)
-        return True
-
-    def load(self, savestate: bytes) -> None:
-        self.savestate = bytes(savestate)
-
-    def delete_savestate(self) -> bool:
-        existed = self.savestate is not None
-        self.savestate = None
-        return existed
-
-    def clear_saved_progress(self) -> None:
-        self.savestate = None
-        self.beaten = False
-
-    def mark_beaten(self) -> bool:
-        changed = not self.beaten
-        self.beaten = True
-        self.savestate = None
-        return changed
 
     def reset(
         self,

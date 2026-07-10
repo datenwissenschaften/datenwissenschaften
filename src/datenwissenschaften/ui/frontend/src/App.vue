@@ -62,13 +62,6 @@ const runtimeDetails = computed(() => {
   return { class: model.value.class || 'Unknown', ...details }
 })
 const run = computed(() => snapshot.value.metadata?.run || {})
-const savestateProgress = computed(() => snapshot.value.metadata?.savestate_progress || {})
-const savestateProgressRows = computed(() => Object.entries(savestateProgress.value)
-  .map(([state, value]) => ({ state, ...(value || {}) }))
-  .sort((left, right) => left.state.localeCompare(right.state)))
-const selectedSavestateProgress = computed(() => savestateProgress.value[stateFilter.value] || null)
-const selectedBeatenCount = computed(() => Number(selectedSavestateProgress.value?.beaten_count) || 0)
-const selectedBeatenThreshold = computed(() => Number(selectedSavestateProgress.value?.beaten_threshold) || Number(run.value.savestate_beaten_threshold) || 0)
 const server = computed(() => snapshot.value.server || {})
 const versionLabel = computed(() => server.value.version === 'DEVELOPMENT'
   ? 'DEVELOPMENT'
@@ -141,7 +134,7 @@ const label = key => key.replaceAll('_', ' ')
       <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ stateFilter || 'all states' }} summary</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
       <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latestDuration) }} latest episode</small></article>
-      <article class="panel metric"><p>Savestate beaten</p><strong>{{ selectedSavestateProgress ? `${fmt(selectedBeatenCount)} / ${fmt(selectedBeatenThreshold)}` : '—' }}</strong><small>{{ selectedSavestateProgress?.beaten ? 'threshold reached' : selectedSavestateProgress?.has_savestate ? 'automatic savestate active' : 'no automatic savestate yet' }}</small></article>
+      <article class="panel metric"><p>Episodes</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>{{ stateFilter || 'all states' }} observed</small></article>
     </section>
 
     <section :class="['details-grid', { 'two-column': !entries(rnd).length }]">
@@ -162,10 +155,6 @@ const label = key => key.replaceAll('_', ' ')
         <div class="card-heading"><div><p class="eyebrow">MODEL</p><h2>Algorithm</h2></div><span class="chip muted">Waiting</span></div>
         <p class="placeholder">Algorithm details appear when PPO starts.</p>
       </article>
-      <article v-if="savestateProgressRows.length" class="panel detail-card">
-        <div class="card-heading"><div><p class="eyebrow">AUTOMATIC SAVESTATES</p><h2>Beaten counts</h2></div><span class="chip">{{ fmt(selectedBeatenThreshold) }} target</span></div>
-        <dl><template v-for="row in savestateProgressRows" :key="row.state"><dt>{{ row.state }}</dt><dd>{{ fmt(row.beaten_count) }} / {{ fmt(row.beaten_threshold) }} · {{ row.beaten ? 'beaten' : row.has_savestate ? 'saved' : 'pending' }} · reward {{ fmt(row.reward_baseline, 2) }}</dd></template></dl>
-      </article>
     </section>
 
     <footer>Local telemetry · refreshes every 1.5 seconds · {{ summarizedEpisodes }} observed episodes for {{ stateFilter || 'all states' }}</footer>
@@ -174,7 +163,7 @@ const label = key => key.replaceAll('_', ' ')
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">
         <p class="eyebrow danger-text">DESTRUCTIVE ACTION</p>
         <h2 id="reset-title">Delete {{ run.game }} model?</h2>
-        <p>All checkpoints and model history for this game, plus all automatic savestates in the configured savestate directory, will be deleted. The active training run will stop and restart from zero.</p>
+        <p>All checkpoints and model history for this game will be deleted. The active training run will stop and restart from zero.</p>
         <p v-if="resetError" class="error">{{ resetError }}</p>
         <div class="dialog-actions">
           <button class="cancel-button" :disabled="resetting" @click="showResetDialog = false">Cancel</button>

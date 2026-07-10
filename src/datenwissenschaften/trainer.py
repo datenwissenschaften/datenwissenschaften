@@ -11,7 +11,6 @@ from datenwissenschaften.callbacks import (
     BestEpisodeCallback,
     EpisodeTelemetryCallback,
     SaveModelCallback,
-    SavestateStagnationCallback,
     StopTrainingAtTimestepsCallback,
 )
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
@@ -65,7 +64,6 @@ class Trainer:
         configure_training_control(
             game=self.config.training.game,
             model_dir=self.config.paths.models_dir / self.config.training.game_identity,
-            savestate_dir=self.config.paths.savestate_dir / self.config.training.game_identity,
             restart_supported=bool(getattr(model, "supports_ui_restart", False)),
             on_reset=lambda: self._reset_for_restart(model),
         )
@@ -79,8 +77,6 @@ class Trainer:
                 "game_identity": self.config.training.game_identity,
                 "savestate": self._savestate,
                 "savestates": list(self.config.training.savestates),
-                "savestate_rotation_seconds": self.config.training.savestate_rotation_seconds,
-                "savestate_beaten_threshold": self.config.training.savestate_beaten_threshold,
                 "total_timesteps": self.total_timesteps,
                 "configured_envs": self.config.training.num_envs,
             },
@@ -133,13 +129,7 @@ class Trainer:
             SaveModelCallback(),
             EpisodeTelemetryCallback(),
             BestEpisodeCallback(self.total_timesteps),
-            SavestateStagnationCallback(self.total_timesteps),
             UploadEpisodeCallback(self.config.upload),
-            (
-                StopTrainingAfterSecondsCallback(self.config.training.savestate_rotation_seconds)
-                if self.config.training.rotates_savestates
-                else None
-            ),
             StopTrainingAtTimestepsCallback(self.total_timesteps),
         ]
         return [callback for callback in callbacks if callback is not None]
@@ -192,20 +182,3 @@ class Trainer:
             self._savestate or "",
             f"{name}.txt",
         )
-
-
-class StopTrainingAfterSecondsCallback(BaseCallback):
-    def __init__(self, seconds: int):
-        super().__init__()
-        self.seconds = seconds
-        self._started_at: float | None = None
-
-    def _on_training_start(self) -> None:
-        import time
-
-        self._started_at = time.monotonic()
-
-    def _on_step(self) -> bool:
-        import time
-
-        return self._started_at is None or time.monotonic() - self._started_at < self.seconds

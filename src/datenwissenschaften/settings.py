@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import shutil
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,7 +17,6 @@ class RetroSpeedlabPaths:
     roms_path: Path
     models_dir: Path
     record_dir: Path
-    savestate_dir: Path
     cache_dir: Path
 
 
@@ -29,20 +27,11 @@ class TrainingSettings:
     total_timesteps: int
     savestate: str | None
     savestates: tuple[str, ...]
-    savestate_rotation_seconds: int
-    savestate_beaten_threshold: int
     num_envs: int
 
     @property
     def active_savestate(self) -> str | None:
-        if not self.savestates:
-            return self.savestate
-        index = int(time.time() // self.savestate_rotation_seconds) % len(self.savestates)
-        return self.savestates[index]
-
-    @property
-    def rotates_savestates(self) -> bool:
-        return len(self.savestates) > 1
+        return self.savestates[0] if self.savestates else self.savestate
 
 
 @dataclass(frozen=True)
@@ -98,7 +87,6 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             roms_path=_path(paths, "roms", base_dir),
             models_dir=_path(paths, "models", base_dir),
             record_dir=_path(paths, "recordings", base_dir),
-            savestate_dir=_path(paths, "savestates", base_dir),
             cache_dir=_path(paths, "cache", base_dir),
         ),
         training=TrainingSettings(
@@ -107,8 +95,6 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             total_timesteps=_positive_int(training, "total_timesteps"),
             savestate=savestate,
             savestates=savestates,
-            savestate_rotation_seconds=_positive_int(training, "savestate_rotation_seconds", default=14_400),
-            savestate_beaten_threshold=_positive_int(training, "savestate_beaten_threshold", default=1),
             num_envs=_environment_count(training, "num_envs"),
         ),
         log_level=_string(document, "log_level"),
@@ -122,7 +108,7 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
 
 def empty_all_paths(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
     paths = load_config(config_path).paths
-    for path in (paths.models_dir, paths.record_dir, paths.savestate_dir, paths.cache_dir):
+    for path in (paths.models_dir, paths.record_dir, paths.cache_dir):
         if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
         else:

@@ -17,10 +17,9 @@ recording, and a live browser dashboard in one focused Python package.
 - **Exploration for sparse rewards** — multi-input CNN-LSTM PPO combines visual frames, normalized RAM, temporal
   memory, and normalized, clipped, annealed Random Network Distillation (RND).
 - **Efficient execution** — vectorized environments, automatic worker selection, CUDA tuning, and CPU fallback.
-- **Reliable training runs** — atomic checkpoints, resumable model state, automatic savestates, and `.bk2` replay
-  capture.
+- **Reliable training runs** — atomic checkpoints, resumable model state, and `.bk2` replay capture.
 - **Operational visibility** — a local Vue dashboard reports episode outcomes, reward distributions, environment
-  details, PPO parameters, RND progress, and automatic-savestate progress.
+  details, PPO parameters, and RND progress.
 - **Game-oriented infrastructure** — ROM discovery, RAM models, state machines, visual encoders, and configurable
   action translation.
 
@@ -39,14 +38,6 @@ defaults rather than game-level options.
 The default profile uses longer 512-step rollouts, a 512-unit LSTM, `gamma=0.999`, `gae_lambda=0.98`, and a slower
 10-million-step RND decay. These settings preserve more temporal context and delayed reward information than the
 shorter arcade baseline while retaining conservative PPO updates.
-
-Set `training.savestate_beaten_threshold` to the number of victories required before a training state is marked as
-beaten and the next automatic savestate is promoted. Each `<State>.beaten` file stores the current victory count;
-the default threshold is `1`. PPO telemetry and automatic-savestate safeguards use extrinsic environment reward only;
-RND curiosity remains an exploration bonus for policy updates and does not count as savestate progress. When an
-automatic savestate is written, the wrapper stores the cumulative extrinsic reward reached before that state in a
-matching `<State>.reward` file. Episodes restored from that savestate receive the saved reward as a one-time baseline,
-then state rewards and penalties add to or subtract from that baseline.
 
 ## Installation
 

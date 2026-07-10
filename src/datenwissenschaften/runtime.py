@@ -40,10 +40,6 @@ class RetroSpeedlabRuntime:
         return self.paths.record_dir
 
     @property
-    def savestate_dir(self) -> Path:
-        return self.paths.savestate_dir
-
-    @property
     def cache_dir(self) -> Path:
         return self.paths.cache_dir
 

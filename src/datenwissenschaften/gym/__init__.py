@@ -1,7 +1,3 @@
-import fcntl
-import os
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
@@ -9,14 +5,12 @@ import cv2
 import gymnasium as gym
 import numpy as np
 from gymnasium.core import WrapperActType
-from loguru import logger
 
 from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.ram import RamInfo
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
-from datenwissenschaften.ui.telemetry import publish_metadata
 
 T = TypeVar("T", bound=RamInfo)
 
@@ -51,25 +45,17 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         config = load_config(config_path)
         setup_logging(config.log_level)
         self.initial_savestate = config.training.active_savestate
-        self.savestate_dir = (
-            config.paths.savestate_dir / config.training.game_identity / (self.initial_savestate or "default")
-        )
-        self.savestate_beaten_threshold = config.training.savestate_beaten_threshold
 
         self.last_ram: T | None = None
         self.last_frame: np.ndarray | None = None
         self.last_observation: np.ndarray | None = None
         self._started_from_initial_savestate = True
         self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
-        self._episode_reward_baseline = 0.0
-        self._episode_reward_total = 0.0
 
         self._last_progress: float | int | None = None
         self._frames_without_progress = 0
 
         self._validate_training_states()
-        self._load_savestates()
-        self._publish_savestate_progress()
 
         channels = 1 if self.grayscale else 3
 
@@ -96,16 +82,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._last_progress = None
         self._frames_without_progress = 0
 
-        self._load_savestates()
-        state_cls = self._highest_savestate_state()
-        self._started_from_initial_savestate = state_cls is None
-        self._episode_start_state = (
-            state_cls.__name__ if state_cls is not None else self.initial_savestate or self.start_state_cls.__name__
-        )
-        self._episode_reward_baseline = self._reward_baseline(state_cls.__name__) if state_cls is not None else 0.0
-        self._episode_reward_total = self._episode_reward_baseline
-        if state_cls is not None:
-            frame = self._restore_savestate(self.state_machine.savestate(state_cls))
+        self._started_from_initial_savestate = True
+        self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
 
         ram = self._read_ram()
         observation = self._process_observation(frame)
@@ -114,7 +92,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_frame = frame
         self.last_observation = observation
 
-        self.state_machine.reset(ram, frame, observation, state_cls)
+        self.state_machine.reset(ram, frame, observation)
         self._update_progress_tracking()
 
         return self._agent_observation(observation, ram), {}
@@ -122,16 +100,13 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def step(self, action: WrapperActType):
         frame = None
         observation = None
-        reward_baseline = self._consume_episode_reward_baseline()
-        reward = reward_baseline
+        reward = 0.0
         terminated = False
         truncated = False
 
         action = self.translate_action(action)
 
         for _ in range(self.action_repeat):
-            state_before_step = type(self.state_machine.current_state)
-
             frame, _, env_terminated, env_truncated, _ = self.env.step(action)
 
             ram = self._read_ram()
@@ -148,20 +123,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             )
 
             self._update_progress_tracking()
-            self._episode_reward_total += state_reward
-
-            state_after_step = type(self.state_machine.current_state)
-            if state_after_step.progress > state_before_step.progress:
-                if self._mark_beaten(state_before_step):
-                    self._load_savestate(state_after_step)
-
-                    savestate = self.env.unwrapped.em.get_state()
-                    if self.state_machine.save_current_state(savestate):
-                        self._write_savestate(state_after_step.__name__, savestate)
-                        self._write_reward_baseline(state_after_step.__name__, self._episode_reward_total)
-                        self._publish_savestate_progress()
-                        logger.info(f"Saved automatic savestate for {state_after_step.__name__}")
-
             reward += state_reward
             terminated = env_terminated or state_terminated
             truncated = env_truncated or state_truncated
@@ -175,7 +136,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         current_state = self.state_machine.current_state
         won = current_state._won()
         if won:
-            self._mark_beaten(type(current_state))
             terminated = True
 
         return (
@@ -188,7 +148,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "state": self.state_machine.state_name,
                 "ram": ram.to_dict(),
                 "progress": type(current_state).progress,
-                "reward_baseline": reward_baseline,
                 "frames_without_progress": self._frames_without_progress,
                 "started_from_initial_savestate": self._started_from_initial_savestate,
             },
@@ -225,46 +184,14 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def training_state_names(self) -> list[str]:
         return [state_cls.__name__ for state_cls in self._training_classes()]
 
-    def set_training_state(self, state_name: str) -> bool:
-        classes_by_name = self._training_classes_by_name()
-        if state_name not in classes_by_name:
-            raise ValueError(f"Unknown training state: {state_name}")
-
-        self._load_savestates()
-        selected = self._highest_savestate_state()
-        return selected is not None and selected.__name__ == state_name
-
     def highest_progress_state(self) -> str:
-        self._load_savestates()
-        state_cls = self._highest_savestate_state()
-        return state_cls.__name__ if state_cls is not None else self.start_state_cls.__name__
-
-    def active_savestate_state(self) -> str | None:
-        self._load_savestates()
-        state_cls = self._highest_savestate_state()
-        return state_cls.__name__ if state_cls is not None else None
+        return type(self.state_machine.current_state).__name__
 
     def frames_without_progress(self) -> int:
         return self._frames_without_progress
 
-    def _consume_episode_reward_baseline(self) -> float:
-        reward = self._episode_reward_baseline
-        self._episode_reward_baseline = 0.0
-        return reward
-
-    def delete_savestate(self, state_name: str) -> bool:
-        classes_by_name = self._training_classes_by_name()
-        try:
-            state_cls = classes_by_name[state_name]
-        except KeyError as error:
-            raise ValueError(f"Unknown training state: {state_name}") from error
-
-        deleted = self.state_machine.delete_savestate(state_cls)
-        return self._delete_savestate_file(state_name) or deleted
-
     def clear_training_progress(self) -> None:
-        for state_cls in self._training_classes():
-            self.state_machine.clear_saved_progress(state_cls)
+        return None
 
     def translate_action(self, action: WrapperActType):
         if self.action_table is None:
@@ -335,27 +262,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         self._frames_without_progress += 1
 
-    def _highest_savestate_state(self) -> type[State[T]] | None:
-        available = [
-            state_cls
-            for state_cls in self._training_classes()
-            if not self.state_machine.is_beaten(state_cls) and self.state_machine.savestate(state_cls) is not None
-        ]
-        return max(available, key=lambda state_cls: state_cls.progress, default=None)
-
-    def _restore_savestate(self, savestate: bytes | None) -> np.ndarray:
-        if savestate is None:
-            raise RuntimeError("Cannot restore an empty savestate.")
-
-        emulator = self.env.unwrapped
-        emulator.em.set_state(savestate)
-        emulator.data.reset()
-        emulator.data.update_ram()
-        return emulator.get_screen(apply_rotation=True)
-
-    def _training_classes_by_name(self) -> dict[str, type[State[T]]]:
-        return {state_cls.__name__: state_cls for state_cls in self._training_classes()}
-
     def _training_classes(self) -> tuple[type[State[T]], ...]:
         state_classes = self.training_state_classes or (self.start_state_cls,)
         return tuple(sorted(state_classes, key=lambda state_cls: state_cls.progress))
@@ -365,140 +271,3 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         progresses = [state_cls.progress for state_cls in state_classes]
         if len(progresses) != len(set(progresses)):
             raise ValueError(f"Training state progress values must be unique: {progresses}")
-
-    def _load_savestates(self) -> None:
-        for state_cls in self._training_classes_by_name().values():
-            self._load_savestate(state_cls)
-
-    def _load_savestate(self, state_cls: type[State[T]]) -> bool:
-        if self._beaten_count(state_cls.__name__) >= self.savestate_beaten_threshold:
-            self.state_machine.mark_beaten(state_cls)
-            self._delete_savestate_file(state_cls.__name__)
-            return False
-
-        path = self._savestate_path(state_cls.__name__)
-        if not path.is_file():
-            return False
-
-        savestate = path.read_bytes()
-        if not savestate:
-            return False
-
-        self.state_machine.load_savestate(state_cls, savestate)
-        return True
-
-    def _write_savestate(self, state_name: str, savestate: bytes) -> None:
-        path = self._savestate_path(state_name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        temporary_path.write_bytes(bytes(savestate))
-        temporary_path.replace(path)
-
-    def _savestate_path(self, state_name: str) -> Path:
-        return self.savestate_dir / f"{state_name}.state"
-
-    def _reward_path(self, state_name: str) -> Path:
-        return self.savestate_dir / f"{state_name}.reward"
-
-    def _beaten_path(self, state_name: str) -> Path:
-        return self.savestate_dir / f"{state_name}.beaten"
-
-    def _beaten_lock_path(self, state_name: str) -> Path:
-        return self.savestate_dir / f".{state_name}.beaten.lock"
-
-    def _mark_beaten(self, state_cls: type[State[T]]) -> bool:
-        state_name = state_cls.__name__
-        with self._beaten_lock(state_name):
-            beaten_count = min(self.savestate_beaten_threshold, self._beaten_count(state_name) + 1)
-            self._write_beaten_count(state_name, beaten_count)
-            self._publish_savestate_progress()
-            if beaten_count < self.savestate_beaten_threshold:
-                logger.debug(
-                    f"Recorded savestate victory for {state_name} "
-                    f"({beaten_count}/{self.savestate_beaten_threshold})"
-                )
-                return False
-
-            self.state_machine.mark_beaten(state_cls)
-            self._delete_savestate_file(state_name)
-            self._publish_savestate_progress()
-            logger.debug(
-                f"Marked savestate as beaten for {state_name} " f"({beaten_count}/{self.savestate_beaten_threshold})"
-            )
-            return True
-
-    def _savestate_progress(self) -> dict[str, dict[str, int | float | bool]]:
-        progress = {}
-        for state_name, state_cls in self._training_classes_by_name().items():
-            beaten_count = min(self.savestate_beaten_threshold, self._beaten_count(state_name))
-            progress[state_name] = {
-                "beaten_count": beaten_count,
-                "beaten_threshold": self.savestate_beaten_threshold,
-                "beaten": beaten_count >= self.savestate_beaten_threshold or self.state_machine.is_beaten(state_cls),
-                "has_savestate": self._savestate_path(state_name).is_file(),
-                "reward_baseline": self._reward_baseline(state_name),
-            }
-        return progress
-
-    def _publish_savestate_progress(self) -> None:
-        publish_metadata("savestate_progress", self._savestate_progress(), replace=True)
-
-    def _beaten_count(self, state_name: str) -> int:
-        path = self._beaten_path(state_name)
-        try:
-            value = path.read_text(encoding="utf-8").strip()
-        except FileNotFoundError:
-            return 0
-
-        if not value:
-            return self.savestate_beaten_threshold
-        try:
-            return max(0, int(value))
-        except ValueError:
-            logger.warning(f"Invalid beaten count in {path}; treating the savestate as beaten")
-            return self.savestate_beaten_threshold
-
-    def _write_beaten_count(self, state_name: str, beaten_count: int) -> None:
-        path = self._beaten_path(state_name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        temporary_path.write_text(str(beaten_count), encoding="utf-8")
-        temporary_path.replace(path)
-
-    def _reward_baseline(self, state_name: str) -> float:
-        path = self._reward_path(state_name)
-        try:
-            value = path.read_text(encoding="utf-8").strip()
-        except FileNotFoundError:
-            return 0.0
-        try:
-            return float(value)
-        except ValueError:
-            logger.warning(f"Invalid reward baseline in {path}; starting from 0")
-            return 0.0
-
-    def _write_reward_baseline(self, state_name: str, reward: float) -> None:
-        path = self._reward_path(state_name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        temporary_path.write_text(repr(float(reward)), encoding="utf-8")
-        temporary_path.replace(path)
-
-    @contextmanager
-    def _beaten_lock(self, state_name: str) -> Iterator[None]:
-        path = self._beaten_lock_path(state_name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a+b") as lock:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-
-    def _delete_savestate_file(self, state_name: str) -> bool:
-        self._reward_path(state_name).unlink(missing_ok=True)
-        try:
-            self._savestate_path(state_name).unlink()
-            return True
-        except FileNotFoundError:
-            return False
