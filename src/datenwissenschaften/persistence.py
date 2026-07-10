@@ -27,12 +27,6 @@ class RedisStore:
     def set(self, *parts: str, value: Any) -> None:
         self._redis.set(self.key(*parts), json.dumps(value, separators=(",", ":")))
 
-    def get_bytes(self, *parts: str) -> bytes | None:
-        return self._redis.get(self.key(*parts))
-
-    def set_bytes(self, *parts: str, value: bytes) -> None:
-        self._redis.set(self.key(*parts), value)
-
     def delete(self, *parts: str) -> None:
         self._redis.delete(self.key(*parts))
 

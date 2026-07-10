@@ -14,12 +14,10 @@ from datenwissenschaften.trainer import Trainer
 
 
 class StateTrainer:
-    """Trains one dedicated model per state, sequentially (options-style hierarchical RL).
+    """Trains dedicated state models from the configured level start.
 
-    The vectorized environment is reconfigured for each state: episodes start at the
-    state's boundary savestate (captured automatically on state transitions), and a
-    transition out of the state terminates the episode with a completion bonus so
-    every sub-model learns from clean, local episodes.
+    State transitions never reset or terminate the level. At runtime ``PolicyManager``
+    selects the model matching the state currently reported by the environment.
     """
 
     def __init__(
@@ -40,14 +38,12 @@ class StateTrainer:
         if not state_names:
             raise ValueError("No training states configured.")
 
-        venv.env_method("set_capture_boundary_savestates", True)
-        venv.env_method("set_terminate_on_transition", True)
+        venv.env_method("set_terminate_on_transition", False)
         venv.env_method("set_transition_bonus", self.transition_bonus)
 
         models: dict[str, TrainableModel] = {}
         for state_name in state_names:
             logger.info(f"Training model for state: {state_name}")
-            venv.env_method("set_active_training_state", state_name)
             venv.reset()
 
             model = self.model_builder.build(venv, state_name=state_name)

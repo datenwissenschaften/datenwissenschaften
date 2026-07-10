@@ -65,7 +65,7 @@ Enable the dashboard with `ui.enable: true`, then open [http://127.0.0.1:18080](
 live training telemetry without interrupting the learner.
 
 Dashboard history and non-file training state are restored from and persisted to Redis. This includes
-best-episode references and metrics, boundary savestates, callback state, and target memory. Best episodes are
+best-episode references and metrics, callback state, and target memory. Best episodes are
 scoped by game identity and game savestate (for example `level1-1`), independently of the active training
 objective. Model checkpoints and `.bk2` episode recordings remain on disk. The default Redis URL is
 `redis://127.0.0.1:6379/0`, and history keys use the `datenwissenschaften:history` prefix. The `ui` mapping accepts

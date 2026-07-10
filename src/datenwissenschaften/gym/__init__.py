@@ -23,7 +23,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     grayscale = False
     terminate_on_transition = False
     transition_bonus = 0.0
-    capture_boundary_savestates = False
 
     def __init__(
         self,
@@ -41,7 +40,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             transition_bonus=self.transition_bonus,
             on_transition=self._handle_state_transition,
         )
-        self._active_training_state: type[State[T]] | None = None
 
         if action_table is not None:
             if len(action_table) == 0:
@@ -85,12 +83,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._started_from_initial_savestate = True
         self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
 
-        state_type = self._active_training_state
-        if state_type is not None and state_type is not self.start_state_cls:
-            frame = self._load_boundary_savestate(state_type.__name__)
-            self._started_from_initial_savestate = False
-            self._episode_start_state = state_type.__name__
-
         ram = self._read_ram()
         observation = self._process_observation(frame)
 
@@ -98,7 +90,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_frame = frame
         self.last_observation = observation
 
-        self.state_machine.reset(ram, frame, observation, state_type=state_type)
+        self.state_machine.reset(ram, frame, observation)
 
         return self._agent_observation(observation, ram), {}
 
@@ -182,18 +174,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def state_name(self) -> str:
         return self.state_machine.state_name
 
-    def set_active_training_state(self, state_name: str | None) -> str | None:
-        if state_name is None:
-            self._active_training_state = None
-            return None
-
-        state_cls = self._resolve_state_class(state_name)
-        self._active_training_state = state_cls
-        return state_cls.__name__
-
-    def active_training_state(self) -> str | None:
-        return self._active_training_state.__name__ if self._active_training_state is not None else None
-
     def set_terminate_on_transition(self, enabled: bool) -> bool:
         self.state_machine.terminate_on_transition = bool(enabled)
         return self.state_machine.terminate_on_transition
@@ -201,10 +181,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def set_transition_bonus(self, bonus: float) -> float:
         self.state_machine.transition_bonus = float(bonus)
         return self.state_machine.transition_bonus
-
-    def set_capture_boundary_savestates(self, enabled: bool) -> bool:
-        self.capture_boundary_savestates = bool(enabled)
-        return self.capture_boundary_savestates
 
     def _resolve_state_class(self, state_name: str) -> type[State[T]]:
         known_classes = {*self._training_classes(), self.start_state_cls}
@@ -214,16 +190,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         raise ValueError(f"Unknown training state: {state_name}")
 
     def _handle_state_transition(self, previous_state_name: str, new_state_name: str) -> None:
-        if not self.capture_boundary_savestates:
-            return
-        from datenwissenschaften.retro.savestates import save_boundary_savestate
-
-        save_boundary_savestate(self.env, new_state_name)
-
-    def _load_boundary_savestate(self, state_name: str) -> np.ndarray:
-        from datenwissenschaften.retro.savestates import load_boundary_savestate
-
-        return load_boundary_savestate(self.env, state_name)
+        # The state machine changes immediately; the PolicyManager uses the reported
+        # state name to select the corresponding model without resetting the level.
+        pass
 
     def episode_start_state(self) -> str:
         return self._episode_start_state
