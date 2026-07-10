@@ -19,18 +19,18 @@ from datenwissenschaften.ui.control import (
 )
 
 NES_PPO_DEFAULTS: dict[str, Any] = {
-    "learning_rate": 1e-4,
+    "learning_rate": 0.0002,
     "n_steps": 512,
     "batch_size": 256,
     "n_epochs": 4,
     "gamma": 0.999,
     "gae_lambda": 0.98,
-    "clip_range": 0.1,
+    "clip_range": 0.2,
     "ent_coef": 0.01,
     "vf_coef": 0.5,
     "max_grad_norm": 0.5,
     "policy_kwargs": {
-        "lstm_hidden_size": 512,
+        "lstm_hidden_size": 256,
         "n_lstm_layers": 1,
         "shared_lstm": False,
         "enable_critic_lstm": True,
@@ -228,10 +228,10 @@ class RecurrentRNDPPO(RecurrentPPO):
         rnd_learning_rate: float = 1e-4,
         rnd_update_proportion: float = 0.25,
         rnd_gamma: float = 0.999,
-        rnd_intrinsic_coefficient: float = 1.0,
-        rnd_final_intrinsic_coefficient: float = 0.05,
-        rnd_anneal_steps: int = 10_000_000,
-        rnd_reward_clip: float = 5.0,
+        rnd_intrinsic_coefficient: float = 0.5,
+        rnd_final_intrinsic_coefficient: float = 0.02,
+        rnd_anneal_steps: int = 5_000_000,
+        rnd_reward_clip: float = 1.0,
         _init_setup_model: bool = True,
         **kwargs: Any,
     ) -> None:
