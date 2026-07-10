@@ -1,4 +1,4 @@
-from datenwissenschaften.recurrent_rnd.model import (
+from datenwissenschaften.rnd.model import (
     AdaptiveRecurrentRNDModel,
     AdaptiveRecurrentRNDPPO,
     build_adaptive_recurrent_rnd_ppo,

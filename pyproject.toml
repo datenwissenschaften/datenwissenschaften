@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "datenwissenschaften"
-version = "2.6.2"
+version = "2.7.0"
 description = "Core library for Retro Speedlab: A high-performance RL toolkit for classic games."
 readme = "README.md"
 authors = [

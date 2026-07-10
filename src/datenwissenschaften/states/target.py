@@ -4,7 +4,6 @@ from typing import ClassVar, TypeVar
 
 from datenwissenschaften.helpers.position import Position
 from datenwissenschaften.ram import RamInfo
-from datenwissenschaften.settings import load_config
 from datenwissenschaften.states.state import State
 from datenwissenschaften.states.target_memory import TargetMemory
 from datenwissenschaften.vision.template_detector import TemplateDetector
@@ -27,7 +26,7 @@ class TargetState(State[T], ABC):
         self.target_detector = TemplateDetector(self.template_file)
         super().__init__()
         self.target_memory = TargetMemory.shared(
-            self._target_memory_path(),
+            self._target_memory_key(),
             origin=(0.0, 0.0),
             scale=float(Position.screen_size),
         )
@@ -69,8 +68,8 @@ class TargetState(State[T], ABC):
     def _additional_target_reward(self, distance: float | None) -> float:
         return 0.0
 
-    def _target_memory_path(self) -> str | Path:
-        return load_config().paths.cache_dir / "target_memory" / f"{Path(self.template_file).stem}.json"
+    def _target_memory_key(self) -> str:
+        return Path(self.template_file).stem
 
     def _actor_position(self, ram: T) -> Position:
         return Position(

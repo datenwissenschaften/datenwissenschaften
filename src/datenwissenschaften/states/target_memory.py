@@ -1,21 +1,29 @@
-import json
-import os
 from math import tanh
-from pathlib import Path
 from typing import Sequence
+
+from datenwissenschaften.persistence import RedisStore
+from datenwissenschaften.settings import load_config
 
 
 class TargetMemory:
-    _registry: dict[Path, "TargetMemory"] = {}
+    _registry: dict[str, "TargetMemory"] = {}
 
     def __init__(
         self,
-        path: str | Path,
+        key: str,
         *,
         origin: Sequence[float],
         scale: float | Sequence[float] = 1.0,
     ) -> None:
-        self.path = Path(path).expanduser().resolve()
+        config = load_config()
+        self.key = key
+        self._store = RedisStore(config.ui.redis_url)
+        self._scope = (
+            "target-memory",
+            config.training.game_identity,
+            config.training.active_savestate or "default",
+            key,
+        )
         self.origin = self._coordinates(origin)
         self.scale = self._scale(scale, len(self.origin))
         self.coordinates = self._load()
@@ -23,20 +31,19 @@ class TargetMemory:
     @classmethod
     def shared(
         cls,
-        path: str | Path,
+        key: str,
         *,
         origin: Sequence[float],
         scale: float | Sequence[float] = 1.0,
     ) -> "TargetMemory":
-        resolved_path = Path(path).expanduser().resolve()
-        if resolved_path not in cls._registry:
-            cls._registry[resolved_path] = cls(resolved_path, origin=origin, scale=scale)
+        if key not in cls._registry:
+            cls._registry[key] = cls(key, origin=origin, scale=scale)
 
-        memory = cls._registry[resolved_path]
+        memory = cls._registry[key]
         expected_origin = cls._coordinates(origin)
         expected_scale = cls._scale(scale, len(expected_origin))
         if memory.origin != expected_origin or memory.scale != expected_scale:
-            raise ValueError(f"Target memory {resolved_path} was requested with an incompatible coordinate schema")
+            raise ValueError(f"Target memory {key} was requested with an incompatible coordinate schema")
         return memory
 
     def remember(self, coordinates: Sequence[float]) -> bool:
@@ -73,22 +80,16 @@ class TargetMemory:
 
     def _load(self) -> tuple[float, ...] | None:
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = self._store.get(*self._scope)
             return self._validate_dimensions(payload["coordinates"])
-        except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        except (KeyError, TypeError, ValueError):
             return None
 
     def _save(self) -> None:
         if self.coordinates is None:
             return
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
-        temporary_path.write_text(
-            json.dumps({"coordinates": self.coordinates}),
-            encoding="utf-8",
-        )
-        temporary_path.replace(self.path)
+        self._store.set(*self._scope, value={"coordinates": self.coordinates})
 
     @staticmethod
     def _coordinates(values: Sequence[float]) -> tuple[float, ...]:

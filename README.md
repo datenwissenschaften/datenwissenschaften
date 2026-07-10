@@ -64,7 +64,10 @@ cp config.example.yaml config.yaml
 Enable the dashboard with `ui.enable: true`, then open [http://127.0.0.1:18080](http://127.0.0.1:18080). It refreshes
 live training telemetry without interrupting the learner.
 
-Dashboard history is restored from and persisted to Redis. The default Redis URL is
+Dashboard history and non-file training state are restored from and persisted to Redis. This includes
+best-episode references and metrics, boundary savestates, callback state, and target memory. Best episodes are
+scoped by game identity and game savestate (for example `level1-1`), independently of the active training
+objective. Model checkpoints and `.bk2` episode recordings remain on disk. The default Redis URL is
 `redis://127.0.0.1:6379/0`, and history keys use the `datenwissenschaften:history` prefix. The `ui` mapping accepts
 `enable`, `host`, `port`, `max_episodes`, `redis_url`, and `history_key_prefix`. Snapshots retain the latest
 1,000 episodes by default and include summarized totals for discarded episodes; set `max_episodes` to another positive

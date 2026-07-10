@@ -18,7 +18,7 @@ class RetroSpeedlabRuntime:
     get_game: Callable[[], str]
     get_savestate: Callable[[], str]
     set_savestate: Callable[[str], None]
-    get_state_value: Callable[[str], str]
+    get_state_value: Callable[[str], Any]
     set_state_value: Callable[[str, Any], None]
     get_model_path: Callable[[str], str]
     get_model_metadata: Callable[[Any], dict[str, Any]]

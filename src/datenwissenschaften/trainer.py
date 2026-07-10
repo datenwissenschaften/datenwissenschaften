@@ -17,6 +17,7 @@ from datenwissenschaften.callbacks import (
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
 from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.model import get_model_metadata, get_model_path
+from datenwissenschaften.persistence import RedisStore
 from datenwissenschaften.retro.environment import get_last_environment_wrapper
 from datenwissenschaften.runtime import RetroSpeedlabRuntime, configure_runtime
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfig, load_config
@@ -39,8 +40,8 @@ class Trainer:
         self.total_timesteps = self.config.training.total_timesteps
         self._additional_callbacks = list(additional_callbacks or [])
         self.callbacks = self._default_callbacks() + self._additional_callbacks
-        self._state: dict[str, Any] = {}
         self._savestate = self.config.training.active_savestate
+        self._store = RedisStore(self.config.ui.redis_url)
 
     def train(self, model) -> None:
         configure_accelerator()
@@ -91,7 +92,6 @@ class Trainer:
         publish_metadata("environment", self._environment_metadata(env))
 
     def _reset_for_restart(self, model) -> None:
-        self._state.clear()
         self._savestate = self.config.training.active_savestate
         self.callbacks[:] = self._default_callbacks() + self._additional_callbacks
 
@@ -165,28 +165,15 @@ class Trainer:
             )
         )
 
-    def _get_state_value(self, name: str) -> str:
-        state_path = self._state_path(name)
-        if state_path.exists():
-            with state_path.open(encoding="utf-8") as file:
-                return file.read()
-        return str(self._state.get(name, "False"))
+    def _get_state_value(self, name: str) -> Any:
+        return self._store.get(*self._state_key(name), default=False)
 
     def _set_state_value(self, name: str, value: Any) -> None:
-        self._state[name] = value
-        state_path = self._state_path(name)
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        with state_path.open("w", encoding="utf-8") as file:
-            file.write(str(value))
+        self._store.set(*self._state_key(name), value=value)
 
     def _set_savestate(self, savestate: str) -> None:
         self._savestate = savestate
 
-    def _state_path(self, name: str) -> Path:
-        return Path(
-            self.config.paths.models_dir,
-            self.config.training.game_identity,
-            self.state_name,
-            self._savestate or "",
-            f"{name}.txt",
-        )
+    def _state_key(self, name: str) -> tuple[str, ...]:
+        # Runtime state belongs to the emulator/game state, not to the training objective.
+        return ("state", self.config.training.game_identity, self._savestate or "default", name)
