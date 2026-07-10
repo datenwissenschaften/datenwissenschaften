@@ -52,11 +52,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._started_from_initial_savestate = True
         self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
 
-        self._last_progress: float | int | None = None
-        self._frames_without_progress = 0
-
-        self._validate_training_states()
-
         channels = 1 if self.grayscale else 3
 
         visual_space = gym.spaces.Box(low=0, high=255, shape=(channels, *self.obs_size), dtype=np.uint8)
@@ -79,9 +74,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def reset(self, **kwargs):
         frame, _ = self.env.reset(**kwargs)
 
-        self._last_progress = None
-        self._frames_without_progress = 0
-
         self._started_from_initial_savestate = True
         self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
 
@@ -93,7 +85,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_observation = observation
 
         self.state_machine.reset(ram, frame, observation)
-        self._update_progress_tracking()
 
         return self._agent_observation(observation, ram), {}
 
@@ -121,8 +112,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 frame,
                 observation,
             )
-
-            self._update_progress_tracking()
             reward += state_reward
             terminated = env_terminated or state_terminated
             truncated = env_truncated or state_truncated
@@ -147,8 +136,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "won": won,
                 "state": self.state_machine.state_name,
                 "ram": ram.to_dict(),
-                "progress": type(current_state).progress,
-                "frames_without_progress": self._frames_without_progress,
                 "started_from_initial_savestate": self._started_from_initial_savestate,
             },
         )
@@ -183,15 +170,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
     def training_state_names(self) -> list[str]:
         return [state_cls.__name__ for state_cls in self._training_classes()]
-
-    def highest_progress_state(self) -> str:
-        return type(self.state_machine.current_state).__name__
-
-    def frames_without_progress(self) -> int:
-        return self._frames_without_progress
-
-    def clear_training_progress(self) -> None:
-        return None
 
     def translate_action(self, action: WrapperActType):
         if self.action_table is None:
@@ -247,27 +225,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def num_actions(self) -> int:
         return self.action_space.n
 
-    def _update_progress_tracking(self) -> None:
-        progress = type(self.state_machine.current_state).progress
-
-        if self._last_progress is None:
-            self._last_progress = progress
-            self._frames_without_progress = 0
-            return
-
-        if progress > self._last_progress:
-            self._last_progress = progress
-            self._frames_without_progress = 0
-            return
-
-        self._frames_without_progress += 1
-
     def _training_classes(self) -> tuple[type[State[T]], ...]:
         state_classes = self.training_state_classes or (self.start_state_cls,)
-        return tuple(sorted(state_classes, key=lambda state_cls: state_cls.progress))
-
-    def _validate_training_states(self) -> None:
-        state_classes = self.training_state_classes or (self.start_state_cls,)
-        progresses = [state_cls.progress for state_cls in state_classes]
-        if len(progresses) != len(set(progresses)):
-            raise ValueError(f"Training state progress values must be unique: {progresses}")
+        return tuple(state_classes)

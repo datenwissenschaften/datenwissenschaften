@@ -14,7 +14,6 @@ T = TypeVar("T", bound=RamInfo)
 
 class TargetState(State[T], ABC):
     description = ""
-    progress = -1
 
     template_file: ClassVar[str]
     stay_near_distance = 80.0

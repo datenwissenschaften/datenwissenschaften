@@ -89,9 +89,6 @@ class Trainer:
         self._state.clear()
         self._savestate = self.config.training.active_savestate
         self.callbacks[:] = self._default_callbacks() + self._additional_callbacks
-        env = model.get_env() if callable(getattr(model, "get_env", None)) else getattr(model, "env", None)
-        if env is not None:
-            env.env_method("clear_training_progress")
 
     @staticmethod
     def _environment_metadata(env) -> dict[str, Any]:

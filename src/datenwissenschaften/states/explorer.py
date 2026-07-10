@@ -10,7 +10,6 @@ T = TypeVar("T", bound=RamInfo)
 
 class Explorer(TargetState[T], ABC):
     description = ""
-    progress = -1
 
     area_discovery_reward = 100.0
     position_discovery_reward = 1.0

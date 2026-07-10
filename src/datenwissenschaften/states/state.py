@@ -18,18 +18,12 @@ class State(ABC, Generic[T]):
     ram: T
     frame: np.ndarray
     observation: np.ndarray
-    progress: int
 
     def __init__(self) -> None:
         if not hasattr(self, "target_detector") and hasattr(self, "template_file"):
             template_path = Path("assets") / self.template_file
             if template_path.exists():
                 self.target_detector = TemplateDetector(self.template_file)
-
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        if "progress" not in cls.__dict__ or not isinstance(cls.__dict__["progress"], int):
-            raise TypeError(f"{cls.__name__} must define an integer progress value.")
 
     def reset(
         self,
