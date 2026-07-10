@@ -15,6 +15,16 @@ from datenwissenschaften.serialization import to_json_value
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, UploadSettings, load_config
 
 
+def _is_true(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return value == 1
+    if isinstance(value, str):
+        return value.strip().casefold() in {"1", "true", "yes", "y", "on"}
+    return False
+
+
 def get_system_metadata() -> dict:
     total_memory_bytes = _get_total_memory_bytes()
 
@@ -146,8 +156,7 @@ class UploadEpisodeCallback(BaseCallback):
         if not best_episode_path or not os.path.exists(best_episode_path):
             return True
 
-        started_from_initial = runtime.get_state_value("best_episode_started_from_initial_savestate")
-        if str(started_from_initial).strip().lower() != "true":
+        if not _is_true(runtime.get_state_value("best_episode_started_from_initial_savestate")):
             logger.debug("Skipping episode upload because it started from an automatic savestate.")
             return True
 

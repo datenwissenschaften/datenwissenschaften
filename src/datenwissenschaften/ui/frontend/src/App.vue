@@ -188,7 +188,7 @@ const toggleRam = row => { expandedEpisode.value = expandedEpisode.value === row
       </article>
       <article v-if="savestateProgressRows.length" class="panel detail-card">
         <div class="card-heading"><div><p class="eyebrow">AUTOMATIC SAVESTATES</p><h2>Beaten counts</h2></div><span class="chip">{{ fmt(selectedBeatenThreshold) }} target</span></div>
-        <dl><template v-for="row in savestateProgressRows" :key="row.state"><dt>{{ row.state }}</dt><dd>{{ fmt(row.beaten_count) }} / {{ fmt(row.beaten_threshold) }} · {{ row.beaten ? 'beaten' : row.has_savestate ? 'saved' : 'pending' }}</dd></template></dl>
+        <dl><template v-for="row in savestateProgressRows" :key="row.state"><dt>{{ row.state }}</dt><dd>{{ fmt(row.beaten_count) }} / {{ fmt(row.beaten_threshold) }} · {{ row.beaten ? 'beaten' : row.has_savestate ? 'saved' : 'pending' }} · reward {{ fmt(row.reward_baseline, 2) }}</dd></template></dl>
       </article>
     </section>
 

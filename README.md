@@ -43,9 +43,10 @@ shorter arcade baseline while retaining conservative PPO updates.
 Set `training.savestate_beaten_threshold` to the number of victories required before a training state is marked as
 beaten and the next automatic savestate is promoted. Each `<State>.beaten` file stores the current victory count;
 the default threshold is `1`. PPO telemetry and automatic-savestate safeguards use extrinsic environment reward only;
-RND curiosity remains an exploration bonus for policy updates and does not count as savestate progress. Episodes
-restored from an automatic savestate receive that state's `progress` value as their initial reward baseline, then
-state rewards and penalties add to or subtract from that baseline.
+RND curiosity remains an exploration bonus for policy updates and does not count as savestate progress. When an
+automatic savestate is written, the wrapper stores the cumulative extrinsic reward reached before that state in a
+matching `<State>.reward` file. Episodes restored from that savestate receive the saved reward as a one-time baseline,
+then state rewards and penalties add to or subtract from that baseline.
 
 ## Installation
 
