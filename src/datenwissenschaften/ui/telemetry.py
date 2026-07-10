@@ -4,7 +4,6 @@ import atexit
 import json
 import threading
 import time
-from collections import deque
 from collections.abc import Callable
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -35,6 +34,9 @@ def _empty_summary() -> dict[str, Any]:
         "best_fitness": None,
         "latest_index": None,
         "latest_timestamp": None,
+        "latest_training_state": None,
+        "latest_duration_seconds": None,
+        "latest_final_state": None,
         "by_state": {},
     }
 
@@ -78,6 +80,14 @@ def _update_summary_bucket(bucket: dict[str, Any], episode: dict[str, Any]) -> N
     timestamp = episode.get("timestamp")
     if isinstance(timestamp, str):
         bucket["latest_timestamp"] = timestamp
+    training_state = episode.get("training_state")
+    if isinstance(training_state, str):
+        bucket["latest_training_state"] = training_state
+    if isinstance(duration, int | float) and not isinstance(duration, bool):
+        bucket["latest_duration_seconds"] = float(duration)
+    final_state = episode.get("final_state")
+    if isinstance(final_state, str):
+        bucket["latest_final_state"] = final_state
 
 
 def _coerce_summary(value: Any) -> dict[str, Any] | None:
@@ -97,6 +107,14 @@ def _coerce_summary(value: Any) -> dict[str, Any] | None:
         summary["latest_index"] = value["latest_index"]
     if isinstance(value.get("latest_timestamp"), str):
         summary["latest_timestamp"] = value["latest_timestamp"]
+    if isinstance(value.get("latest_training_state"), str):
+        summary["latest_training_state"] = value["latest_training_state"]
+    if isinstance(value.get("latest_duration_seconds"), int | float) and not isinstance(
+        value.get("latest_duration_seconds"), bool
+    ):
+        summary["latest_duration_seconds"] = float(value["latest_duration_seconds"])
+    if isinstance(value.get("latest_final_state"), str):
+        summary["latest_final_state"] = value["latest_final_state"]
 
     by_state = value.get("by_state")
     if isinstance(by_state, dict):
@@ -113,7 +131,6 @@ class TelemetryStore:
     def __init__(self, max_episodes: int | None = None) -> None:
         self._lock = threading.RLock()
         self._write_lock = threading.Lock()
-        self._episodes: deque[dict[str, Any]] = deque(maxlen=max_episodes)
         self._metadata: dict[str, Any] = {}
         self._summary: dict[str, Any] = _empty_summary()
         self._started_at = _timestamp()
@@ -125,8 +142,7 @@ class TelemetryStore:
         self._writer_thread: threading.Thread | None = None
 
     def resize(self, max_episodes: int | None) -> None:
-        with self._lock:
-            self._episodes = deque(self._episodes, maxlen=max_episodes)
+        return None
 
     def configure_history(
         self,
@@ -155,7 +171,6 @@ class TelemetryStore:
             self._redis = redis_client
             self._history_key = history_key
             self._history_version += 1
-            self._episodes.clear()
             self._metadata.clear()
             self._summary = _empty_summary()
             self._sequence = 0
@@ -177,7 +192,6 @@ class TelemetryStore:
                 "timestamp": _timestamp(),
                 **to_json_value(values),
             }
-            self._episodes.append(episode)
             _summarize_episode(self._summary, episode)
             self._mark_dirty()
 
@@ -195,7 +209,6 @@ class TelemetryStore:
         with self._lock:
             removed = self._metadata.pop(section, None)
             if removed is not None and clear_history:
-                self._episodes.clear()
                 self._summary = _empty_summary()
                 self._sequence = 0
                 self._started_at = _timestamp()
@@ -209,7 +222,7 @@ class TelemetryStore:
                     "status": "live",
                     "started_at": self._started_at,
                     "updated_at": _timestamp(),
-                    "episodes": list(self._episodes),
+                    "episodes": [],
                     "summary": self._snapshot_summary_locked(),
                     "metadata": self._metadata,
                 }
@@ -243,7 +256,6 @@ class TelemetryStore:
                 except RedisError as error:
                     logger.warning(f"Could not delete training UI history from Redis key {history_key}: {error}")
             with self._lock:
-                self._episodes.clear()
                 self._summary = _empty_summary()
                 self._sequence = 0
                 self._started_at = _timestamp()
@@ -251,18 +263,18 @@ class TelemetryStore:
 
     def _snapshot_locked(self) -> dict[str, Any]:
         return {
-            "version": 1,
+            "version": 2,
             "started_at": self._started_at,
             "updated_at": _timestamp(),
-            "episodes": list(self._episodes),
+            "episodes": [],
             "summary": self._snapshot_summary_locked(),
             "metadata": self._metadata,
         }
 
     def _snapshot_summary_locked(self) -> dict[str, Any]:
         summary = deepcopy(self._summary)
-        summary["retained_episodes"] = len(self._episodes)
-        summary["discarded_episodes"] = max(0, int(summary.get("episodes", 0)) - len(self._episodes))
+        summary["retained_episodes"] = 0
+        summary["discarded_episodes"] = int(summary.get("episodes", 0))
         return summary
 
     def _load_history_locked(self) -> None:
@@ -273,25 +285,17 @@ class TelemetryStore:
             if serialized is None:
                 return
             payload = json.loads(serialized)
-            episodes = payload.get("episodes", [])
             metadata = payload.get("metadata", {})
-            if not isinstance(episodes, list) or not isinstance(metadata, dict):
+            if not isinstance(metadata, dict):
                 raise ValueError("history fields have invalid types")
             self._metadata.update(metadata)
-            loaded_episodes = [item for item in episodes if isinstance(item, dict)]
-            self._episodes.extend(loaded_episodes)
             summary = _coerce_summary(payload.get("summary"))
             if summary is None:
                 summary = _empty_summary()
-                for episode in loaded_episodes:
-                    _summarize_episode(summary, episode)
             self._summary = summary
-            self._sequence = max(
-                (item.get("index", 0) for item in self._episodes if isinstance(item.get("index"), int)),
-                default=0,
-            )
+            self._sequence = int(summary.get("latest_index") or 0)
             self._started_at = payload.get("started_at") or self._started_at
-            logger.info(f"Loaded {len(self._episodes)} training episodes from Redis key {self._history_key}")
+            logger.info(f"Loaded training summary from Redis key {self._history_key}")
         except (RedisError, ValueError, json.JSONDecodeError) as error:
             logger.warning(f"Ignoring unreadable training UI history in Redis key {self._history_key}: {error}")
 

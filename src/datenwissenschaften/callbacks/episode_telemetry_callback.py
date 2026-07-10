@@ -51,7 +51,6 @@ class EpisodeTelemetryCallback(BaseCallback):
                 duration_seconds=time.monotonic() - self.started_at[index],
                 won=None if info.get("won") is None else bool(info.get("won")),
                 final_state=info.get("state"),
-                ram=info.get("ram", {}),
             )
             self.started_at[index] = time.monotonic()
             self.fitness[index] = 0.0

@@ -32,24 +32,27 @@ const load = async () => {
 onMounted(() => { load(); timer = window.setInterval(load, 1500) })
 onBeforeUnmount(() => window.clearInterval(timer))
 
-const episodes = computed(() => snapshot.value.episodes || [])
-const states = computed(() => [...new Set(episodes.value.map(row => row.training_state).filter(Boolean))]
-  .sort((left, right) => left.localeCompare(right)))
+const summary = computed(() => snapshot.value.summary || {})
+const stateSummaries = computed(() => summary.value.by_state || {})
+const states = computed(() => Object.keys(stateSummaries.value).sort((left, right) => left.localeCompare(right)))
 watch(states, availableStates => {
   if (!availableStates.includes(stateFilter.value)) {
-    stateFilter.value = episodes.value.map(row => row.training_state).filter(Boolean).at(-1) || ''
+    stateFilter.value = summary.value.latest_training_state && availableStates.includes(summary.value.latest_training_state)
+      ? summary.value.latest_training_state
+      : availableStates[0] || ''
   }
 }, { immediate: true })
-const latest = computed(() => episodes.value.at(-1))
-const summary = computed(() => snapshot.value.summary || {})
-const summarizedEpisodes = computed(() => Number(summary.value.episodes) || 0)
-const best = computed(() => summary.value.best_fitness ?? null)
-const wins = computed(() => Number(summary.value.wins) || 0)
+const activeSummary = computed(() => stateSummaries.value[stateFilter.value] || summary.value)
+const summarizedEpisodes = computed(() => Number(activeSummary.value.episodes) || 0)
+const best = computed(() => activeSummary.value.best_fitness ?? null)
+const wins = computed(() => Number(activeSummary.value.wins) || 0)
 const winRate = computed(() => summarizedEpisodes.value ? wins.value / summarizedEpisodes.value * 100 : 0)
 const summarizedAvgDuration = computed(() => {
-  const timed = Number(summary.value.timed_episodes) || 0
-  return timed ? Number(summary.value.duration_seconds_total) / timed : null
+  const timed = Number(activeSummary.value.timed_episodes) || 0
+  return timed ? Number(activeSummary.value.duration_seconds_total) / timed : null
 })
+const latestTrainingState = computed(() => activeSummary.value.latest_training_state || summary.value.latest_training_state)
+const latestDuration = computed(() => activeSummary.value.latest_duration_seconds ?? null)
 const model = computed(() => snapshot.value.metadata?.model || {})
 const ppo = computed(() => model.value.ppo || {})
 const rnd = computed(() => model.value.rnd || {})
@@ -119,7 +122,7 @@ const label = key => key.replaceAll('_', ' ')
       <div class="run-summary">
         <span>{{ run.game || 'Awaiting run' }}</span>
         <span class="separator">/</span>
-        <span>{{ latest?.training_state || run.savestate || 'no state' }}</span>
+        <span>{{ latestTrainingState || run.savestate || 'no state' }}</span>
         <span class="endpoint">{{ server.bind_address || '—' }}</span>
         <span :class="['connection', { offline: !connected }]"><i></i>{{ connected ? 'Live' : 'Disconnected' }}</span>
       </div>
@@ -135,9 +138,9 @@ const label = key => key.replaceAll('_', ' ')
     </section>
 
     <section class="kpis">
-      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>observed episodes</small></article>
+      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ stateFilter || 'all states' }} summary</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
-      <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latest?.duration_seconds) }} latest retained</small></article>
+      <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latestDuration) }} latest episode</small></article>
       <article class="panel metric"><p>Savestate beaten</p><strong>{{ selectedSavestateProgress ? `${fmt(selectedBeatenCount)} / ${fmt(selectedBeatenThreshold)}` : '—' }}</strong><small>{{ selectedSavestateProgress?.beaten ? 'threshold reached' : selectedSavestateProgress?.has_savestate ? 'automatic savestate active' : 'no automatic savestate yet' }}</small></article>
     </section>
 
@@ -165,7 +168,7 @@ const label = key => key.replaceAll('_', ' ')
       </article>
     </section>
 
-    <footer>Local telemetry · refreshes every 1.5 seconds · {{ episodes.length }} retained / {{ summarizedEpisodes }} observed episodes</footer>
+    <footer>Local telemetry · refreshes every 1.5 seconds · {{ summarizedEpisodes }} observed episodes for {{ stateFilter || 'all states' }}</footer>
 
     <div v-if="showResetDialog" class="modal-backdrop" @click.self="showResetDialog = false">
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">
