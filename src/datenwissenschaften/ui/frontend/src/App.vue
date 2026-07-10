@@ -67,6 +67,7 @@ const versionLabel = computed(() => server.value.version === 'DEVELOPMENT'
   ? 'DEVELOPMENT'
   : server.value.version ? `v${server.value.version}` : '—')
 const activeAlgorithm = computed(() => entries(ppo.value).length ? 'ppo' : null)
+const modelName = computed(() => model.value.display_name || (entries(rnd.value).length ? 'Adaptive Recurrent PPO + RND' : 'PPO'))
 const control = computed(() => snapshot.value.control || {})
 
 const resetModel = async () => {
@@ -143,12 +144,12 @@ const label = key => key.replaceAll('_', ' ')
         <dl><template v-for="([key, value]) in entries(runtimeDetails)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
       </article>
       <article v-if="activeAlgorithm === 'ppo'" class="panel detail-card">
-        <div class="card-heading"><div><p class="eyebrow">POLICY OPTIMIZATION</p><h2>{{ entries(rnd).length ? 'Recurrent PPO' : 'PPO' }}</h2></div><span class="chip" :class="{ muted: !entries(ppo).length }">{{ entries(ppo).length ? 'Configured' : 'Not active' }}</span></div>
+        <div class="card-heading"><div><p class="eyebrow">POLICY OPTIMIZATION</p><h2>{{ modelName }}</h2><p v-if="model.description" class="placeholder">{{ model.description }}</p></div><span class="chip" :class="{ muted: !entries(ppo).length }">{{ entries(ppo).length ? 'Configured' : 'Not active' }}</span></div>
         <dl v-if="entries(ppo).length"><template v-for="([key, value]) in entries(ppo)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
         <p v-else class="placeholder">No PPO parameters on the active model.</p>
       </article>
       <article v-if="activeAlgorithm === 'ppo' && entries(rnd).length" class="panel detail-card">
-        <div class="card-heading"><div><p class="eyebrow">INTRINSIC EXPLORATION</p><h2>Random Network Distillation</h2></div><span class="chip">Active</span></div>
+        <div class="card-heading"><div><p class="eyebrow">ADAPTIVE EXPLORATION</p><h2>Self-tuned RND</h2><p class="placeholder">Uses score staleness and missing wins to tune curiosity, entropy, PPO step size, clip range, and RND update pressure.</p></div><span class="chip">Active</span></div>
         <dl><template v-for="([key, value]) in entries(rnd)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
       </article>
       <article v-if="!activeAlgorithm" class="panel detail-card">

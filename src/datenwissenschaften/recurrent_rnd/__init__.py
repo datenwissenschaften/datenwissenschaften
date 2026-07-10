@@ -1,3 +1,7 @@
-from datenwissenschaften.recurrent_rnd.model import RecurrentRNDModel, RecurrentRNDPPO, build_recurrent_rnd_ppo
+from datenwissenschaften.recurrent_rnd.model import (
+    AdaptiveRecurrentRNDModel,
+    AdaptiveRecurrentRNDPPO,
+    build_adaptive_recurrent_rnd_ppo,
+)
 
-__all__ = ["RecurrentRNDModel", "RecurrentRNDPPO", "build_recurrent_rnd_ppo"]
+__all__ = ["AdaptiveRecurrentRNDModel", "AdaptiveRecurrentRNDPPO", "build_adaptive_recurrent_rnd_ppo"]

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import shutil
+from collections import deque
+from collections.abc import Callable
 from typing import Any
 
 import gymnasium as gym
@@ -108,6 +110,7 @@ class _RandomNetworkDistillation(nn.Module):
         self.intrinsic_gamma = float(intrinsic_gamma)
         self.initial_coefficient = float(intrinsic_coefficient)
         self.final_coefficient = float(final_intrinsic_coefficient)
+        self.adaptation_multiplier = 1.0
         self.anneal_steps = int(anneal_steps)
         self.reward_clip = float(reward_clip)
         self._observation_scale = 255.0 if visual_space.dtype == np.uint8 else 1.0
@@ -122,7 +125,11 @@ class _RandomNetworkDistillation(nn.Module):
     @property
     def coefficient(self) -> float:
         fraction = min(int(self.observations_seen.item()) / self.anneal_steps, 1.0)
-        return self.initial_coefficient + fraction * (self.final_coefficient - self.initial_coefficient)
+        base = self.initial_coefficient + fraction * (self.final_coefficient - self.initial_coefficient)
+        return base * self.adaptation_multiplier
+
+    def set_adaptation_multiplier(self, multiplier: float) -> None:
+        self.adaptation_multiplier = float(multiplier)
 
     def intrinsic_reward(self, observations: dict[str, np.ndarray], dones: np.ndarray) -> tuple[np.ndarray, float]:
         inputs = torch.as_tensor(observations["visual"], device=self.reward_mean.device, dtype=torch.float32)
@@ -194,7 +201,7 @@ class _RNDRewardWrapper(VecEnvWrapper):
             return observations, rewards, dones, infos
 
         if not isinstance(observations, dict):
-            raise TypeError("RecurrentRNDPPO requires visual and RAM dictionary observations.")
+            raise TypeError("AdaptiveRecurrentRNDPPO requires visual and RAM dictionary observations.")
         reward_observations = {key: np.array(value, copy=True) for key, value in observations.items()}
         for index, done in enumerate(dones):
             terminal_observation = infos[index].get("terminal_observation")
@@ -216,8 +223,46 @@ class _StopOnModelResetCallback(BaseCallback):
         return not model_reset_requested()
 
 
-class RecurrentRNDPPO(RecurrentPPO):
+class _AdaptiveExplorationCallback(BaseCallback):
+    def __init__(self, model: "AdaptiveRecurrentRNDPPO") -> None:
+        super().__init__()
+        self._model = model
+        self._episode_fitness: list[float] = []
+
+    def _on_training_start(self) -> None:
+        self._episode_fitness = [0.0] * self.training_env.num_envs
+
+    def _on_step(self) -> bool:
+        rewards = self.locals.get("rewards")
+        dones = self.locals.get("dones")
+        infos = self.locals.get("infos")
+        if rewards is None or dones is None or infos is None:
+            return True
+
+        while len(self._episode_fitness) < len(rewards):
+            self._episode_fitness.append(0.0)
+
+        for index, (reward, done, info) in enumerate(zip(rewards, dones, infos, strict=True)):
+            self._episode_fitness[index] += float(info.get("extrinsic_reward", reward))
+            if not bool(done):
+                continue
+
+            monitor_episode = info.get("episode", {})
+            fitness = float(monitor_episode.get("r", self._episode_fitness[index]))
+            won = None if info.get("won") is None else bool(info.get("won"))
+            self._model.record_episode_outcome(fitness=fitness, won=won)
+            self._episode_fitness[index] = 0.0
+
+        return True
+
+
+class AdaptiveRecurrentRNDPPO(RecurrentPPO):
     supports_ui_restart = True
+    display_name = "Adaptive Recurrent PPO + RND"
+    description = (
+        "Recurrent PPO with Random Network Distillation that raises exploration when fitness stops improving "
+        "or episodes stop winning, then eases back when progress returns."
+    )
 
     def __init__(
         self,
@@ -232,6 +277,22 @@ class RecurrentRNDPPO(RecurrentPPO):
         rnd_final_intrinsic_coefficient: float = 0.02,
         rnd_anneal_steps: int = 5_000_000,
         rnd_reward_clip: float = 1.0,
+        adaptive_autoconfigure: bool = True,
+        adaptive_score_staleness_episodes: int | None = None,
+        adaptive_no_win_staleness_episodes: int | None = None,
+        adaptive_score_delta: float | None = None,
+        adaptive_multiplier_min: float | None = None,
+        adaptive_multiplier_max: float | None = None,
+        adaptive_recovery_multiplier: float | None = None,
+        adaptive_stale_score_multiplier: float | None = None,
+        adaptive_no_win_multiplier: float | None = None,
+        adaptive_combined_multiplier: float | None = None,
+        adaptive_smoothing: float | None = None,
+        adaptive_learning_rate_min: float | None = None,
+        adaptive_learning_rate_max: float | None = None,
+        adaptive_clip_range_min: float | None = None,
+        adaptive_clip_range_max: float | None = None,
+        adaptive_rnd_update_max: float | None = None,
         _init_setup_model: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -239,7 +300,7 @@ class RecurrentRNDPPO(RecurrentPPO):
             policy != "MultiInputLstmPolicy"
             and getattr(policy, "__name__", "") != "RecurrentMultiInputActorCriticPolicy"
         ):
-            raise ValueError("RecurrentRNDPPO requires MultiInputLstmPolicy.")
+            raise ValueError("AdaptiveRecurrentRNDPPO requires MultiInputLstmPolicy.")
 
         self.rnd_output_size = int(rnd_output_size)
         self.rnd_learning_rate = float(rnd_learning_rate)
@@ -250,6 +311,37 @@ class RecurrentRNDPPO(RecurrentPPO):
         self.rnd_anneal_steps = int(rnd_anneal_steps)
         self.rnd_reward_clip = float(rnd_reward_clip)
         self.rnd: _RandomNetworkDistillation | None = None
+        self.adaptive_autoconfigure = bool(adaptive_autoconfigure)
+        self.adaptive_score_staleness_episodes = adaptive_score_staleness_episodes
+        self.adaptive_no_win_staleness_episodes = adaptive_no_win_staleness_episodes
+        self.adaptive_score_delta = adaptive_score_delta
+        self.adaptive_multiplier_min = adaptive_multiplier_min
+        self.adaptive_multiplier_max = adaptive_multiplier_max
+        self.adaptive_recovery_multiplier = adaptive_recovery_multiplier
+        self.adaptive_stale_score_multiplier = adaptive_stale_score_multiplier
+        self.adaptive_no_win_multiplier = adaptive_no_win_multiplier
+        self.adaptive_combined_multiplier = adaptive_combined_multiplier
+        self.adaptive_smoothing = adaptive_smoothing
+        self.adaptive_learning_rate_min = adaptive_learning_rate_min
+        self.adaptive_learning_rate_max = adaptive_learning_rate_max
+        self.adaptive_clip_range_min = adaptive_clip_range_min
+        self.adaptive_clip_range_max = adaptive_clip_range_max
+        self.adaptive_rnd_update_max = adaptive_rnd_update_max
+        self.adaptive_action_count = 1
+        self.adaptive_observation_pixels = 0
+        self.adaptive_rollout_steps = 0
+        self.adaptive_rnd_update_proportion = self.rnd_update_proportion
+        self.best_adaptation_fitness: float | None = None
+        self.episodes_since_score_improvement = 0
+        self.episodes_since_win = 0
+        self.adaptive_episode_count = 0
+        self.adaptation_multiplier = 1.0
+        self.adaptation_reason = "warming_up"
+        self._recent_fitness: deque[float] = deque(maxlen=128)
+        self.base_ent_coef = float(kwargs.get("ent_coef", NES_PPO_DEFAULTS["ent_coef"]))
+        self.base_learning_rate = float(kwargs.get("learning_rate", NES_PPO_DEFAULTS["learning_rate"]))
+        self.base_clip_range = kwargs.get("clip_range", NES_PPO_DEFAULTS["clip_range"])
+        self.base_rnd_update_proportion = self.rnd_update_proportion
 
         for name, value in NES_PPO_DEFAULTS.items():
             kwargs.setdefault(name, value.copy() if isinstance(value, dict) else value)
@@ -268,7 +360,7 @@ class RecurrentRNDPPO(RecurrentPPO):
     def _setup_model(self) -> None:
         super()._setup_model()
         if not isinstance(self.observation_space, gym.spaces.Dict):
-            raise ValueError("RecurrentRNDPPO requires visual and RAM dictionary observations.")
+            raise ValueError("AdaptiveRecurrentRNDPPO requires visual and RAM dictionary observations.")
         self.rnd = _RandomNetworkDistillation(
             self.observation_space,
             output_size=self.rnd_output_size,
@@ -281,6 +373,7 @@ class RecurrentRNDPPO(RecurrentPPO):
             reward_clip=self.rnd_reward_clip,
             device=self.device,
         )
+        self._autoconfigure_adaptation(total_timesteps=None)
         self._attach_rnd_to_env()
 
     def set_env(self, env: VecEnv, force_reset: bool = True) -> None:
@@ -299,13 +392,15 @@ class RecurrentRNDPPO(RecurrentPPO):
         progress_bar: bool = False,
     ):
         restart_budget = total_timesteps + (self.num_timesteps if not reset_num_timesteps else 0)
+        self._autoconfigure_adaptation(total_timesteps=total_timesteps)
         reset_callback = _StopOnModelResetCallback()
+        adaptation_callback = _AdaptiveExplorationCallback(self)
         if callback is None:
-            active_callbacks = [reset_callback]
+            active_callbacks = [reset_callback, adaptation_callback]
         elif isinstance(callback, list):
-            active_callbacks = [reset_callback, *callback]
+            active_callbacks = [reset_callback, adaptation_callback, *callback]
         else:
-            active_callbacks = [reset_callback, callback]
+            active_callbacks = [reset_callback, adaptation_callback, callback]
 
         wrapper = self.env if isinstance(self.env, _RNDRewardWrapper) else None
         if wrapper is not None:
@@ -327,7 +422,7 @@ class RecurrentRNDPPO(RecurrentPPO):
         if reset is None:
             return result
         if wrapper is None:
-            raise RuntimeError("Cannot restart RecurrentRNDPPO without an environment.")
+            raise RuntimeError("Cannot restart AdaptiveRecurrentRNDPPO without an environment.")
 
         perform_model_reset(reset)
         restart_kwargs = dict(self._restart_kwargs)
@@ -342,6 +437,21 @@ class RecurrentRNDPPO(RecurrentPPO):
             rnd_final_intrinsic_coefficient=self.rnd_final_intrinsic_coefficient,
             rnd_anneal_steps=self.rnd_anneal_steps,
             rnd_reward_clip=self.rnd_reward_clip,
+            adaptive_score_staleness_episodes=self.adaptive_score_staleness_episodes,
+            adaptive_no_win_staleness_episodes=self.adaptive_no_win_staleness_episodes,
+            adaptive_score_delta=self.adaptive_score_delta,
+            adaptive_multiplier_min=self.adaptive_multiplier_min,
+            adaptive_multiplier_max=self.adaptive_multiplier_max,
+            adaptive_recovery_multiplier=self.adaptive_recovery_multiplier,
+            adaptive_stale_score_multiplier=self.adaptive_stale_score_multiplier,
+            adaptive_no_win_multiplier=self.adaptive_no_win_multiplier,
+            adaptive_combined_multiplier=self.adaptive_combined_multiplier,
+            adaptive_smoothing=self.adaptive_smoothing,
+            adaptive_learning_rate_min=self.adaptive_learning_rate_min,
+            adaptive_learning_rate_max=self.adaptive_learning_rate_max,
+            adaptive_clip_range_min=self.adaptive_clip_range_min,
+            adaptive_clip_range_max=self.adaptive_clip_range_max,
+            adaptive_rnd_update_max=self.adaptive_rnd_update_max,
             **restart_kwargs,
         )
         return fresh_model.learn(
@@ -358,6 +468,189 @@ class RecurrentRNDPPO(RecurrentPPO):
             self.rollout_buffer.actions = self.rollout_buffer.actions.astype(np.float32, copy=False)
         super().train()
 
+    def record_episode_outcome(self, *, fitness: float, won: bool | None) -> None:
+        self.adaptive_episode_count += 1
+        self._recent_fitness.append(float(fitness))
+        self._adapt_score_delta_from_recent_fitness()
+        improved = (
+            self.best_adaptation_fitness is None or fitness > self.best_adaptation_fitness + self.adaptive_score_delta
+        )
+        if improved:
+            self.best_adaptation_fitness = fitness
+            self.episodes_since_score_improvement = 0
+        else:
+            self.episodes_since_score_improvement += 1
+
+        if won is True:
+            self.episodes_since_win = 0
+        else:
+            self.episodes_since_win += 1
+
+        self._adapt_exploration()
+
+    def _autoconfigure_adaptation(self, total_timesteps: int | None) -> None:
+        self.adaptive_action_count = max(1, _action_count(self.action_space))
+        self.adaptive_observation_pixels = _observation_pixels(self.observation_space)
+        self.adaptive_rollout_steps = max(1, int(getattr(self, "n_steps", 1)) * max(1, int(getattr(self, "n_envs", 1))))
+        if not self.adaptive_autoconfigure:
+            self._finalize_manual_adaptation_defaults()
+            return
+
+        env_count = max(1, int(getattr(self, "n_envs", 1)))
+        action_complexity = min(5.0, np.log2(self.adaptive_action_count + 1))
+        rollout_episodes = max(env_count, self.adaptive_rollout_steps // max(32, min(512, self.adaptive_rollout_steps)))
+        timestep_scale = 1.0
+        if total_timesteps is not None and total_timesteps > 0:
+            timestep_scale = max(0.75, min(2.0, np.log10(total_timesteps + 10) / 6.0))
+
+        self.adaptive_score_staleness_episodes = _value_or_auto(
+            self.adaptive_score_staleness_episodes,
+            int(max(12, min(160, (rollout_episodes * 4 + action_complexity * 8) * timestep_scale))),
+        )
+        self.adaptive_no_win_staleness_episodes = _value_or_auto(
+            self.adaptive_no_win_staleness_episodes,
+            int(max(self.adaptive_score_staleness_episodes * 2, min(320, self.adaptive_score_staleness_episodes * 3))),
+        )
+        self.adaptive_score_delta = _float_or_auto(self.adaptive_score_delta, 0.0)
+        self.adaptive_multiplier_min = _float_or_auto(self.adaptive_multiplier_min, 0.6)
+        self.adaptive_multiplier_max = _float_or_auto(
+            self.adaptive_multiplier_max,
+            max(2.0, min(5.0, 2.0 + action_complexity * 0.45)),
+        )
+        self.adaptive_recovery_multiplier = _float_or_auto(self.adaptive_recovery_multiplier, 1.0)
+        self.adaptive_stale_score_multiplier = _float_or_auto(
+            self.adaptive_stale_score_multiplier,
+            min(self.adaptive_multiplier_max, 1.5 + action_complexity * 0.2),
+        )
+        self.adaptive_no_win_multiplier = _float_or_auto(
+            self.adaptive_no_win_multiplier,
+            min(self.adaptive_multiplier_max, 1.75 + action_complexity * 0.25),
+        )
+        self.adaptive_combined_multiplier = _float_or_auto(
+            self.adaptive_combined_multiplier,
+            min(self.adaptive_multiplier_max, 2.25 + action_complexity * 0.35),
+        )
+        self.adaptive_smoothing = _float_or_auto(
+            self.adaptive_smoothing,
+            max(0.04, min(0.18, 2.0 / max(12.0, float(self.adaptive_score_staleness_episodes)))),
+        )
+        self.adaptive_learning_rate_min = _float_or_auto(self.adaptive_learning_rate_min, self.base_learning_rate * 0.2)
+        self.adaptive_learning_rate_max = _float_or_auto(self.adaptive_learning_rate_max, self.base_learning_rate * 1.5)
+        self.adaptive_clip_range_min = _float_or_auto(self.adaptive_clip_range_min, 0.08)
+        self.adaptive_clip_range_max = _float_or_auto(self.adaptive_clip_range_max, 0.25)
+        self.adaptive_rnd_update_max = _float_or_auto(
+            self.adaptive_rnd_update_max,
+            min(1.0, self.base_rnd_update_proportion * 3.0),
+        )
+        self._normalize_adaptation_bounds()
+
+    def _finalize_manual_adaptation_defaults(self) -> None:
+        self.adaptive_score_staleness_episodes = _value_or_auto(self.adaptive_score_staleness_episodes, 25)
+        self.adaptive_no_win_staleness_episodes = _value_or_auto(self.adaptive_no_win_staleness_episodes, 50)
+        self.adaptive_score_delta = _float_or_auto(self.adaptive_score_delta, 0.0)
+        self.adaptive_multiplier_min = _float_or_auto(self.adaptive_multiplier_min, 0.5)
+        self.adaptive_multiplier_max = _float_or_auto(self.adaptive_multiplier_max, 4.0)
+        self.adaptive_recovery_multiplier = _float_or_auto(self.adaptive_recovery_multiplier, 1.0)
+        self.adaptive_stale_score_multiplier = _float_or_auto(self.adaptive_stale_score_multiplier, 2.0)
+        self.adaptive_no_win_multiplier = _float_or_auto(self.adaptive_no_win_multiplier, 2.0)
+        self.adaptive_combined_multiplier = _float_or_auto(self.adaptive_combined_multiplier, 3.0)
+        self.adaptive_smoothing = _float_or_auto(self.adaptive_smoothing, 0.1)
+        self.adaptive_learning_rate_min = _float_or_auto(
+            self.adaptive_learning_rate_min,
+            self.base_learning_rate * 0.25,
+        )
+        self.adaptive_learning_rate_max = _float_or_auto(self.adaptive_learning_rate_max, self.base_learning_rate * 1.5)
+        self.adaptive_clip_range_min = _float_or_auto(self.adaptive_clip_range_min, 0.08)
+        self.adaptive_clip_range_max = _float_or_auto(self.adaptive_clip_range_max, 0.25)
+        self.adaptive_rnd_update_max = _float_or_auto(
+            self.adaptive_rnd_update_max,
+            min(1.0, self.base_rnd_update_proportion * 2.0),
+        )
+        self._normalize_adaptation_bounds()
+
+    def _normalize_adaptation_bounds(self) -> None:
+        self.adaptive_score_staleness_episodes = max(1, int(self.adaptive_score_staleness_episodes))
+        self.adaptive_no_win_staleness_episodes = max(1, int(self.adaptive_no_win_staleness_episodes))
+        self.adaptive_score_delta = max(0.0, float(self.adaptive_score_delta))
+        self.adaptive_multiplier_min = max(0.05, float(self.adaptive_multiplier_min))
+        self.adaptive_multiplier_max = max(self.adaptive_multiplier_min, float(self.adaptive_multiplier_max))
+        self.adaptive_recovery_multiplier = self._clamp_adaptation_multiplier(self.adaptive_recovery_multiplier)
+        self.adaptive_stale_score_multiplier = self._clamp_adaptation_multiplier(self.adaptive_stale_score_multiplier)
+        self.adaptive_no_win_multiplier = self._clamp_adaptation_multiplier(self.adaptive_no_win_multiplier)
+        self.adaptive_combined_multiplier = self._clamp_adaptation_multiplier(self.adaptive_combined_multiplier)
+        self.adaptive_smoothing = max(0.0, min(1.0, float(self.adaptive_smoothing)))
+        self.adaptive_learning_rate_min = max(0.0, float(self.adaptive_learning_rate_min))
+        self.adaptive_learning_rate_max = max(self.adaptive_learning_rate_min, float(self.adaptive_learning_rate_max))
+        self.adaptive_clip_range_min = max(0.01, float(self.adaptive_clip_range_min))
+        self.adaptive_clip_range_max = max(self.adaptive_clip_range_min, float(self.adaptive_clip_range_max))
+        self.adaptive_rnd_update_max = max(
+            self.base_rnd_update_proportion,
+            min(1.0, float(self.adaptive_rnd_update_max)),
+        )
+
+    def _adapt_score_delta_from_recent_fitness(self) -> None:
+        if not self.adaptive_autoconfigure or len(self._recent_fitness) < 12:
+            return
+        values = np.asarray(self._recent_fitness, dtype=np.float32)
+        spread = float(np.std(values))
+        self.adaptive_score_delta = max(1e-6, spread * 0.02)
+
+    def _adapt_exploration(self) -> None:
+        stale_score = self.episodes_since_score_improvement >= self.adaptive_score_staleness_episodes
+        no_wins = self.episodes_since_win >= self.adaptive_no_win_staleness_episodes
+        if stale_score and no_wins:
+            target_multiplier = self.adaptive_combined_multiplier
+            self.adaptation_reason = "stale_score_and_no_wins"
+        elif stale_score:
+            target_multiplier = self.adaptive_stale_score_multiplier
+            self.adaptation_reason = "stale_score"
+        elif no_wins:
+            target_multiplier = self.adaptive_no_win_multiplier
+            self.adaptation_reason = "no_wins"
+        else:
+            target_multiplier = self.adaptive_recovery_multiplier
+            self.adaptation_reason = "progressing"
+
+        target_multiplier = self._clamp_adaptation_multiplier(target_multiplier)
+        self.adaptation_multiplier = (
+            1.0 - self.adaptive_smoothing
+        ) * self.adaptation_multiplier + self.adaptive_smoothing * target_multiplier
+        self.adaptation_multiplier = self._clamp_adaptation_multiplier(self.adaptation_multiplier)
+        if self.rnd is not None:
+            self.rnd.set_adaptation_multiplier(self.adaptation_multiplier)
+            self.adaptive_rnd_update_proportion = min(
+                self.adaptive_rnd_update_max,
+                self.base_rnd_update_proportion * np.sqrt(max(1.0, self.adaptation_multiplier)),
+            )
+            self.rnd.update_proportion = self.adaptive_rnd_update_proportion
+
+        self.ent_coef = self.base_ent_coef * self.adaptation_multiplier
+        learning_rate = self.base_learning_rate / max(self.adaptation_multiplier, 1e-8)
+        learning_rate = max(self.adaptive_learning_rate_min, min(self.adaptive_learning_rate_max, learning_rate))
+        self._set_optimizer_learning_rate(learning_rate)
+        self._set_clip_range(self._adaptive_clip_range())
+
+    def _clamp_adaptation_multiplier(self, value: float) -> float:
+        return max(self.adaptive_multiplier_min, min(self.adaptive_multiplier_max, float(value)))
+
+    def _set_optimizer_learning_rate(self, learning_rate: float) -> None:
+        self.learning_rate = learning_rate
+        self.lr_schedule = lambda _: learning_rate
+        optimizer = getattr(getattr(self, "policy", None), "optimizer", None)
+        if optimizer is None:
+            return
+        for group in optimizer.param_groups:
+            group["lr"] = learning_rate
+
+    def _adaptive_clip_range(self) -> float | Callable[[float], float]:
+        if callable(self.base_clip_range):
+            return self.base_clip_range
+        clip_range = float(self.base_clip_range) / np.sqrt(max(1.0, self.adaptation_multiplier))
+        return max(self.adaptive_clip_range_min, min(self.adaptive_clip_range_max, clip_range))
+
+    def _set_clip_range(self, clip_range: float | Callable[[float], float]) -> None:
+        self.clip_range = clip_range if callable(clip_range) else lambda _: clip_range
+
     def _attach_rnd_to_env(self) -> None:
         if isinstance(self.env, _RNDRewardWrapper):
             self.env.rnd = self.rnd
@@ -370,12 +663,42 @@ class RecurrentRNDPPO(RecurrentPPO):
         return state_dicts + ["rnd", "rnd.optimizer"], variables
 
 
-def build_recurrent_rnd_ppo(env: VecEnv, **kwargs: Any) -> RecurrentRNDPPO:
+def build_adaptive_recurrent_rnd_ppo(env: VecEnv, **kwargs: Any) -> AdaptiveRecurrentRNDPPO:
     kwargs.setdefault("verbose", 0)
-    return RecurrentRNDPPO("MultiInputLstmPolicy", env, **kwargs)
+    return AdaptiveRecurrentRNDPPO("MultiInputLstmPolicy", env, **kwargs)
 
 
-class RecurrentRNDModel:
+def _action_count(action_space: gym.Space | None) -> int:
+    if isinstance(action_space, gym.spaces.Discrete):
+        return int(action_space.n)
+    if isinstance(action_space, gym.spaces.MultiBinary):
+        return int(action_space.n)
+    if isinstance(action_space, gym.spaces.MultiDiscrete):
+        return int(np.sum(action_space.nvec))
+    if isinstance(action_space, gym.spaces.Box):
+        return int(np.prod(action_space.shape or (1,)))
+    return 1
+
+
+def _observation_pixels(observation_space: gym.Space | None) -> int:
+    if isinstance(observation_space, gym.spaces.Dict):
+        visual_space = observation_space.spaces.get("visual")
+        if isinstance(visual_space, gym.spaces.Box):
+            return int(np.prod(visual_space.shape or (0,)))
+    if isinstance(observation_space, gym.spaces.Box):
+        return int(np.prod(observation_space.shape or (0,)))
+    return 0
+
+
+def _value_or_auto(value: int | None, automatic: int) -> int:
+    return int(automatic if value is None else value)
+
+
+def _float_or_auto(value: float | None, automatic: float) -> float:
+    return float(automatic if value is None else value)
+
+
+class AdaptiveRecurrentRNDModel:
     @staticmethod
     def cleanup_incompatible_artifacts(config) -> None:
         game_dir = config.paths.models_dir / config.training.game_identity
@@ -390,8 +713,8 @@ class RecurrentRNDModel:
             logger.info(f"Removed incompatible legacy model artifacts: {path}")
 
     @staticmethod
-    def load(path: str, **kwargs: Any) -> RecurrentRNDPPO:
-        return RecurrentRNDPPO.load(path, **kwargs)
+    def load(path: str, **kwargs: Any) -> AdaptiveRecurrentRNDPPO:
+        return AdaptiveRecurrentRNDPPO.load(path, **kwargs)
 
-    def __call__(self, env: VecEnv) -> RecurrentRNDPPO:
-        return build_recurrent_rnd_ppo(env)
+    def __call__(self, env: VecEnv) -> AdaptiveRecurrentRNDPPO:
+        return build_adaptive_recurrent_rnd_ppo(env)

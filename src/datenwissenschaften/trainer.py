@@ -10,6 +10,7 @@ from datenwissenschaften.accelerator import configure_accelerator
 from datenwissenschaften.callbacks import (
     BestEpisodeCallback,
     EpisodeTelemetryCallback,
+    ModelMetadataCallback,
     SaveModelCallback,
     StopTrainingAtTimestepsCallback,
 )
@@ -123,6 +124,7 @@ class Trainer:
 
     def _default_callbacks(self) -> list[BaseCallback]:
         callbacks = [
+            ModelMetadataCallback(),
             SaveModelCallback(),
             EpisodeTelemetryCallback(),
             BestEpisodeCallback(self.total_timesteps),

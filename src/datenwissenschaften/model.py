@@ -27,6 +27,8 @@ def get_model_metadata(model: Any) -> dict[str, Any]:
         "action_space": str(getattr(model, "action_space", None)),
         "class": f"{model.__class__.__module__.partition('.')[0]}.{model.__class__.__name__}",
         "class_path": _class_path(model),
+        "display_name": getattr(model, "display_name", None),
+        "description": getattr(model, "description", None),
         "device": str(getattr(model, "device", None)),
         "n_envs": getattr(model, "n_envs", None),
         "num_timesteps": getattr(model, "num_timesteps", None),
@@ -69,6 +71,23 @@ def get_model_metadata(model: Any) -> dict[str, Any]:
         active_rnd = getattr(model, "rnd", None)
         rnd["observations_seen"] = int(active_rnd.observations_seen.item()) if active_rnd is not None else 0
         rnd["current_intrinsic_coefficient"] = active_rnd.coefficient if active_rnd is not None else None
+        rnd["adaptation_multiplier"] = getattr(model, "adaptation_multiplier", None)
+        rnd["adaptation_reason"] = getattr(model, "adaptation_reason", None)
+        rnd["adaptive_autoconfigure"] = getattr(model, "adaptive_autoconfigure", None)
+        rnd["adaptive_action_count"] = getattr(model, "adaptive_action_count", None)
+        rnd["adaptive_observation_pixels"] = getattr(model, "adaptive_observation_pixels", None)
+        rnd["adaptive_rollout_steps"] = getattr(model, "adaptive_rollout_steps", None)
+        rnd["adaptive_score_delta"] = getattr(model, "adaptive_score_delta", None)
+        rnd["adaptive_score_staleness_episodes"] = getattr(model, "adaptive_score_staleness_episodes", None)
+        rnd["adaptive_no_win_staleness_episodes"] = getattr(model, "adaptive_no_win_staleness_episodes", None)
+        rnd["adaptive_multiplier_min"] = getattr(model, "adaptive_multiplier_min", None)
+        rnd["adaptive_multiplier_max"] = getattr(model, "adaptive_multiplier_max", None)
+        rnd["adaptive_learning_rate_min"] = getattr(model, "adaptive_learning_rate_min", None)
+        rnd["adaptive_learning_rate_max"] = getattr(model, "adaptive_learning_rate_max", None)
+        rnd["adaptive_rnd_update_proportion"] = getattr(model, "adaptive_rnd_update_proportion", None)
+        rnd["adaptive_rnd_update_max"] = getattr(model, "adaptive_rnd_update_max", None)
+        rnd["episodes_since_score_improvement"] = getattr(model, "episodes_since_score_improvement", None)
+        rnd["episodes_since_win"] = getattr(model, "episodes_since_win", None)
         metadata["rnd"] = rnd
     return metadata
 

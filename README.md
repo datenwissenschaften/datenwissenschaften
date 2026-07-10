@@ -14,8 +14,8 @@ recording, and a live browser dashboard in one focused Python package.
 
 ## Why this engine
 
-- **Exploration for sparse rewards** — multi-input CNN-LSTM PPO combines visual frames, normalized RAM, temporal
-  memory, and normalized, clipped, annealed Random Network Distillation (RND).
+- **Exploration for sparse rewards** — adaptive multi-input CNN-LSTM PPO combines visual frames, normalized RAM,
+  temporal memory, and normalized, clipped, annealed Random Network Distillation (RND).
 - **Efficient execution** — vectorized environments, automatic worker selection, CUDA tuning, and CPU fallback.
 - **Reliable training runs** — atomic checkpoints, resumable model state, and `.bk2` replay capture.
 - **Operational visibility** — a local Vue dashboard reports episode outcomes, reward distributions, environment
@@ -27,16 +27,19 @@ recording, and a live browser dashboard in one focused Python package.
 
 | Model | Best suited to | Characteristics |
 | --- | --- | --- |
-| `RecurrentRNDModel` | Sparse-reward NES games and partially observable state | Automatic visual + RAM inputs, NES-tuned recurrent PPO, LSTM memory, intrinsic RND exploration |
+| `AdaptiveRecurrentRNDModel` | Sparse-reward NES games and partially observable state | Automatic visual + RAM inputs, NES-tuned recurrent PPO, LSTM memory, adaptive intrinsic RND exploration |
 | Custom SB3 model | Experiments that need a standard Stable-Baselines3 algorithm | Integrates through the same builder, trainer, callbacks, and dashboard |
 
-`RecurrentRNDModel` is the recommended starting point for visual agents. RND encourages the policy to visit novel
-observations, while its influence decays during training so learned external rewards increasingly drive behavior.
-The predictor, fixed target, optimizer, reward statistics, and annealing progress are all preserved in checkpoints.
+`AdaptiveRecurrentRNDModel` is the recommended starting point for visual agents. RND encourages the policy to visit
+novel observations, while its influence decays during training so learned external rewards increasingly drive
+behavior. The model also auto-configures score-staleness windows, missing-win windows, exploration multipliers,
+entropy, learning rate, clip range, and RND update pressure from the action space, rollout size, training horizon,
+fitness volatility, score staleness, and win staleness. The predictor, fixed target, optimizer, reward statistics,
+adaptation state, and annealing progress are all preserved in checkpoints.
 Environment wrappers always use RGB observations and one emulator step per selected action; these are fixed engine
 defaults rather than game-level options.
-The default profile uses longer 512-step rollouts, a 512-unit LSTM, `gamma=0.999`, `gae_lambda=0.98`, and a slower
-10-million-step RND decay. These settings preserve more temporal context and delayed reward information than the
+The default profile uses longer 512-step rollouts, a 256-unit LSTM, `gamma=0.999`, `gae_lambda=0.98`, and a slower
+5-million-step RND decay. These settings preserve more temporal context and delayed reward information than the
 shorter arcade baseline while retaining conservative PPO updates.
 
 ## Installation
