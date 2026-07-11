@@ -33,7 +33,6 @@ def get_model_metadata(model: Any) -> dict[str, Any]:
         "n_envs": getattr(model, "n_envs", None),
         "num_timesteps": getattr(model, "num_timesteps", None),
         "observation_space": str(getattr(model, "observation_space", None)),
-        "total_timesteps": getattr(model, "_total_timesteps", None),
     }
     ppo_fields = (
         "batch_size",

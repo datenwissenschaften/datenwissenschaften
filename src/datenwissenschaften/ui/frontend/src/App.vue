@@ -141,7 +141,7 @@ const label = key => key.replaceAll('_', ' ')
           <span class="chip" :class="{ muted: !row.active_environments }">{{ row.active_environments ? `${row.active_environments} active` : 'Waiting' }}</span>
         </div>
         <dl>
-          <dt>Training progress</dt><dd>{{ fmt(row.collected_steps) }} / {{ fmt(row.target_steps) }} ({{ fmt(row.progress_percent, 1) }}%)</dd>
+          <dt>Collected training steps</dt><dd>{{ fmt(row.collected_steps) }}</dd>
           <dt>Rollout buffer</dt><dd>{{ fmt(row.rollout_steps) }} / {{ fmt(row.rollout_capacity) }}</dd>
           <dt>Model updates</dt><dd>{{ fmt(row.model_updates) }}</dd>
           <dt>Completed segments</dt><dd>{{ fmt(row.completed_segments) }}</dd>

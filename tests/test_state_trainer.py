@@ -26,7 +26,6 @@ def test_publish_state_training_includes_unreached_and_active_states(monkeypatch
         {"Find": 3, "Eat": 0},
         {"Find": 2, "Eat": 0},
         {"Find": 12.5, "Eat": None},
-        1_000,
         SimpleNamespace(ui=SimpleNamespace(enabled=True)),
     )
 
@@ -35,8 +34,6 @@ def test_publish_state_training_includes_unreached_and_active_states(monkeypatch
     assert published["values"]["Find"] == {
         "active_environments": 2,
         "collected_steps": 100,
-        "target_steps": 1_000,
-        "progress_percent": 10.0,
         "rollout_steps": 2,
         "rollout_capacity": 32,
         "model_updates": 2,

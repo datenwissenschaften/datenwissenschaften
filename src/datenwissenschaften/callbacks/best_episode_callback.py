@@ -9,9 +9,8 @@ from datenwissenschaften.runtime import get_runtime
 
 # noinspection PyMethodMayBeStatic
 class BestEpisodeCallback(BaseCallback):
-    def __init__(self, total_timesteps: int = 0):
+    def __init__(self):
         super().__init__()
-        self.total_timesteps = total_timesteps
         self.episodes: list[EpisodeRecord] = []
         self.active_episodes: list[EpisodeRecord] = []
         self.episode_counts: list[int] = []
@@ -24,7 +23,7 @@ class BestEpisodeCallback(BaseCallback):
         self.best_time_until_won = self._previous_time_until_won(runtime.get_state_value("best_time_until_won"))
         logger.info(
             f"Training started across {self.training_env.num_envs} envs. "
-            f"Best time until won: {self.best_time_until_won}. Total steps: {self.total_timesteps}"
+            f"Best time until won: {self.best_time_until_won}"
         )
 
     def _on_training_end(self) -> None:

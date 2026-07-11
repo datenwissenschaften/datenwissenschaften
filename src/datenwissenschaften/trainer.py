@@ -12,7 +12,6 @@ from datenwissenschaften.callbacks import (
     EpisodeTelemetryCallback,
     ModelMetadataCallback,
     SaveModelCallback,
-    StopTrainingAtTimestepsCallback,
 )
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
 from datenwissenschaften.logger import setup_logging
@@ -26,6 +25,8 @@ from datenwissenschaften.ui.control import configure_training_control
 
 
 class Trainer:
+    training_chunk_steps = 10_000_000
+
     # noinspection PyTypeChecker
     def __init__(
         self,
@@ -37,7 +38,6 @@ class Trainer:
         self.config: RetroSpeedlabConfig = load_config(config_path)
         setup_logging(self.config.log_level)
         self.state_name = state_name
-        self.total_timesteps = self.config.training.total_timesteps
         self._additional_callbacks = list(additional_callbacks or [])
         self.callbacks = self._default_callbacks() + self._additional_callbacks
         self._savestate = self.config.training.active_savestate
@@ -47,14 +47,12 @@ class Trainer:
         configure_accelerator()
         self._configure_runtime()
         self._start_ui(model)
-        if model.num_timesteps >= self.total_timesteps:
-            return
-
-        model.learn(
-            total_timesteps=self.total_timesteps - model.num_timesteps,
-            callback=self.callbacks,
-            reset_num_timesteps=False,
-        )
+        while True:
+            model.learn(
+                total_timesteps=self.training_chunk_steps,
+                callback=self.callbacks,
+                reset_num_timesteps=False,
+            )
 
     def _start_ui(self, model) -> None:
         if not self.config.ui.enabled:
@@ -83,7 +81,6 @@ class Trainer:
                 "training_state": self.state_name,
                 "savestate": self._savestate,
                 "savestates": list(self.config.training.savestates),
-                "total_timesteps": self.total_timesteps,
                 "configured_envs": self.config.training.num_envs,
             },
         )
@@ -131,9 +128,8 @@ class Trainer:
             ModelMetadataCallback(),
             SaveModelCallback(),
             EpisodeTelemetryCallback(),
-            BestEpisodeCallback(self.total_timesteps),
+            BestEpisodeCallback(),
             UploadEpisodeCallback(self.config.upload),
-            StopTrainingAtTimestepsCallback(self.total_timesteps),
         ]
         return [callback for callback in callbacks if callback is not None]
 

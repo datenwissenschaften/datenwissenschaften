@@ -63,7 +63,7 @@ class StateTrainer:
 
     def _train_segmented(self, venv: Any, models: dict[str, TrainableModel]) -> dict[str, TrainableModel]:
         config = load_config(self.config_path)
-        total_timesteps = config.training.total_timesteps
+        schedule_horizon = 10**18
         if self._additional_callbacks:
             logger.warning("Additional callbacks are not yet supported by state-segmented training.")
         lifecycle_callbacks: dict[str, Any] = {}
@@ -75,9 +75,8 @@ class StateTrainer:
                     f"State-segmented training requires a recurrent on-policy model; "
                     f"{state_name} is missing: {', '.join(missing)}"
                 )
-            remaining = max(0, total_timesteps - model.num_timesteps)
             model._total_timesteps, lifecycle_callbacks[state_name] = model._setup_learn(
-                remaining,
+                schedule_horizon,
                 callback=[],
                 reset_num_timesteps=False,
                 tb_log_name=f"state_{state_name}",
@@ -101,14 +100,10 @@ class StateTrainer:
             segment_counts,
             update_counts,
             best_state_fitness,
-            total_timesteps,
             config,
         )
 
-        while any(
-            model.num_timesteps < total_timesteps or bool(rollouts.transitions[state_name])
-            for state_name, model in models.items()
-        ):
+        while True:
             reset_request = consume_model_reset()
             if reset_request is not None:
                 for callback in lifecycle_callbacks.values():
@@ -134,11 +129,7 @@ class StateTrainer:
             for callback in episode_callbacks:
                 callback.update_locals(episode_locals)
                 callback.on_step()
-            enabled_states = {
-                state_name
-                for state_name, model in models.items()
-                if model.num_timesteps < total_timesteps or bool(rollouts.transitions[state_name])
-            }
+            enabled_states = set(models)
             full = rollouts.append(
                 observations,
                 actions,
@@ -173,7 +164,7 @@ class StateTrainer:
                     )
 
             for state_name in full:
-                self._update_model(state_name, models[state_name], rollouts, total_timesteps)
+                self._update_model(state_name, models[state_name], rollouts)
                 for callback in episode_callbacks:
                     callback.on_rollout_end()
                 updates += 1
@@ -191,26 +182,18 @@ class StateTrainer:
                     segment_counts,
                     update_counts,
                     best_state_fitness,
-                    total_timesteps,
                     config,
                 )
             observations = new_observations
-
-        for callback in lifecycle_callbacks.values():
-            callback.on_training_end()
-        for callback in episode_callbacks:
-            callback.on_training_end()
-        return models
 
     def _update_model(
         self,
         state_name: str,
         model: TrainableModel,
         rollouts: SegmentedRecurrentRollouts,
-        total_timesteps: int,
     ) -> None:
         model.rollout_buffer = rollouts.build_buffer(state_name)
-        model._update_current_progress_remaining(model.num_timesteps, total_timesteps)
+        model._current_progress_remaining = 1.0
         configured_batch_size = model.batch_size
         model.batch_size = model.rollout_buffer.buffer_size
         try:
@@ -232,7 +215,6 @@ class StateTrainer:
         segment_counts: dict[str, int],
         update_counts: dict[str, int],
         best_state_fitness: dict[str, float | None],
-        total_timesteps: int,
         config: Any,
     ) -> None:
         if not config.ui.enabled:
@@ -244,8 +226,6 @@ class StateTrainer:
                 state_name: {
                     "active_environments": active_counts[state_name],
                     "collected_steps": model.num_timesteps,
-                    "target_steps": total_timesteps,
-                    "progress_percent": min(100.0, model.num_timesteps / total_timesteps * 100.0),
                     "rollout_steps": len(rollouts.transitions[state_name]),
                     "rollout_capacity": model.n_steps * model.n_envs,
                     "model_updates": update_counts[state_name],
@@ -264,7 +244,7 @@ class StateTrainer:
         )
         runtime_trainer._configure_runtime()
         callbacks: list[BaseCallback] = [
-            BestEpisodeCallback(config.training.total_timesteps),
+            BestEpisodeCallback(),
             EpisodeTelemetryCallback(),
             UploadEpisodeCallback(config.upload),
         ]
@@ -303,7 +283,6 @@ class StateTrainer:
                 "training_state": "state-routed",
                 "savestate": config.training.active_savestate,
                 "savestates": list(config.training.savestates),
-                "total_timesteps": config.training.total_timesteps,
                 "configured_envs": config.training.num_envs,
                 "state_models": list(models),
             },
