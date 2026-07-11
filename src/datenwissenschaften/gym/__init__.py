@@ -124,7 +124,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             truncated = env_truncated or state_truncated
             transition = self.state_machine.last_transition or transition
 
-            if terminated or truncated:
+            # Return control immediately so the policy for the new state chooses
+            # the very next emulator action during this same episode.
+            if self.state_machine.last_transition is not None or terminated or truncated:
                 break
 
         if frame is None or observation is None:
