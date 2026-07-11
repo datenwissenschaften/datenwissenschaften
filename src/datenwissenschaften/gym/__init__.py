@@ -57,6 +57,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_observation: np.ndarray | None = None
         self._started_from_initial_savestate = True
         self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
+        self._state_return = 0.0
+        self._state_steps = 0
 
         channels = 1 if self.grayscale else 3
 
@@ -91,6 +93,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_observation = observation
 
         self.state_machine.reset(ram, frame, observation)
+        self._state_return = 0.0
+        self._state_steps = 0
 
         return self._agent_observation(observation, ram), {}
 
@@ -102,6 +106,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         truncated = False
 
         action = self.translate_action(action)
+        reward_state = self.state_machine.state_name
         transition: tuple[str, str] | None = None
 
         for _ in range(self.action_repeat):
@@ -137,6 +142,15 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         if won:
             terminated = True
 
+        self._state_return += reward
+        self._state_steps += 1
+        state_return = self._state_return
+        state_steps = self._state_steps
+        state_segment_end = transition is not None or terminated or truncated
+        if transition is not None:
+            self._state_return = 0.0
+            self._state_steps = 0
+
         return (
             self._agent_observation(observation, ram),
             reward,
@@ -146,6 +160,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "won": won,
                 "state": self.state_machine.state_name,
                 "state_transition": transition,
+                "reward_state": reward_state,
+                "state_return": state_return,
+                "state_steps": state_steps,
+                "state_segment_end": state_segment_end,
                 "ram": ram.to_dict(),
                 "started_from_initial_savestate": self._started_from_initial_savestate,
             },
