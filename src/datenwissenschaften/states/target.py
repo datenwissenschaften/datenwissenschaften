@@ -19,8 +19,7 @@ class TargetState(State[T], ABC):
     target_missing_penalty = 2.0
     step_penalty = 0.05
     proximity_reward_scale = 0.05
-
-    target_missing_steps: int
+    target_missing_steps = 100
 
     def __init__(self) -> None:
         self.target_detector = TemplateDetector(self.template_file)

@@ -13,7 +13,7 @@ class Explorer(TargetState[T], ABC):
 
     area_discovery_reward = 100.0
     position_discovery_reward = 1.0
-    target_found_reward = 100.0
+    target_found_reward = 10000.0
 
     visited_areas: set[tuple[int, int]]
     visited_positions: set[tuple[int, int]]
