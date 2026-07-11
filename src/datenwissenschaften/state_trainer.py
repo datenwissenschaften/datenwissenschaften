@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,7 @@ from datenwissenschaften.model import ModelBuilder, get_model_metadata, get_mode
 from datenwissenschaften.segmented_rollout import SegmentedRecurrentRollouts
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.trainer import Trainer
-from datenwissenschaften.ui import configure_history, publish_metadata, start_ui
+from datenwissenschaften.ui import configure_history, publish_episode, publish_metadata, start_ui
 from datenwissenschaften.ui.control import (
     configure_training_control,
     consume_model_reset,
@@ -85,6 +86,7 @@ class StateTrainer:
         observations = venv.reset()
         rollouts = SegmentedRecurrentRollouts(models, venv.num_envs)
         updates = 0
+        segment_started_at = [time.monotonic()] * venv.num_envs
         self._start_segmented_ui(venv, models, config)
 
         while any(
@@ -135,6 +137,19 @@ class StateTrainer:
                 if state_names[env_index] not in enabled_states:
                     continue
                 model = models[state_names[env_index]]
+                if config.ui.enabled:
+                    state_steps = int(info.get("state_steps", 0))
+                    publish_episode(
+                        env=env_index,
+                        training_state=state_names[env_index],
+                        fitness=float(info.get("state_return", rewards[env_index])),
+                        training_steps=state_steps,
+                        total_steps=state_steps,
+                        duration_seconds=time.monotonic() - segment_started_at[env_index],
+                        won=None if info.get("won") is None else bool(info["won"]),
+                        final_state=info.get("state"),
+                    )
+                segment_started_at[env_index] = time.monotonic()
                 record_outcome = getattr(model, "record_episode_outcome", None)
                 if callable(record_outcome):
                     record_outcome(
@@ -146,7 +161,7 @@ class StateTrainer:
                 self._update_model(state_name, models[state_name], rollouts, total_timesteps)
                 updates += 1
                 if updates % max(1, len(models)) == 0:
-                    logger.info(
+                    logger.debug(
                         "State-routed training progress: {}",
                         ", ".join(f"{name}={model.num_timesteps:,}" for name, model in models.items()),
                     )

@@ -124,7 +124,7 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "reset_pending", "game": game}, status=HTTPStatus.ACCEPTED)
 
     def log_message(self, format: str, *args) -> None:
-        logger.debug(f"Training UI: {format % args}")
+        pass
 
     def _send_json(self, payload: dict, *, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
