@@ -25,6 +25,7 @@ def test_publish_state_training_includes_unreached_and_active_states(monkeypatch
         ["Find", "Find"],
         {"Find": 3, "Eat": 0},
         {"Find": 2, "Eat": 0},
+        {"Find": 12.5, "Eat": None},
         1_000,
         SimpleNamespace(ui=SimpleNamespace(enabled=True)),
     )
@@ -40,5 +41,6 @@ def test_publish_state_training_includes_unreached_and_active_states(monkeypatch
         "rollout_capacity": 32,
         "model_updates": 2,
         "completed_segments": 3,
+        "best_fitness": 12.5,
     }
     assert published["values"]["Eat"]["collected_steps"] == 0

@@ -1,10 +1,9 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const snapshot = ref({ episodes: [], metadata: {} })
 const connected = ref(false)
 const error = ref('')
-const stateFilter = ref('')
 const showResetDialog = ref(false)
 const resetting = ref(false)
 const resetError = ref('')
@@ -35,16 +34,10 @@ onBeforeUnmount(() => window.clearInterval(timer))
 const summary = computed(() => snapshot.value.summary || {})
 const stateSummaries = computed(() => summary.value.by_state || {})
 const stateTraining = computed(() => snapshot.value.metadata?.state_training || {})
-const states = computed(() => [...new Set([...Object.keys(stateSummaries.value), ...Object.keys(stateTraining.value)])]
+const configuredStates = computed(() => Object.keys(stateTraining.value))
+const states = computed(() => (configuredStates.value.length ? configuredStates.value : Object.keys(stateSummaries.value))
   .sort((left, right) => left.localeCompare(right)))
-watch(states, availableStates => {
-  if (!availableStates.includes(stateFilter.value)) {
-    stateFilter.value = summary.value.latest_training_state && availableStates.includes(summary.value.latest_training_state)
-      ? summary.value.latest_training_state
-      : availableStates[0] || ''
-  }
-}, { immediate: true })
-const activeSummary = computed(() => stateSummaries.value[stateFilter.value] || summary.value)
+const activeSummary = computed(() => summary.value)
 const stateRows = computed(() => states.value.map(state => ({ state, ...(stateTraining.value[state] || {}) })))
 const summarizedEpisodes = computed(() => Number(activeSummary.value.episodes) || 0)
 const best = computed(() => activeSummary.value.best_fitness ?? null)
@@ -127,7 +120,7 @@ const label = key => key.replaceAll('_', ' ')
 
     <section class="controls panel">
       <div><p class="eyebrow">OBSERVATION WINDOW</p><strong>Episode telemetry</strong></div>
-      <label>State<select v-model="stateFilter"><option v-for="state in states" :key="state">{{ state }}</option></select></label>
+      <label>Savestate<strong>{{ run.savestate || '—' }}</strong></label>
       <button class="reset-button" :disabled="!control.restart_supported || control.reset_pending || resetting" @click="showResetDialog = true">
         {{ control.reset_pending || resetting ? 'Restarting…' : 'Delete model' }}
       </button>
@@ -135,10 +128,10 @@ const label = key => key.replaceAll('_', ' ')
     </section>
 
     <section class="kpis">
-      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ stateFilter || 'all states' }} summary</small></article>
+      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ run.savestate || 'savestate' }} episode summary</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
       <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latestDuration) }} latest episode</small></article>
-      <article class="panel metric"><p>Episodes</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>{{ stateFilter || 'all states' }} observed</small></article>
+      <article class="panel metric"><p>Episodes</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>{{ run.savestate || 'savestate' }} observed</small></article>
     </section>
 
     <section class="details-grid">
@@ -152,8 +145,7 @@ const label = key => key.replaceAll('_', ' ')
           <dt>Rollout buffer</dt><dd>{{ fmt(row.rollout_steps) }} / {{ fmt(row.rollout_capacity) }}</dd>
           <dt>Model updates</dt><dd>{{ fmt(row.model_updates) }}</dd>
           <dt>Completed segments</dt><dd>{{ fmt(row.completed_segments) }}</dd>
-          <dt>Best fitness</dt><dd>{{ fmt(stateSummaries[row.state]?.best_fitness, 2) }}</dd>
-          <dt>Observed segments</dt><dd>{{ fmt(stateSummaries[row.state]?.episodes) }}</dd>
+          <dt>Best state fitness</dt><dd>{{ fmt(row.best_fitness, 2) }}</dd>
         </dl>
       </article>
     </section>
@@ -178,7 +170,7 @@ const label = key => key.replaceAll('_', ' ')
       </article>
     </section>
 
-    <footer>Local telemetry · refreshes every 1.5 seconds · {{ summarizedEpisodes }} observed episodes for {{ stateFilter || 'all states' }}</footer>
+    <footer>Local telemetry · refreshes every 1.5 seconds · {{ summarizedEpisodes }} complete episodes for {{ run.savestate || 'the configured savestate' }}</footer>
 
     <div v-if="showResetDialog" class="modal-backdrop" @click.self="showResetDialog = false">
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">

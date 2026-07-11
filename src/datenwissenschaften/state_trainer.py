@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
@@ -9,13 +8,15 @@ from typing import Any
 from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
+from datenwissenschaften.callbacks import BestEpisodeCallback, EpisodeTelemetryCallback
 from datenwissenschaften.callbacks.save_model_callback import atomic_save
+from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
 from datenwissenschaften.core.protocols import TrainableModel
 from datenwissenschaften.model import ModelBuilder, get_model_metadata, get_model_path
 from datenwissenschaften.segmented_rollout import SegmentedRecurrentRollouts
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.trainer import Trainer
-from datenwissenschaften.ui import configure_history, publish_episode, publish_metadata, start_ui
+from datenwissenschaften.ui import configure_history, publish_metadata, start_ui
 from datenwissenschaften.ui.control import (
     configure_training_control,
     consume_model_reset,
@@ -90,9 +91,19 @@ class StateTrainer:
         global_steps = 0
         segment_counts = dict.fromkeys(models, 0)
         update_counts = dict.fromkeys(models, 0)
-        segment_started_at = [time.monotonic()] * venv.num_envs
+        best_state_fitness: dict[str, float | None] = dict.fromkeys(models)
         self._start_segmented_ui(venv, models, config)
-        self._publish_state_training(models, rollouts, [], segment_counts, update_counts, total_timesteps, config)
+        episode_callbacks = self._start_episode_callbacks(models, config)
+        self._publish_state_training(
+            models,
+            rollouts,
+            [],
+            segment_counts,
+            update_counts,
+            best_state_fitness,
+            total_timesteps,
+            config,
+        )
 
         while any(
             model.num_timesteps < total_timesteps or bool(rollouts.transitions[state_name])
@@ -101,6 +112,8 @@ class StateTrainer:
             reset_request = consume_model_reset()
             if reset_request is not None:
                 for callback in lifecycle_callbacks.values():
+                    callback.on_training_end()
+                for callback in episode_callbacks:
                     callback.on_training_end()
                 perform_model_reset(reset_request)
                 fresh_models: dict[str, TrainableModel] = {}
@@ -117,6 +130,10 @@ class StateTrainer:
             actions, decisions = rollouts.actions(observations, state_names)
             new_observations, rewards, dones, infos = venv.step(actions)
             global_steps += venv.num_envs
+            episode_locals = {"rewards": rewards, "dones": dones, "infos": infos}
+            for callback in episode_callbacks:
+                callback.update_locals(episode_locals)
+                callback.on_step()
             enabled_states = {
                 state_name
                 for state_name, model in models.items()
@@ -144,28 +161,21 @@ class StateTrainer:
                     continue
                 model = models[state_names[env_index]]
                 segment_counts[state_names[env_index]] += 1
-                if config.ui.enabled:
-                    state_steps = int(info.get("state_steps", 0))
-                    publish_episode(
-                        env=env_index,
-                        training_state=state_names[env_index],
-                        fitness=float(info.get("state_return", rewards[env_index])),
-                        training_steps=state_steps,
-                        total_steps=state_steps,
-                        duration_seconds=time.monotonic() - segment_started_at[env_index],
-                        won=None if info.get("won") is None else bool(info["won"]),
-                        final_state=info.get("state"),
-                    )
-                segment_started_at[env_index] = time.monotonic()
+                state_fitness = float(info.get("state_return", rewards[env_index]))
+                previous_best = best_state_fitness[state_names[env_index]]
+                if previous_best is None or state_fitness > previous_best:
+                    best_state_fitness[state_names[env_index]] = state_fitness
                 record_outcome = getattr(model, "record_episode_outcome", None)
                 if callable(record_outcome):
                     record_outcome(
-                        fitness=float(info.get("state_return", rewards[env_index])),
+                        fitness=state_fitness,
                         won=None if info.get("won") is None else bool(info["won"]),
                     )
 
             for state_name in full:
                 self._update_model(state_name, models[state_name], rollouts, total_timesteps)
+                for callback in episode_callbacks:
+                    callback.on_rollout_end()
                 updates += 1
                 update_counts[state_name] += 1
                 if updates % max(1, len(models)) == 0:
@@ -180,12 +190,15 @@ class StateTrainer:
                     state_names,
                     segment_counts,
                     update_counts,
+                    best_state_fitness,
                     total_timesteps,
                     config,
                 )
             observations = new_observations
 
         for callback in lifecycle_callbacks.values():
+            callback.on_training_end()
+        for callback in episode_callbacks:
             callback.on_training_end()
         return models
 
@@ -218,6 +231,7 @@ class StateTrainer:
         active_states: list[str],
         segment_counts: dict[str, int],
         update_counts: dict[str, int],
+        best_state_fitness: dict[str, float | None],
         total_timesteps: int,
         config: Any,
     ) -> None:
@@ -236,11 +250,29 @@ class StateTrainer:
                     "rollout_capacity": model.n_steps * model.n_envs,
                     "model_updates": update_counts[state_name],
                     "completed_segments": segment_counts[state_name],
+                    "best_fitness": best_state_fitness[state_name],
                 }
                 for state_name, model in models.items()
             },
             replace=True,
         )
+
+    def _start_episode_callbacks(self, models: dict[str, TrainableModel], config: Any) -> list[BaseCallback]:
+        runtime_trainer = Trainer(
+            config_path=self.config_path,
+            state_name=config.training.active_savestate or "episode",
+        )
+        runtime_trainer._configure_runtime()
+        callbacks: list[BaseCallback] = [
+            BestEpisodeCallback(config.training.total_timesteps),
+            EpisodeTelemetryCallback(),
+            UploadEpisodeCallback(config.upload),
+        ]
+        representative_model = next(iter(models.values()))
+        for callback in callbacks:
+            callback.init_callback(representative_model)
+            callback.on_training_start(locals(), globals())
+        return callbacks
 
     @staticmethod
     def _start_segmented_ui(venv: Any, models: dict[str, TrainableModel], config: Any) -> None:
