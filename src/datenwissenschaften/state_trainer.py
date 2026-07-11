@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -86,8 +87,12 @@ class StateTrainer:
         observations = venv.reset()
         rollouts = SegmentedRecurrentRollouts(models, venv.num_envs)
         updates = 0
+        global_steps = 0
+        segment_counts = dict.fromkeys(models, 0)
+        update_counts = dict.fromkeys(models, 0)
         segment_started_at = [time.monotonic()] * venv.num_envs
         self._start_segmented_ui(venv, models, config)
+        self._publish_state_training(models, rollouts, [], segment_counts, update_counts, total_timesteps, config)
 
         while any(
             model.num_timesteps < total_timesteps or bool(rollouts.transitions[state_name])
@@ -111,6 +116,7 @@ class StateTrainer:
 
             actions, decisions = rollouts.actions(observations, state_names)
             new_observations, rewards, dones, infos = venv.step(actions)
+            global_steps += venv.num_envs
             enabled_states = {
                 state_name
                 for state_name, model in models.items()
@@ -137,6 +143,7 @@ class StateTrainer:
                 if state_names[env_index] not in enabled_states:
                     continue
                 model = models[state_names[env_index]]
+                segment_counts[state_names[env_index]] += 1
                 if config.ui.enabled:
                     state_steps = int(info.get("state_steps", 0))
                     publish_episode(
@@ -160,11 +167,22 @@ class StateTrainer:
             for state_name in full:
                 self._update_model(state_name, models[state_name], rollouts, total_timesteps)
                 updates += 1
+                update_counts[state_name] += 1
                 if updates % max(1, len(models)) == 0:
                     logger.debug(
                         "State-routed training progress: {}",
                         ", ".join(f"{name}={model.num_timesteps:,}" for name, model in models.items()),
                     )
+            if config.ui.enabled and (global_steps % 128 < venv.num_envs or full):
+                self._publish_state_training(
+                    models,
+                    rollouts,
+                    state_names,
+                    segment_counts,
+                    update_counts,
+                    total_timesteps,
+                    config,
+                )
             observations = new_observations
 
         for callback in lifecycle_callbacks.values():
@@ -192,6 +210,37 @@ class StateTrainer:
             state_name,
         )
         atomic_save(model, model_path)
+
+    @staticmethod
+    def _publish_state_training(
+        models: dict[str, TrainableModel],
+        rollouts: SegmentedRecurrentRollouts,
+        active_states: list[str],
+        segment_counts: dict[str, int],
+        update_counts: dict[str, int],
+        total_timesteps: int,
+        config: Any,
+    ) -> None:
+        if not config.ui.enabled:
+            return
+        active_counts = Counter(active_states)
+        publish_metadata(
+            "state_training",
+            {
+                state_name: {
+                    "active_environments": active_counts[state_name],
+                    "collected_steps": model.num_timesteps,
+                    "target_steps": total_timesteps,
+                    "progress_percent": min(100.0, model.num_timesteps / total_timesteps * 100.0),
+                    "rollout_steps": len(rollouts.transitions[state_name]),
+                    "rollout_capacity": model.n_steps * model.n_envs,
+                    "model_updates": update_counts[state_name],
+                    "completed_segments": segment_counts[state_name],
+                }
+                for state_name, model in models.items()
+            },
+            replace=True,
+        )
 
     @staticmethod
     def _start_segmented_ui(venv: Any, models: dict[str, TrainableModel], config: Any) -> None:

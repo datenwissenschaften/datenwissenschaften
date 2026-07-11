@@ -34,7 +34,9 @@ onBeforeUnmount(() => window.clearInterval(timer))
 
 const summary = computed(() => snapshot.value.summary || {})
 const stateSummaries = computed(() => summary.value.by_state || {})
-const states = computed(() => Object.keys(stateSummaries.value).sort((left, right) => left.localeCompare(right)))
+const stateTraining = computed(() => snapshot.value.metadata?.state_training || {})
+const states = computed(() => [...new Set([...Object.keys(stateSummaries.value), ...Object.keys(stateTraining.value)])]
+  .sort((left, right) => left.localeCompare(right)))
 watch(states, availableStates => {
   if (!availableStates.includes(stateFilter.value)) {
     stateFilter.value = summary.value.latest_training_state && availableStates.includes(summary.value.latest_training_state)
@@ -43,6 +45,7 @@ watch(states, availableStates => {
   }
 }, { immediate: true })
 const activeSummary = computed(() => stateSummaries.value[stateFilter.value] || summary.value)
+const stateRows = computed(() => states.value.map(state => ({ state, ...(stateTraining.value[state] || {}) })))
 const summarizedEpisodes = computed(() => Number(activeSummary.value.episodes) || 0)
 const best = computed(() => activeSummary.value.best_fitness ?? null)
 const wins = computed(() => Number(activeSummary.value.wins) || 0)
@@ -136,6 +139,23 @@ const label = key => key.replaceAll('_', ' ')
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
       <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latestDuration) }} latest episode</small></article>
       <article class="panel metric"><p>Episodes</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>{{ stateFilter || 'all states' }} observed</small></article>
+    </section>
+
+    <section class="details-grid">
+      <article v-for="row in stateRows" :key="row.state" class="panel detail-card">
+        <div class="card-heading">
+          <div><p class="eyebrow">STATE MODEL</p><h2>{{ row.state }}</h2></div>
+          <span class="chip" :class="{ muted: !row.active_environments }">{{ row.active_environments ? `${row.active_environments} active` : 'Waiting' }}</span>
+        </div>
+        <dl>
+          <dt>Training progress</dt><dd>{{ fmt(row.collected_steps) }} / {{ fmt(row.target_steps) }} ({{ fmt(row.progress_percent, 1) }}%)</dd>
+          <dt>Rollout buffer</dt><dd>{{ fmt(row.rollout_steps) }} / {{ fmt(row.rollout_capacity) }}</dd>
+          <dt>Model updates</dt><dd>{{ fmt(row.model_updates) }}</dd>
+          <dt>Completed segments</dt><dd>{{ fmt(row.completed_segments) }}</dd>
+          <dt>Best fitness</dt><dd>{{ fmt(stateSummaries[row.state]?.best_fitness, 2) }}</dd>
+          <dt>Observed segments</dt><dd>{{ fmt(stateSummaries[row.state]?.episodes) }}</dd>
+        </dl>
+      </article>
     </section>
 
     <section :class="['details-grid', { 'two-column': !entries(rnd).length }]">
