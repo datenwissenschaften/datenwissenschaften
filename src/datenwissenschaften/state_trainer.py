@@ -14,7 +14,11 @@ from datenwissenschaften.segmented_rollout import SegmentedRecurrentRollouts
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.trainer import Trainer
 from datenwissenschaften.ui import configure_history, publish_metadata, start_ui
-from datenwissenschaften.ui.control import configure_training_control
+from datenwissenschaften.ui.control import (
+    configure_training_control,
+    consume_model_reset,
+    perform_model_reset,
+)
 
 
 class StateTrainer:
@@ -52,11 +56,9 @@ class StateTrainer:
             logger.info(f"Loading model for state-routed training: {state_name}")
             models[state_name] = self.model_builder.build(venv, state_name=state_name)
 
-        self._train_segmented(venv, models)
+        return self._train_segmented(venv, models)
 
-        return models
-
-    def _train_segmented(self, venv: Any, models: dict[str, TrainableModel]) -> None:
+    def _train_segmented(self, venv: Any, models: dict[str, TrainableModel]) -> dict[str, TrainableModel]:
         config = load_config(self.config_path)
         total_timesteps = config.training.total_timesteps
         if self._additional_callbacks:
@@ -89,6 +91,17 @@ class StateTrainer:
             model.num_timesteps < total_timesteps or bool(rollouts.transitions[state_name])
             for state_name, model in models.items()
         ):
+            reset_request = consume_model_reset()
+            if reset_request is not None:
+                for callback in lifecycle_callbacks.values():
+                    callback.on_training_end()
+                perform_model_reset(reset_request)
+                fresh_models: dict[str, TrainableModel] = {}
+                for state_name in models:
+                    logger.info(f"Creating fresh model after UI reset: {state_name}")
+                    fresh_models[state_name] = self.model_builder.build(venv, state_name=state_name)
+                return self._train_segmented(venv, fresh_models)
+
             state_names = [str(name) for name in venv.env_method("state_name")]
             unknown = sorted(set(state_names) - set(models))
             if unknown:
@@ -141,6 +154,7 @@ class StateTrainer:
 
         for callback in lifecycle_callbacks.values():
             callback.on_training_end()
+        return models
 
     def _update_model(
         self,
@@ -175,8 +189,13 @@ class StateTrainer:
         )
         configure_training_control(
             game=config.training.game,
-            model_dir=config.paths.models_dir / config.training.game_identity,
-            restart_supported=False,
+            model_dir=config.paths.models_dir,
+            restart_supported=True,
+            artifact_dirs=(
+                config.paths.models_dir,
+                config.paths.record_dir,
+                config.paths.cache_dir,
+            ),
         )
         if start_ui(config.ui) is None:
             return

@@ -15,6 +15,7 @@ from datenwissenschaften.ui.telemetry import get_store
 class ModelResetRequest:
     game: str
     model_dir: Path
+    artifact_dirs: tuple[Path, ...] = ()
     on_reset: Callable[[], None] | None = None
 
 
@@ -23,6 +24,7 @@ class TrainingControl:
         self._lock = threading.Lock()
         self._game: str | None = None
         self._model_dir: Path | None = None
+        self._artifact_dirs: tuple[Path, ...] = ()
         self._restart_supported = False
         self._on_reset: Callable[[], None] | None = None
         self._pending: ModelResetRequest | None = None
@@ -33,11 +35,13 @@ class TrainingControl:
         game: str,
         model_dir: Path,
         restart_supported: bool,
+        artifact_dirs: tuple[Path, ...] = (),
         on_reset: Callable[[], None] | None = None,
     ) -> None:
         with self._lock:
             self._game = game
             self._model_dir = model_dir.resolve()
+            self._artifact_dirs = tuple(path.resolve() for path in artifact_dirs)
             self._restart_supported = restart_supported
             self._on_reset = on_reset
             self._pending = None
@@ -52,6 +56,7 @@ class TrainingControl:
                 self._pending = ModelResetRequest(
                     game=self._game,
                     model_dir=self._model_dir,
+                    artifact_dirs=self._artifact_dirs,
                     on_reset=self._on_reset,
                 )
             return self._pending
@@ -83,12 +88,14 @@ def configure_training_control(
     game: str,
     model_dir: Path,
     restart_supported: bool,
+    artifact_dirs: tuple[Path, ...] = (),
     on_reset: Callable[[], None] | None = None,
 ) -> None:
     _control.configure(
         game=game,
         model_dir=model_dir,
         restart_supported=restart_supported,
+        artifact_dirs=artifact_dirs,
         on_reset=on_reset,
     )
 
@@ -111,12 +118,16 @@ def control_metadata() -> dict[str, object]:
 
 def perform_model_reset(request: ModelResetRequest) -> None:
     def delete_training_artifacts() -> None:
-        if request.model_dir.is_dir():
-            shutil.rmtree(request.model_dir)
-        else:
-            request.model_dir.unlink(missing_ok=True)
+        paths = request.artifact_dirs or (request.model_dir,)
+        for path in dict.fromkeys(paths):
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
+            path.mkdir(parents=True, exist_ok=True)
         if request.on_reset is not None:
             request.on_reset()
 
     get_store().reset_for_restart(delete_training_artifacts)
-    logger.warning(f"Deleted model directory for {request.game}: {request.model_dir}")
+    deleted = request.artifact_dirs or (request.model_dir,)
+    logger.warning(f"Deleted all training artifacts for {request.game}: {', '.join(map(str, deleted))}")

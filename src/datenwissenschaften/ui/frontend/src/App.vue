@@ -164,7 +164,7 @@ const label = key => key.replaceAll('_', ' ')
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">
         <p class="eyebrow danger-text">DESTRUCTIVE ACTION</p>
         <h2 id="reset-title">Delete {{ run.game }} model?</h2>
-        <p>All checkpoints and model history for this game will be deleted. The active training run will stop and restart from zero.</p>
+        <p>All models, recordings, cache data, and training history for this runner will be deleted. The active training run will restart from its configured savestate.</p>
         <p v-if="resetError" class="error">{{ resetError }}</p>
         <div class="dialog-actions">
           <button class="cancel-button" :disabled="resetting" @click="showResetDialog = false">Cancel</button>
