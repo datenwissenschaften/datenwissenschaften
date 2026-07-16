@@ -149,7 +149,7 @@ class StateTrainer:
             )
 
             rotation_reason = savestate_scheduler.rotation_reason(
-                won=any(bool(info.get("won")) for info in infos),
+                won=any(bool(info.get("won")) and bool(info.get("curriculum_complete")) for info in infos),
             )
 
             for state_name in state_names:

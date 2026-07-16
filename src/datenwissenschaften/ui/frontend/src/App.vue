@@ -60,11 +60,16 @@ onBeforeUnmount(() => window.clearInterval(timer))
 const summary = computed(() => snapshot.value.summary || {})
 const stateSummaries = computed(() => summary.value.by_state || {})
 const stateTraining = computed(() => snapshot.value.metadata?.state_training || {})
+const savestateCurriculum = computed(() => snapshot.value.metadata?.savestate_curriculum || {})
 const configuredStates = computed(() => Object.keys(stateTraining.value))
 const states = computed(() => (configuredStates.value.length ? configuredStates.value : Object.keys(stateSummaries.value))
   .sort((left, right) => left.localeCompare(right)))
 const activeSummary = computed(() => summary.value)
-const stateRows = computed(() => states.value.map(state => ({ state, ...(stateTraining.value[state] || {}) })))
+const stateRows = computed(() => states.value.map(state => ({
+  state,
+  ...(stateTraining.value[state] || {}),
+  curriculum: savestateCurriculum.value[state] || {},
+})))
 const summarizedEpisodes = computed(() => Number(activeSummary.value.episodes) || 0)
 const best = computed(() => activeSummary.value.best_fitness ?? null)
 const wins = computed(() => Number(activeSummary.value.wins) || 0)
@@ -172,6 +177,9 @@ const label = key => key.replaceAll('_', ' ')
           <dt>Model updates</dt><dd>{{ fmt(row.model_updates) }}</dd>
           <dt>Completed segments</dt><dd>{{ fmt(row.completed_segments) }}</dd>
           <dt>Best state fitness</dt><dd>{{ fmt(row.best_fitness, 2) }}</dd>
+          <dt>Curriculum checkpoint</dt><dd>{{ row.curriculum.has_checkpoint ? 'Saved' : '—' }}</dd>
+          <dt>Consecutive successes</dt><dd>{{ fmt(row.curriculum.consecutive_successes) }} / {{ fmt(row.curriculum.success_threshold) }}</dd>
+          <dt>Curriculum status</dt><dd>{{ row.curriculum.mastered ? 'Mastered' : row.curriculum.active ? 'Training now' : 'Waiting' }}</dd>
         </dl>
       </article>
     </section>

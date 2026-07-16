@@ -5,12 +5,15 @@ import cv2
 import gymnasium as gym
 import numpy as np
 from gymnasium.core import WrapperActType
+from loguru import logger
 
+from datenwissenschaften.curriculum import ReverseCurriculum
 from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.ram import RamInfo
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
+from datenwissenschaften.ui import publish_metadata
 
 T = TypeVar("T", bound=RamInfo)
 
@@ -51,6 +54,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         config = load_config(config_path)
         setup_logging(config.log_level)
         self.initial_savestate = config.training.active_savestate
+        self._curriculum_root = config.paths.cache_dir / "automatic_savestates" / config.training.game_identity
+        self._success_threshold = config.training.savestate_success_threshold
+        self.curriculum = self._create_curriculum()
 
         self.last_ram: T | None = None
         self.last_frame: np.ndarray | None = None
@@ -59,6 +65,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
         self._state_return = 0.0
         self._state_steps = 0
+        self._curriculum_start_state = self.start_state_cls.__name__
+        self._curriculum_outcome_recorded = False
 
         channels = 1 if self.grayscale else 3
 
@@ -78,12 +86,19 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 dtype=np.float32,
             )
         self.observation_space = gym.spaces.Dict(observation_spaces)
+        self._publish_curriculum_progress()
 
     def reset(self, **kwargs):
         frame, _ = self.env.reset(**kwargs)
 
-        self._started_from_initial_savestate = True
-        self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
+        active_state = self.curriculum.active_state()
+        self._started_from_initial_savestate = active_state is None
+        self._curriculum_start_state = active_state or self.start_state_cls.__name__
+        self._curriculum_outcome_recorded = False
+        self._episode_start_state = active_state or self.initial_savestate or self.start_state_cls.__name__
+        state_cls = self._resolve_state_class(active_state) if active_state else None
+        if active_state:
+            frame = self._restore_automatic_savestate(self.curriculum.checkpoint(active_state))
 
         ram = self._read_ram()
         observation = self._process_observation(frame)
@@ -92,7 +107,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_frame = frame
         self.last_observation = observation
 
-        self.state_machine.reset(ram, frame, observation)
+        self.state_machine.reset(ram, frame, observation, state_cls)
         self._state_return = 0.0
         self._state_steps = 0
 
@@ -132,6 +147,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             # Return control immediately so the policy for the new state chooses
             # the very next emulator action during this same episode.
             if self.state_machine.last_transition is not None or terminated or truncated:
+                if self.state_machine.last_transition is not None:
+                    self._handle_curriculum_transition(*self.state_machine.last_transition)
                 break
 
         if frame is None or observation is None:
@@ -140,7 +157,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         current_state = self.state_machine.current_state
         won = current_state._won()
         if won:
+            self._record_curriculum_success()
             terminated = True
+        elif (terminated or truncated) and not self._curriculum_outcome_recorded:
+            self.curriculum.record_failure(self._curriculum_start_state)
+            self._publish_curriculum_progress()
 
         self._state_return += reward
         self._state_steps += 1
@@ -166,6 +187,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "state_segment_end": state_segment_end,
                 "ram": ram.to_dict(),
                 "started_from_initial_savestate": self._started_from_initial_savestate,
+                "curriculum_complete": self.curriculum.is_mastered(self.start_state_cls.__name__),
             },
         )
 
@@ -206,7 +228,12 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         """Use ``savestate`` for this and subsequent environment resets."""
         self.env.unwrapped.load_state(savestate)
         self.initial_savestate = savestate
+        self.curriculum = self._create_curriculum()
+        self._publish_curriculum_progress()
         return savestate
+
+    def curriculum_progress(self) -> dict[str, dict[str, int | bool]]:
+        return self.curriculum.progress()
 
     def _resolve_state_class(self, state_name: str) -> type[State[T]]:
         known_classes = {*self._training_classes(), self.start_state_cls}
@@ -219,6 +246,55 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         # The state machine changes immediately; the PolicyManager uses the reported
         # state name to select the corresponding model without resetting the level.
         pass
+
+    def _create_curriculum(self) -> ReverseCurriculum:
+        scope = self.initial_savestate or "default"
+        curriculum = ReverseCurriculum(
+            self._curriculum_root / scope,
+            [state_cls.__name__ for state_cls in self._training_classes()],
+            self._success_threshold,
+        )
+        return curriculum
+
+    def _handle_curriculum_transition(self, previous_state_name: str, new_state_name: str) -> None:
+        emulator_state = bytes(self.env.unwrapped.em.get_state())
+        if self.curriculum.save_checkpoint(new_state_name, emulator_state):
+            logger.info(f"Saved automatic curriculum checkpoint for {new_state_name}")
+
+        # Reaching the next state qualifies an automatically restored state. The
+        # original level start only qualifies after a complete level win.
+        if self._started_from_initial_savestate or self._curriculum_outcome_recorded:
+            self._publish_curriculum_progress()
+            return
+        if previous_state_name == self._curriculum_start_state:
+            self._record_curriculum_success()
+
+    def _record_curriculum_success(self) -> None:
+        if self._curriculum_outcome_recorded:
+            return
+        self._curriculum_outcome_recorded = True
+        mastered = self.curriculum.record_success(self._curriculum_start_state)
+        successes = self.curriculum.successes(self._curriculum_start_state)
+        if mastered:
+            logger.info(
+                f"Mastered curriculum state {self._curriculum_start_state}; " "backtracking to the preceding checkpoint"
+            )
+        else:
+            logger.info(
+                f"Curriculum success for {self._curriculum_start_state}: "
+                f"{successes}/{self._success_threshold} consecutive"
+            )
+        self._publish_curriculum_progress()
+
+    def _restore_automatic_savestate(self, savestate: bytes) -> np.ndarray:
+        emulator = self.env.unwrapped
+        emulator.em.set_state(savestate)
+        emulator.data.reset()
+        emulator.data.update_ram()
+        return emulator.get_screen(apply_rotation=True)
+
+    def _publish_curriculum_progress(self) -> None:
+        publish_metadata("savestate_curriculum", self.curriculum.progress(), replace=True)
 
     def episode_start_state(self) -> str:
         return self._episode_start_state
