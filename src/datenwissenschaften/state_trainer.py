@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
@@ -13,6 +14,7 @@ from datenwissenschaften.callbacks.save_model_callback import atomic_save
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
 from datenwissenschaften.core.protocols import TrainableModel
 from datenwissenschaften.model import ModelBuilder, get_model_metadata, get_model_path
+from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.segmented_rollout import SegmentedRecurrentRollouts
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.trainer import Trainer
@@ -85,6 +87,10 @@ class StateTrainer:
             lifecycle_callbacks[state_name].on_training_start(locals(), globals())
 
         observations = venv.reset()
+        savestate_scheduler = SavestateScheduler(
+            config.training.savestates,
+            interval_seconds=config.training.savestate_rotation_seconds,
+        )
         rollouts = SegmentedRecurrentRollouts(models, venv.num_envs)
         updates = 0
         global_steps = 0
@@ -142,6 +148,10 @@ class StateTrainer:
                 enabled_states,
             )
 
+            rotation_reason = savestate_scheduler.rotation_reason(
+                won=any(bool(info.get("won")) for info in infos),
+            )
+
             for state_name in state_names:
                 if state_name in enabled_states:
                     models[state_name].num_timesteps += 1
@@ -163,10 +173,13 @@ class StateTrainer:
                         won=None if info.get("won") is None else bool(info["won"]),
                     )
 
-            for state_name in full:
+            states_to_update = (
+                {name for name, transitions in rollouts.transitions.items() if transitions}
+                if rotation_reason is not None
+                else full
+            )
+            for state_name in states_to_update:
                 self._update_model(state_name, models[state_name], rollouts)
-                for callback in episode_callbacks:
-                    callback.on_rollout_end()
                 updates += 1
                 update_counts[state_name] += 1
                 if updates % max(1, len(models)) == 0:
@@ -174,6 +187,23 @@ class StateTrainer:
                         "State-routed training progress: {}",
                         ", ".join(f"{name}={model.num_timesteps:,}" for name, model in models.items()),
                     )
+            if states_to_update:
+                for callback in episode_callbacks:
+                    callback.on_rollout_end()
+
+            if rotation_reason is not None:
+                next_savestate = savestate_scheduler.rotate()
+                logger.info(f"Rotating savestate to {next_savestate} after {rotation_reason}.")
+                get_runtime().set_savestate(next_savestate)
+                venv.env_method("set_initial_savestate", next_savestate)
+                observations = venv.reset()
+                for env_index in range(venv.num_envs):
+                    rollouts.reset_environment(env_index)
+                for callback in episode_callbacks:
+                    callback.on_training_end()
+                episode_callbacks = self._start_episode_callbacks(models, config)
+                self._publish_run_savestate(config, models, next_savestate)
+                continue
             if config.ui.enabled and (global_steps % 128 < venv.num_envs or full):
                 self._publish_state_training(
                     models,
@@ -185,6 +215,25 @@ class StateTrainer:
                     config,
                 )
             observations = new_observations
+
+    @staticmethod
+    def _publish_run_savestate(config: Any, models: dict[str, TrainableModel], savestate: str) -> None:
+        if not config.ui.enabled:
+            return
+        publish_metadata(
+            "run",
+            {
+                "game": config.training.game,
+                "game_identity": config.training.game_identity,
+                "training_state": "state-routed",
+                "savestate": savestate,
+                "savestates": list(config.training.savestates),
+                "savestate_rotation_seconds": config.training.savestate_rotation_seconds,
+                "configured_envs": config.training.num_envs,
+                "state_models": list(models),
+            },
+            replace=True,
+        )
 
     def _update_model(
         self,
@@ -283,6 +332,7 @@ class StateTrainer:
                 "training_state": "state-routed",
                 "savestate": config.training.active_savestate,
                 "savestates": list(config.training.savestates),
+                "savestate_rotation_seconds": config.training.savestate_rotation_seconds,
                 "configured_envs": config.training.num_envs,
                 "state_models": list(models),
             },
@@ -295,3 +345,34 @@ class StateTrainer:
         )
         publish_metadata("model", get_model_metadata(next(iter(models.values()))), replace=True)
         publish_metadata("environment", Trainer._environment_metadata(venv), replace=True)
+
+
+class SavestateScheduler:
+    def __init__(
+        self,
+        savestates: Sequence[str],
+        *,
+        interval_seconds: int,
+        clock=time.monotonic,
+    ) -> None:
+        self.savestates = tuple(savestates)
+        self.interval_seconds = interval_seconds
+        self.clock = clock
+        self.index = 0
+        self.rotated_at = self.clock()
+
+    def rotation_reason(self, *, won: bool) -> str | None:
+        if len(self.savestates) < 2:
+            return None
+        if won:
+            return "successful episode"
+        if self.clock() - self.rotated_at >= self.interval_seconds:
+            return f"{self.interval_seconds} seconds"
+        return None
+
+    def rotate(self) -> str:
+        if not self.savestates:
+            raise ValueError("Cannot rotate an empty savestate list.")
+        self.index = (self.index + 1) % len(self.savestates)
+        self.rotated_at = self.clock()
+        return self.savestates[self.index]

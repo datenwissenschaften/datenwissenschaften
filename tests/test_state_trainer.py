@@ -1,7 +1,42 @@
 from types import SimpleNamespace
 
 from datenwissenschaften import state_trainer
-from datenwissenschaften.state_trainer import StateTrainer
+from datenwissenschaften.state_trainer import SavestateScheduler, StateTrainer
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+def test_savestate_scheduler_rotates_after_win():
+    clock = Clock()
+    scheduler = SavestateScheduler(("Level1", "Level2"), interval_seconds=14_400, clock=clock)
+
+    assert scheduler.rotation_reason(won=True) == "successful episode"
+    assert scheduler.rotate() == "Level2"
+
+
+def test_savestate_scheduler_rotates_after_four_hours():
+    clock = Clock()
+    scheduler = SavestateScheduler(("Level1", "Level2"), interval_seconds=14_400, clock=clock)
+
+    clock.now = 14_399
+    assert scheduler.rotation_reason(won=False) is None
+    clock.now = 14_400
+    assert scheduler.rotation_reason(won=False) == "14400 seconds"
+    assert scheduler.rotate() == "Level2"
+
+
+def test_savestate_scheduler_does_not_rotate_single_savestate():
+    clock = Clock()
+    scheduler = SavestateScheduler(("Level1",), interval_seconds=14_400, clock=clock)
+    clock.now = 20_000
+
+    assert scheduler.rotation_reason(won=True) is None
 
 
 def test_publish_state_training_includes_unreached_and_active_states(monkeypatch):

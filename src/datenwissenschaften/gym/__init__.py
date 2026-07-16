@@ -202,6 +202,12 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.state_machine.transition_bonus = float(bonus)
         return self.state_machine.transition_bonus
 
+    def set_initial_savestate(self, savestate: str) -> str:
+        """Use ``savestate`` for this and subsequent environment resets."""
+        self.env.unwrapped.load_state(savestate)
+        self.initial_savestate = savestate
+        return savestate
+
     def _resolve_state_class(self, state_name: str) -> type[State[T]]:
         known_classes = {*self._training_classes(), self.start_state_cls}
         for state_cls in known_classes:
