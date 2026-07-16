@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.metadata import PackageNotFoundError, version
 from importlib.resources import files
 from pathlib import Path, PurePosixPath
+from urllib.parse import parse_qs, urlsplit
 
 from loguru import logger
 
@@ -25,6 +26,75 @@ def _datenwissenschaften_version() -> str:
 
 
 DATENWISSENSCHAFTEN_VERSION = _datenwissenschaften_version()
+GENERATED_SOURCE_FILES = (
+    ".containerignore",
+    "Containerfile",
+    "actions.py",
+    "app.py",
+    "config.yaml",
+    "pyproject.toml",
+    "ram.py",
+    "runner.py",
+    "states.py",
+    "wrapper.py",
+)
+
+
+def generated_sources(root: Path | None = None) -> list[dict[str, str | int]]:
+    source_root = (root or Path.cwd()).resolve()
+    result = []
+    for relative_path in GENERATED_SOURCE_FILES:
+        source_path = source_root / relative_path
+        if source_path.is_file():
+            result.append(
+                {
+                    "path": relative_path,
+                    "language": _source_language(relative_path),
+                    "size": source_path.stat().st_size,
+                }
+            )
+    return result
+
+
+def generated_source(relative_path: str, root: Path | None = None) -> dict[str, str | int]:
+    if relative_path not in GENERATED_SOURCE_FILES:
+        raise FileNotFoundError(relative_path)
+    source_path = (root or Path.cwd()).resolve() / relative_path
+    content = source_path.read_text(encoding="utf-8")
+    if relative_path == "config.yaml":
+        content = _redact_config_secrets(content)
+    return {
+        "path": relative_path,
+        "language": _source_language(relative_path),
+        "size": source_path.stat().st_size,
+        "content": content,
+    }
+
+
+def _source_language(path: str) -> str:
+    if path.endswith(".py"):
+        return "python"
+    if path.endswith((".yaml", ".yml")):
+        return "yaml"
+    if path.endswith(".toml"):
+        return "toml"
+    if path == "Containerfile":
+        return "dockerfile"
+    return "text"
+
+
+def _redact_config_secrets(content: str) -> str:
+    lines = []
+    in_upload = False
+    for line in content.splitlines(keepends=True):
+        if line and not line[0].isspace():
+            in_upload = line.rstrip() == "upload:"
+        if in_upload and line.lstrip().startswith("api_key:"):
+            indentation = line[: len(line) - len(line.lstrip())]
+            newline = "\n" if line.endswith("\n") else ""
+            line = f'{indentation}api_key: "[REDACTED]"{newline}'
+        lines.append(line)
+    return "".join(lines)
 
 
 class DashboardServer:
@@ -73,7 +143,8 @@ class _DashboardHandler(BaseHTTPRequestHandler):
     server_version = "DatenwissenschaftenUI/1.0"
 
     def do_GET(self) -> None:  # noqa: N802
-        path = self.path.partition("?")[0]
+        request = urlsplit(self.path)
+        path = request.path
         if path == "/api/snapshot":
             snapshot = get_store().snapshot()
             snapshot["control"] = {
@@ -91,6 +162,16 @@ class _DashboardHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/health":
             self._send_json({"status": "ok"})
+            return
+        if path == "/api/sources":
+            self._send_json({"files": generated_sources()})
+            return
+        if path == "/api/source":
+            requested = parse_qs(request.query).get("path", [""])[0]
+            try:
+                self._send_json(generated_source(requested))
+            except (FileNotFoundError, OSError, UnicodeError):
+                self.send_error(HTTPStatus.NOT_FOUND, "Generated source file not found")
             return
         self._send_asset(path)
 

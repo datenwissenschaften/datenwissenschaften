@@ -8,6 +8,9 @@ const showResetDialog = ref(false)
 const resetting = ref(false)
 const resetError = ref('')
 const resetStartedAt = ref(null)
+const sourceFiles = ref([])
+const selectedSource = ref(null)
+const sourceError = ref('')
 let timer
 
 const load = async () => {
@@ -28,7 +31,30 @@ const load = async () => {
   }
 }
 
-onMounted(() => { load(); timer = window.setInterval(load, 1500) })
+const loadSource = async path => {
+  sourceError.value = ''
+  try {
+    const response = await fetch(`/api/source?path=${encodeURIComponent(path)}`, { cache: 'no-store' })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    selectedSource.value = await response.json()
+  } catch (reason) {
+    sourceError.value = reason.message
+  }
+}
+
+const loadSources = async () => {
+  try {
+    const response = await fetch('/api/sources', { cache: 'no-store' })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const payload = await response.json()
+    sourceFiles.value = payload.files || []
+    if (sourceFiles.value.length) await loadSource(sourceFiles.value[0].path)
+  } catch (reason) {
+    sourceError.value = reason.message
+  }
+}
+
+onMounted(() => { load(); loadSources(); timer = window.setInterval(load, 1500) })
 onBeforeUnmount(() => window.clearInterval(timer))
 
 const summary = computed(() => snapshot.value.summary || {})
@@ -168,6 +194,32 @@ const label = key => key.replaceAll('_', ' ')
         <div class="card-heading"><div><p class="eyebrow">MODEL</p><h2>Algorithm</h2></div><span class="chip muted">Waiting</span></div>
         <p class="placeholder">Algorithm details appear when PPO starts.</p>
       </article>
+    </section>
+
+    <section class="panel source-browser">
+      <div class="source-browser-heading">
+        <div><p class="eyebrow">GENERATED PROJECT</p><h2>Files and source code</h2></div>
+        <span class="chip" :class="{ muted: !sourceFiles.length }">{{ sourceFiles.length }} files</span>
+      </div>
+      <div v-if="sourceFiles.length" class="source-browser-body">
+        <nav class="source-files" aria-label="Generated files">
+          <button
+            v-for="file in sourceFiles"
+            :key="file.path"
+            :class="{ active: selectedSource?.path === file.path }"
+            @click="loadSource(file.path)"
+          >
+            <strong>{{ file.path }}</strong><small>{{ file.language }} · {{ fmt(file.size) }} B</small>
+          </button>
+        </nav>
+        <article class="source-viewer">
+          <header v-if="selectedSource"><strong>{{ selectedSource.path }}</strong><span>{{ selectedSource.language }}</span></header>
+          <pre v-if="selectedSource"><code>{{ selectedSource.content }}</code></pre>
+          <p v-else class="placeholder">Choose a generated file to inspect it.</p>
+        </article>
+      </div>
+      <p v-else-if="sourceError" class="error">Generated files could not be loaded: {{ sourceError }}</p>
+      <p v-else class="placeholder">No generated runner files were found.</p>
     </section>
 
     <footer>Local telemetry · refreshes every 1.5 seconds · {{ summarizedEpisodes }} complete episodes for {{ run.savestate || 'the configured savestate' }}</footer>
