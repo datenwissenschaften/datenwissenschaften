@@ -10,6 +10,7 @@ from itsdangerous import Signer
 from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
+from datenwissenschaften.callbacks.episode_record import EpisodeRecord
 from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.serialization import to_json_value
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, UploadSettings, load_config
@@ -135,15 +136,34 @@ class UploadEpisodeCallback(BaseCallback):
         super().__init__()
         self.settings = load_config(config_path).upload if settings is None else settings
         self.upload_url = self.settings.url
+        self.successful_episodes: list[EpisodeRecord] = []
+        self.active_episodes: list[EpisodeRecord] = []
+        self.episode_counts: list[int] = []
 
     def _on_step(self):
+        rewards = self.locals.get("rewards")
+        dones = self.locals.get("dones")
+        infos = self.locals.get("infos")
+
+        if rewards is None or dones is None or infos is None:
+            return True
+
+        self._ensure_episode_slots(len(rewards))
+
+        for env_index in range(len(rewards)):
+            episode = self.active_episodes[env_index]
+            episode.add_step(infos[env_index])
+
+            if dones[env_index]:
+                self._finish_episode(env_index, episode)
+
         return True
 
     def _on_rollout_end(self):
         runtime = get_runtime()
-        best_episode_path = runtime.get_state_value("best_episode")
-
-        if not best_episode_path or not os.path.exists(best_episode_path):
+        episodes = self.successful_episodes
+        self.successful_episodes = []
+        if not episodes:
             return True
 
         metadata = dict(runtime.get_model_metadata(self.model))
@@ -157,30 +177,63 @@ class UploadEpisodeCallback(BaseCallback):
             logger.info("Upload API key is not configured. Skipping episode upload.")
             return True
 
-        signing_key = requests.get(
-            f"{self.upload_url}/runs/signing-key",
-            headers={"X-API-Key": secret_key},
-        ).json()["signing_key"]
+        try:
+            signing_key = requests.get(
+                f"{self.upload_url}/runs/signing-key",
+                headers={"X-API-Key": secret_key},
+            ).json()["signing_key"]
+        except Exception as e:
+            logger.error(f"Failed to get upload signing key: {e}")
+            return True
 
         signer = Signer(signing_key)
         metadata_json = json.dumps(to_json_value(metadata), indent=4, sort_keys=True)
         signed_metadata = signer.sign(metadata_json.encode("utf-8"))
 
+        for episode in episodes:
+            self._upload_episode(episode.bk2_path, signed_metadata, secret_key, runtime)
+
+        return True
+
+    def _ensure_episode_slots(self, count: int) -> None:
+        while len(self.active_episodes) < count:
+            env_index = len(self.active_episodes)
+            self.active_episodes.append(EpisodeRecord(env_index, 0))
+            self.episode_counts.append(0)
+
+    def _finish_episode(self, env_index: int, episode: EpisodeRecord) -> None:
+        runtime = get_runtime()
+        filename = f"{runtime.game}-{runtime.savestate}-{episode.episode_index:06d}.bk2"
+        episode.bk2_path = os.path.join(runtime.record_dir, str(env_index), filename)
+
+        if episode.won:
+            self.successful_episodes.append(episode.clone())
+
+        self.episode_counts[env_index] += 1
+        self.active_episodes[env_index] = EpisodeRecord(env_index, self.episode_counts[env_index])
+
+    def _upload_episode(self, episode_path: str, signed_metadata: bytes, secret_key: str, runtime) -> None:
+        if not os.path.exists(episode_path):
+            logger.error(f"Successful episode recording does not exist: {episode_path}")
+            return
+
         try:
-            with open(best_episode_path, "rb") as f:
+            with open(episode_path, "rb") as episode_file:
                 files = {
-                    "bk2_file": (os.path.basename(best_episode_path), f, "application/octet-stream"),
+                    "bk2_file": (os.path.basename(episode_path), episode_file, "application/octet-stream"),
                     "metadata_file": ("metadata.json.signed", signed_metadata, "application/octet-stream"),
                 }
                 data = {"game": runtime.game, "category": runtime.savestate}
-                headers = {
-                    "X-API-Key": secret_key,
-                }
-                logger.info(f"Uploading episode to {self.upload_url}...")
-                response = requests.post(f"{self.upload_url}/runs", files=files, data=data, headers=headers, timeout=30)
+                headers = {"X-API-Key": secret_key}
+                logger.info(f"Uploading episode {os.path.basename(episode_path)} to {self.upload_url}...")
+                response = requests.post(
+                    f"{self.upload_url}/runs",
+                    files=files,
+                    data=data,
+                    headers=headers,
+                    timeout=30,
+                )
                 response.raise_for_status()
-                logger.info("Episode uploaded successfully.")
+                logger.info(f"Episode {os.path.basename(episode_path)} uploaded successfully.")
         except Exception as e:
-            logger.error(f"Failed to upload episode: {e}")
-
-        return True
+            logger.error(f"Failed to upload episode {os.path.basename(episode_path)}: {e}")
