@@ -56,6 +56,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.initial_savestate = config.training.active_savestate
         self._curriculum_root = config.paths.cache_dir / "automatic_savestates" / config.training.game_identity
         self._success_threshold = config.training.savestate_success_threshold
+        self._failure_threshold = config.training.savestate_failure_threshold
         self.curriculum = self._create_curriculum()
 
         self.last_ram: T | None = None
@@ -160,7 +161,12 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self._record_curriculum_success()
             terminated = True
         elif (terminated or truncated) and not self._curriculum_outcome_recorded:
-            self.curriculum.record_failure(self._curriculum_start_state)
+            checkpoint_deleted = self.curriculum.record_failure(self._curriculum_start_state)
+            if checkpoint_deleted:
+                logger.warning(
+                    f"Deleted bad automatic checkpoint for {self._curriculum_start_state} "
+                    f"after {self._failure_threshold} consecutive failures"
+                )
             self._publish_curriculum_progress()
 
         self._state_return += reward
@@ -253,6 +259,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self._curriculum_root / scope,
             [state_cls.__name__ for state_cls in self._training_classes()],
             self._success_threshold,
+            self._failure_threshold,
         )
         return curriculum
 

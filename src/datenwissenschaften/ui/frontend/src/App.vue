@@ -179,6 +179,7 @@ const label = key => key.replaceAll('_', ' ')
           <dt>Best state fitness</dt><dd>{{ fmt(row.best_fitness, 2) }}</dd>
           <dt>Curriculum checkpoint</dt><dd>{{ row.curriculum.has_checkpoint ? 'Saved' : '—' }}</dd>
           <dt>Consecutive successes</dt><dd>{{ fmt(row.curriculum.consecutive_successes) }} / {{ fmt(row.curriculum.success_threshold) }}</dd>
+          <dt>Bad-checkpoint detector</dt><dd>{{ fmt(row.curriculum.consecutive_failures) }} / {{ fmt(row.curriculum.failure_threshold) }} failures</dd>
           <dt>Curriculum status</dt><dd>{{ row.curriculum.mastered ? 'Mastered' : row.curriculum.active ? 'Training now' : 'Waiting' }}</dd>
         </dl>
       </article>
