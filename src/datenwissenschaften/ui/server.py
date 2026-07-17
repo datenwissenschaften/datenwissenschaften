@@ -102,7 +102,7 @@ def _redact_config_secrets(content: str) -> str:
 def learned_enemies() -> list[dict[str, str | int]]:
     root = get_runtime().cache_dir / "learned_enemies"
     result = []
-    for path in sorted(root.glob("*/*/*/*.png")):
+    for path in sorted(root.glob("*/*.png")):
         image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
         if image is None or image.ndim != 3 or image.shape[2] != 4:
             path.unlink(missing_ok=True)
@@ -112,14 +112,14 @@ def learned_enemies() -> list[dict[str, str | int]]:
         if foreground_pixels < 16 or foreground_pixels == alpha.size:
             path.unlink(missing_ok=True)
             continue
-        game, savestate, state, filename = path.relative_to(root).parts
+        game, filename = path.relative_to(root).parts
         result.append(
             {
                 "id": path.stem,
-                "path": "/".join((game, savestate, state, filename)),
+                "path": "/".join((game, filename)),
                 "game": game,
-                "savestate": savestate,
-                "state": state,
+                "savestate": "",
+                "state": "Explorer",
                 "size": path.stat().st_size,
             }
         )

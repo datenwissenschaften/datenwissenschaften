@@ -117,7 +117,7 @@ const activeSummary = computed(() => selectedSavestate.value
   : summary.value)
 const activeSavestateLabel = computed(() => selectedSavestate.value || 'All savestates')
 const visibleEnemies = computed(() => learnedEnemies.value.filter(enemy =>
-  !selectedSavestate.value || enemy.savestate === selectedSavestate.value))
+  !enemy.savestate || !selectedSavestate.value || enemy.savestate === selectedSavestate.value))
 const stateRows = computed(() => states.value.map(state => ({
   state,
   ...(stateTraining.value[state] || {}),
@@ -283,7 +283,7 @@ const label = key => key.replaceAll('_', ' ')
       <div v-if="visibleEnemies.length" class="enemy-gallery">
         <article v-for="enemy in visibleEnemies" :key="enemy.path" class="panel enemy-card">
           <div class="enemy-image"><img :src="`/api/enemy?path=${encodeURIComponent(enemy.path)}`" :alt="`Learned enemy ${enemy.id}`" /></div>
-          <div><strong>{{ enemy.state }}</strong><span>{{ enemy.savestate }}</span><small>{{ enemy.id }}</small></div>
+          <div><strong>{{ enemy.state }}</strong><span>{{ enemy.savestate || 'All levels' }}</span><small>{{ enemy.id }}</small></div>
         </article>
       </div>
       <div v-else class="panel enemy-empty">No enemy images learned for {{ activeSavestateLabel }} yet. Define Explorer’s <code>hit</code> outcome from RAM to supervise learning.</div>

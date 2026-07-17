@@ -27,7 +27,7 @@ def test_generated_config_source_redacts_upload_api_key(tmp_path: Path):
 
 
 def test_learned_enemy_gallery_only_lists_cached_png_files(tmp_path: Path, monkeypatch):
-    root = tmp_path / "learned_enemies" / "Game" / "Level1" / "Explore"
+    root = tmp_path / "learned_enemies" / "Game"
     root.mkdir(parents=True)
     sprite = np.zeros((8, 8, 4), dtype=np.uint8)
     sprite[2:6, 2:6] = (20, 80, 255, 255)
@@ -41,10 +41,10 @@ def test_learned_enemy_gallery_only_lists_cached_png_files(tmp_path: Path, monke
     assert enemies == [
         {
             "id": "enemy",
-            "path": "Game/Level1/Explore/enemy.png",
+            "path": "Game/enemy.png",
             "game": "Game",
-            "savestate": "Level1",
-            "state": "Explore",
+            "savestate": "",
+            "state": "Explorer",
             "size": (root / "enemy.png").stat().st_size,
         }
     ]

@@ -45,7 +45,6 @@ class EnemyLearner:
         self.previous_gray: np.ndarray | None = None
         self.previous_hit = False
         self.templates: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-        self.pending_candidates: dict[str, tuple[np.ndarray, int]] = {}
         self._loaded_root: Path | None = None
 
     def observe(self, frame: np.ndarray, actor: Position, hit: bool) -> EnemyObservation:
@@ -66,25 +65,8 @@ class EnemyLearner:
     def _learn_hit_regions(self, frame: np.ndarray, gray: np.ndarray, actor: Position) -> list[str]:
         crops = self._candidate_crops(frame, gray, actor)
         learned = []
-        pending_before_hit = tuple(self.pending_candidates.items())
         for crop in crops:
-            descriptor = self._descriptor(crop)
-            matching_id = next(
-                (
-                    candidate_id
-                    for candidate_id, (candidate, _count) in pending_before_hit
-                    if self._descriptor_similarity(descriptor, candidate) >= 0.88
-                ),
-                None,
-            )
-            if matching_id is None:
-                self.pending_candidates[self._crop_id(crop)] = (descriptor, 1)
-                continue
-            candidate, count = self.pending_candidates[matching_id]
-            self.pending_candidates[matching_id] = (candidate, count + 1)
-            if count < 1:
-                continue
-            enemy_id = matching_id
+            enemy_id = self._crop_id(crop)
             if enemy_id in self.templates:
                 continue
             root = self._root()
@@ -94,7 +76,7 @@ class EnemyLearner:
                 continue
             self.templates[enemy_id] = (self._gray(crop[..., :3]), crop[..., 3])
             learned.append(enemy_id)
-            logger.info(f"Learned enemy visual {enemy_id} for Explorer state {self.state_name}")
+            logger.info(f"Learned game-wide enemy visual {enemy_id}")
         if learned:
             self._publish()
         return learned
@@ -175,7 +157,6 @@ class EnemyLearner:
         if root == self._loaded_root:
             return
         self.templates = {}
-        self.pending_candidates = {}
         self.previous_gray = None
         self.previous_hit = False
         for path in sorted(root.glob("*.png"))[: self.max_templates]:
@@ -197,7 +178,7 @@ class EnemyLearner:
 
     def _root(self) -> Path:
         runtime = get_runtime()
-        return runtime.cache_dir / "learned_enemies" / runtime.game / runtime.savestate / self.state_name
+        return runtime.cache_dir / "learned_enemies" / runtime.game
 
     def _publish(self) -> None:
         publish_metadata(
@@ -205,7 +186,7 @@ class EnemyLearner:
             {
                 self.state_name: {
                     "count": len(self.templates),
-                    "savestate": get_runtime().savestate,
+                    "scope": "game",
                 }
             },
         )
@@ -218,22 +199,3 @@ class EnemyLearner:
     def _crop_id(crop: np.ndarray) -> str:
         normalized = cv2.resize(crop, (16, 16), interpolation=cv2.INTER_AREA)
         return hashlib.sha256(normalized.tobytes()).hexdigest()[:16]
-
-    @staticmethod
-    def _descriptor(crop: np.ndarray) -> np.ndarray:
-        return cv2.resize(crop, (16, 16), interpolation=cv2.INTER_AREA)
-
-    @staticmethod
-    def _descriptor_similarity(first: np.ndarray, second: np.ndarray) -> float:
-        first_mask = first[..., 3] >= 64
-        second_mask = second[..., 3] >= 64
-        union = np.count_nonzero(first_mask | second_mask)
-        intersection_mask = first_mask & second_mask
-        intersection = np.count_nonzero(intersection_mask)
-        if not union or not intersection:
-            return 0.0
-        shape_similarity = intersection / union
-        colors_a = first[..., :3][intersection_mask].astype(np.int16)
-        colors_b = second[..., :3][intersection_mask].astype(np.int16)
-        color_similarity = 1.0 - float(np.mean(np.abs(colors_a - colors_b)) / 255.0)
-        return 0.5 * shape_similarity + 0.5 * color_similarity
