@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from loguru import logger
 
+from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.settings import UISettings
 from datenwissenschaften.ui.control import control_metadata, request_model_reset
 from datenwissenschaften.ui.telemetry import get_store
@@ -97,6 +98,32 @@ def _redact_config_secrets(content: str) -> str:
     return "".join(lines)
 
 
+def learned_enemies() -> list[dict[str, str | int]]:
+    root = get_runtime().cache_dir / "learned_enemies"
+    result = []
+    for path in sorted(root.glob("*/*/*/*.png")):
+        game, savestate, state, filename = path.relative_to(root).parts
+        result.append(
+            {
+                "id": path.stem,
+                "path": "/".join((game, savestate, state, filename)),
+                "game": game,
+                "savestate": savestate,
+                "state": state,
+                "size": path.stat().st_size,
+            }
+        )
+    return result
+
+
+def learned_enemy_path(relative_path: str) -> Path:
+    root = (get_runtime().cache_dir / "learned_enemies").resolve()
+    candidate = (root / relative_path).resolve()
+    if candidate.suffix.lower() != ".png" or not candidate.is_relative_to(root) or not candidate.is_file():
+        raise FileNotFoundError(relative_path)
+    return candidate
+
+
 class DashboardServer:
     def __init__(self, settings: UISettings) -> None:
         self.settings = settings
@@ -173,6 +200,16 @@ class _DashboardHandler(BaseHTTPRequestHandler):
             except (FileNotFoundError, OSError, UnicodeError):
                 self.send_error(HTTPStatus.NOT_FOUND, "Generated source file not found")
             return
+        if path == "/api/enemies":
+            self._send_json({"enemies": learned_enemies()})
+            return
+        if path == "/api/enemy":
+            requested = parse_qs(request.query).get("path", [""])[0]
+            try:
+                self._send_binary(learned_enemy_path(requested), "image/png")
+            except (FileNotFoundError, OSError):
+                self.send_error(HTTPStatus.NOT_FOUND, "Learned enemy image not found")
+            return
         self._send_asset(path)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -212,6 +249,15 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_binary(self, path: Path, content_type: str) -> None:
+        body = path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

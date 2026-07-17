@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from datenwissenschaften.ui import server
 from datenwissenschaften.ui.control import ModelResetRequest, perform_model_reset
 from datenwissenschaften.ui.server import generated_source, generated_sources
 
@@ -21,6 +22,28 @@ def test_generated_config_source_redacts_upload_api_key(tmp_path: Path):
 
     assert 'api_key: "[REDACTED]"' in source["content"]
     assert 'api_key: "secret"' not in source["content"]
+
+
+def test_learned_enemy_gallery_only_lists_cached_png_files(tmp_path: Path, monkeypatch):
+    root = tmp_path / "learned_enemies" / "Game" / "Level1" / "Explore"
+    root.mkdir(parents=True)
+    (root / "enemy.png").write_bytes(b"png")
+    (root / "ignored.txt").write_text("not an image", encoding="utf-8")
+    monkeypatch.setattr(server, "get_runtime", lambda: type("Runtime", (), {"cache_dir": tmp_path})())
+
+    enemies = server.learned_enemies()
+
+    assert enemies == [
+        {
+            "id": "enemy",
+            "path": "Game/Level1/Explore/enemy.png",
+            "game": "Game",
+            "savestate": "Level1",
+            "state": "Explore",
+            "size": 3,
+        }
+    ]
+    assert server.learned_enemy_path(enemies[0]["path"]) == root / "enemy.png"
 
 
 def test_model_reset_deletes_and_recreates_all_runner_artifact_directories(tmp_path: Path):
