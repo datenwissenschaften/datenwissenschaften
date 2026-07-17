@@ -150,21 +150,29 @@ class UploadEpisodeCallback(BaseCallback):
 
         self._ensure_episode_slots(len(rewards))
 
+        successful_episode_finished = False
         for env_index in range(len(rewards)):
             episode = self.active_episodes[env_index]
             episode.add_step(infos[env_index])
 
             if dones[env_index]:
                 self._finish_episode(env_index, episode)
+                successful_episode_finished = successful_episode_finished or episode.won
+
+        if successful_episode_finished:
+            self._flush_successful_episodes()
 
         return True
 
     def _on_rollout_end(self):
+        self._flush_successful_episodes()
+        return True
+
+    def _flush_successful_episodes(self) -> None:
         runtime = get_runtime()
-        episodes = self.successful_episodes
-        self.successful_episodes = []
+        episodes = list(self.successful_episodes)
         if not episodes:
-            return True
+            return
 
         metadata = dict(runtime.get_model_metadata(self.model))
         metadata["num_timesteps"] = self.num_timesteps
@@ -175,25 +183,29 @@ class UploadEpisodeCallback(BaseCallback):
         secret_key = self.settings.api_key
         if not secret_key:
             logger.info("Upload API key is not configured. Skipping episode upload.")
-            return True
+            self.successful_episodes.clear()
+            return
 
         try:
             signing_key = requests.get(
                 f"{self.upload_url}/runs/signing-key",
                 headers={"X-API-Key": secret_key},
-            ).json()["signing_key"]
+                timeout=30,
+            )
+            signing_key.raise_for_status()
+            signing_key = signing_key.json()["signing_key"]
         except Exception as e:
             logger.error(f"Failed to get upload signing key: {e}")
-            return True
+            return
 
         signer = Signer(signing_key)
         metadata_json = json.dumps(to_json_value(metadata), indent=4, sort_keys=True)
         signed_metadata = signer.sign(metadata_json.encode("utf-8"))
 
         for episode in episodes:
-            self._upload_episode(episode.bk2_path, signed_metadata, secret_key, runtime)
-
-        return True
+            episode_path = self._resolve_episode_path(episode.bk2_path, runtime)
+            if episode_path and self._upload_episode(episode_path, signed_metadata, secret_key, runtime):
+                self.successful_episodes.remove(episode)
 
     def _ensure_episode_slots(self, count: int) -> None:
         while len(self.active_episodes) < count:
@@ -212,11 +224,7 @@ class UploadEpisodeCallback(BaseCallback):
         self.episode_counts[env_index] += 1
         self.active_episodes[env_index] = EpisodeRecord(env_index, self.episode_counts[env_index])
 
-    def _upload_episode(self, episode_path: str, signed_metadata: bytes, secret_key: str, runtime) -> None:
-        if not os.path.exists(episode_path):
-            logger.error(f"Successful episode recording does not exist: {episode_path}")
-            return
-
+    def _upload_episode(self, episode_path: str, signed_metadata: bytes, secret_key: str, runtime) -> bool:
         try:
             with open(episode_path, "rb") as episode_file:
                 files = {
@@ -235,5 +243,25 @@ class UploadEpisodeCallback(BaseCallback):
                 )
                 response.raise_for_status()
                 logger.info(f"Episode {os.path.basename(episode_path)} uploaded successfully.")
+                return True
         except Exception as e:
             logger.error(f"Failed to upload episode {os.path.basename(episode_path)}: {e}")
+        return False
+
+    @staticmethod
+    def _resolve_episode_path(episode_path: str, runtime) -> str | None:
+        requested = Path(episode_path)
+        candidates = (
+            requested,
+            Path(runtime.record_dir) / runtime.game / runtime.savestate / requested.parent.name / requested.name,
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+
+        matches = list(Path(runtime.record_dir).glob(f"**/{requested.parent.name}/{requested.name}"))
+        if matches:
+            return str(max(matches, key=lambda path: path.stat().st_mtime_ns))
+
+        logger.error(f"Successful episode recording does not exist: {episode_path}")
+        return None

@@ -27,8 +27,6 @@ class TrainingSettings:
     savestate: str | None
     savestates: tuple[str, ...]
     savestate_rotation_seconds: int
-    savestate_success_threshold: int
-    savestate_failure_threshold: int
     num_envs: int
 
     @property
@@ -97,8 +95,6 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             savestate=savestate,
             savestates=savestates,
             savestate_rotation_seconds=_positive_int(training, "savestate_rotation_seconds", default=14_400),
-            savestate_success_threshold=_positive_int(training, "savestate_success_threshold", default=10),
-            savestate_failure_threshold=_positive_int(training, "savestate_failure_threshold", default=50),
             num_envs=_environment_count(training, "num_envs"),
         ),
         log_level=_string(document, "log_level"),

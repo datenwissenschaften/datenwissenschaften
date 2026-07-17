@@ -55,8 +55,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         setup_logging(config.log_level)
         self.initial_savestate = config.training.active_savestate
         self._curriculum_root = config.paths.cache_dir / "automatic_savestates" / config.training.game_identity
-        self._success_threshold = config.training.savestate_success_threshold
-        self._failure_threshold = config.training.savestate_failure_threshold
         self.curriculum = self._create_curriculum()
 
         self.last_ram: T | None = None
@@ -68,6 +66,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._state_steps = 0
         self._curriculum_start_state = self.start_state_cls.__name__
         self._curriculum_outcome_recorded = False
+        self._curriculum_episode_steps = 0
 
         channels = 1 if self.grayscale else 3
 
@@ -96,6 +95,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._started_from_initial_savestate = active_state is None
         self._curriculum_start_state = active_state or self.start_state_cls.__name__
         self._curriculum_outcome_recorded = False
+        self._curriculum_episode_steps = 0
         self._episode_start_state = active_state or self.initial_savestate or self.start_state_cls.__name__
         state_cls = self._resolve_state_class(active_state) if active_state else None
         if active_state:
@@ -126,6 +126,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         transition: tuple[str, str] | None = None
 
         for _ in range(self.action_repeat):
+            self._curriculum_episode_steps += 1
             frame, _, env_terminated, env_truncated, _ = self.env.step(action)
 
             ram = self._read_ram()
@@ -161,11 +162,13 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self._record_curriculum_success()
             terminated = True
         elif (terminated or truncated) and not self._curriculum_outcome_recorded:
-            checkpoint_deleted = self.curriculum.record_failure(self._curriculum_start_state)
+            checkpoint_deleted = self.curriculum.record_failure(
+                self._curriculum_start_state,
+                self._curriculum_episode_steps,
+            )
             if checkpoint_deleted:
                 logger.warning(
-                    f"Deleted bad automatic checkpoint for {self._curriculum_start_state} "
-                    f"after {self._failure_threshold} consecutive failures"
+                    f"Deleted dynamically detected bad automatic checkpoint for " f"{self._curriculum_start_state}"
                 )
             self._publish_curriculum_progress()
 
@@ -258,8 +261,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         curriculum = ReverseCurriculum(
             self._curriculum_root / scope,
             [state_cls.__name__ for state_cls in self._training_classes()],
-            self._success_threshold,
-            self._failure_threshold,
         )
         return curriculum
 
@@ -280,8 +281,12 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         if self._curriculum_outcome_recorded:
             return
         self._curriculum_outcome_recorded = True
-        mastered = self.curriculum.record_success(self._curriculum_start_state)
+        mastered = self.curriculum.record_success(
+            self._curriculum_start_state,
+            self._curriculum_episode_steps,
+        )
         successes = self.curriculum.successes(self._curriculum_start_state)
+        threshold = self.curriculum.success_threshold(self._curriculum_start_state)
         if mastered:
             logger.info(
                 f"Mastered curriculum state {self._curriculum_start_state}; " "backtracking to the preceding checkpoint"
@@ -289,7 +294,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         else:
             logger.info(
                 f"Curriculum success for {self._curriculum_start_state}: "
-                f"{successes}/{self._success_threshold} consecutive"
+                f"{successes}/{threshold} dynamically required consecutive"
             )
         self._publish_curriculum_progress()
 
