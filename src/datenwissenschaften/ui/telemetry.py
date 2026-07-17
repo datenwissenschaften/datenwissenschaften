@@ -38,6 +38,7 @@ def _empty_summary() -> dict[str, Any]:
         "latest_duration_seconds": None,
         "latest_final_state": None,
         "by_state": {},
+        "by_savestate": {},
     }
 
 
@@ -51,11 +52,25 @@ def _state_summary(summary: dict[str, Any], state: str) -> dict[str, Any]:
     return current
 
 
+def _savestate_summary(summary: dict[str, Any], savestate: str) -> dict[str, Any]:
+    by_savestate = summary.setdefault("by_savestate", {})
+    current = by_savestate.get(savestate)
+    if not isinstance(current, dict):
+        current = _empty_summary()
+        current.pop("by_state", None)
+        current.pop("by_savestate", None)
+        by_savestate[savestate] = current
+    return current
+
+
 def _summarize_episode(summary: dict[str, Any], episode: dict[str, Any]) -> None:
     _update_summary_bucket(summary, episode)
     state = episode.get("training_state")
     if isinstance(state, str) and state:
         _update_summary_bucket(_state_summary(summary, state), episode)
+    savestate = episode.get("savestate")
+    if isinstance(savestate, str) and savestate:
+        _update_summary_bucket(_savestate_summary(summary, savestate), episode)
 
 
 def _update_summary_bucket(bucket: dict[str, Any], episode: dict[str, Any]) -> None:
@@ -116,14 +131,17 @@ def _coerce_summary(value: Any) -> dict[str, Any] | None:
     if isinstance(value.get("latest_final_state"), str):
         summary["latest_final_state"] = value["latest_final_state"]
 
-    by_state = value.get("by_state")
-    if isinstance(by_state, dict):
-        for state, state_summary in by_state.items():
-            if isinstance(state, str) and state:
-                coerced = _coerce_summary(state_summary)
+    for group_name in ("by_state", "by_savestate"):
+        grouped = value.get(group_name)
+        if isinstance(grouped, dict):
+            for name, grouped_summary in grouped.items():
+                if not isinstance(name, str) or not name:
+                    continue
+                coerced = _coerce_summary(grouped_summary)
                 if coerced is not None:
                     coerced.pop("by_state", None)
-                    summary["by_state"][state] = coerced
+                    coerced.pop("by_savestate", None)
+                    summary[group_name][name] = coerced
     return summary
 
 

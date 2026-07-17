@@ -2,6 +2,7 @@ import time
 
 from stable_baselines3.common.callbacks import BaseCallback
 
+from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.ui.telemetry import publish_episode
 
 
@@ -44,6 +45,7 @@ class EpisodeTelemetryCallback(BaseCallback):
             total_steps = int(monitor_episode.get("l", self.steps[index]))
             publish_episode(
                 env=index,
+                savestate=get_runtime().savestate,
                 training_state=self.training_states[index] or info.get("state"),
                 fitness=fitness,
                 training_steps=total_steps,

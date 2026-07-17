@@ -11,6 +11,8 @@ const resetStartedAt = ref(null)
 const sourceFiles = ref([])
 const selectedSource = ref(null)
 const sourceError = ref('')
+const selectedSavestate = ref('')
+const savestateSelectionInitialized = ref(false)
 let timer
 
 const load = async () => {
@@ -19,6 +21,10 @@ const load = async () => {
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const payload = await response.json()
     snapshot.value = payload
+    if (!savestateSelectionInitialized.value) {
+      selectedSavestate.value = payload.metadata?.run?.savestate || ''
+      savestateSelectionInitialized.value = true
+    }
     if (resetting.value && resetStartedAt.value && payload.started_at !== resetStartedAt.value) {
       resetting.value = false
       resetStartedAt.value = null
@@ -59,12 +65,20 @@ onBeforeUnmount(() => window.clearInterval(timer))
 
 const summary = computed(() => snapshot.value.summary || {})
 const stateSummaries = computed(() => summary.value.by_state || {})
+const savestateSummaries = computed(() => summary.value.by_savestate || {})
 const stateTraining = computed(() => snapshot.value.metadata?.state_training || {})
 const savestateCurriculum = computed(() => snapshot.value.metadata?.savestate_curriculum || {})
 const configuredStates = computed(() => Object.keys(stateTraining.value))
 const states = computed(() => (configuredStates.value.length ? configuredStates.value : Object.keys(stateSummaries.value))
   .sort((left, right) => left.localeCompare(right)))
-const activeSummary = computed(() => summary.value)
+const availableSavestates = computed(() => [...new Set([
+  ...(run.value.savestates || []),
+  ...Object.keys(savestateSummaries.value),
+])].filter(Boolean))
+const activeSummary = computed(() => selectedSavestate.value
+  ? savestateSummaries.value[selectedSavestate.value] || {}
+  : summary.value)
+const activeSavestateLabel = computed(() => selectedSavestate.value || 'All savestates')
 const stateRows = computed(() => states.value.map(state => ({
   state,
   ...(stateTraining.value[state] || {}),
@@ -151,7 +165,12 @@ const label = key => key.replaceAll('_', ' ')
 
     <section class="controls panel">
       <div><p class="eyebrow">OBSERVATION WINDOW</p><strong>Episode telemetry</strong></div>
-      <label>Savestate<strong>{{ run.savestate || '—' }}</strong></label>
+      <label>Savestate
+        <select v-model="selectedSavestate">
+          <option value="">All savestates</option>
+          <option v-for="savestate in availableSavestates" :key="savestate" :value="savestate">{{ savestate }}</option>
+        </select>
+      </label>
       <button class="reset-button" :disabled="!control.restart_supported || control.reset_pending || resetting" @click="showResetDialog = true">
         {{ control.reset_pending || resetting ? 'Restarting…' : 'Delete model' }}
       </button>
@@ -159,10 +178,10 @@ const label = key => key.replaceAll('_', ' ')
     </section>
 
     <section class="kpis">
-      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ run.savestate || 'savestate' }} episode summary</small></article>
+      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ activeSavestateLabel }} episode history</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
       <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latestDuration) }} latest episode</small></article>
-      <article class="panel metric"><p>Episodes</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>{{ run.savestate || 'savestate' }} observed</small></article>
+      <article class="panel metric"><p>Episodes</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>{{ activeSavestateLabel }} observed</small></article>
     </section>
 
     <section class="details-grid">
@@ -232,7 +251,7 @@ const label = key => key.replaceAll('_', ' ')
       <p v-else class="placeholder">No generated runner files were found.</p>
     </section>
 
-    <footer>Local telemetry · refreshes every 1.5 seconds · {{ summarizedEpisodes }} complete episodes for {{ run.savestate || 'the configured savestate' }}</footer>
+    <footer>Local telemetry · refreshes every 1.5 seconds · {{ summarizedEpisodes }} complete episodes for {{ activeSavestateLabel }}</footer>
 
     <div v-if="showResetDialog" class="modal-backdrop" @click.self="showResetDialog = false">
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">
