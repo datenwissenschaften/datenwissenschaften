@@ -76,8 +76,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             "visual": visual_space,
             "ram": gym.spaces.Box(low=0.0, high=1.0, shape=(ram_size,), dtype=np.float32),
         }
-        auxiliary_features = self.state_machine.current_state.auxiliary_features()
-        self.auxiliary_feature_count = len(auxiliary_features)
+        state_classes = dict.fromkeys((self.start_state_cls, *self.training_state_classes))
+        self.auxiliary_feature_count = max(
+            (len(state_cls().auxiliary_features()) for state_cls in state_classes),
+            default=0,
+        )
         if self.auxiliary_feature_count:
             observation_spaces["auxiliary"] = gym.spaces.Box(
                 low=-1.0,
@@ -213,13 +216,14 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             "ram": np.asarray(ram.features(), dtype=np.float32),
         }
         auxiliary_features = self.state_machine.current_state.auxiliary_features(ram)
-        if len(auxiliary_features) != self.auxiliary_feature_count:
+        if len(auxiliary_features) > self.auxiliary_feature_count:
             raise RuntimeError(
                 f"{self.state_machine.state_name} produced {len(auxiliary_features)} auxiliary features; "
-                f"expected {self.auxiliary_feature_count}"
+                f"the configured state maximum is {self.auxiliary_feature_count}"
             )
-        if auxiliary_features:
-            agent_observation["auxiliary"] = np.asarray(auxiliary_features, dtype=np.float32)
+        if self.auxiliary_feature_count:
+            padded_features = auxiliary_features + [0.0] * (self.auxiliary_feature_count - len(auxiliary_features))
+            agent_observation["auxiliary"] = np.asarray(padded_features, dtype=np.float32)
         return agent_observation
 
     def state_name(self) -> str:
