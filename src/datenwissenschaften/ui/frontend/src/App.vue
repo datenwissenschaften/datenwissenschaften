@@ -1,5 +1,17 @@
 <script setup>
+import hljs from 'highlight.js/lib/core'
+import dockerfile from 'highlight.js/lib/languages/dockerfile'
+import ini from 'highlight.js/lib/languages/ini'
+import plaintext from 'highlight.js/lib/languages/plaintext'
+import python from 'highlight.js/lib/languages/python'
+import yaml from 'highlight.js/lib/languages/yaml'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+
+hljs.registerLanguage('dockerfile', dockerfile)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('toml', ini)
+hljs.registerLanguage('text', plaintext)
 
 const snapshot = ref({ episodes: [], metadata: {} })
 const connected = ref(false)
@@ -14,6 +26,15 @@ const sourceError = ref('')
 const selectedSavestate = ref('')
 const savestateSelectionInitialized = ref(false)
 let timer
+
+const highlightedSource = computed(() => {
+  if (!selectedSource.value?.content) return ''
+  const language = selectedSource.value.language
+  if (language && hljs.getLanguage(language)) {
+    return hljs.highlight(selectedSource.value.content, { language }).value
+  }
+  return hljs.highlightAuto(selectedSource.value.content).value
+})
 
 const load = async () => {
   try {
@@ -243,7 +264,7 @@ const label = key => key.replaceAll('_', ' ')
         </nav>
         <article class="source-viewer">
           <header v-if="selectedSource"><strong>{{ selectedSource.path }}</strong><span>{{ selectedSource.language }}</span></header>
-          <pre v-if="selectedSource"><code>{{ selectedSource.content }}</code></pre>
+          <pre v-if="selectedSource"><code class="hljs" v-html="highlightedSource"></code></pre>
           <p v-else class="placeholder">Choose a generated file to inspect it.</p>
         </article>
       </div>
