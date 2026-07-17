@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,11 +40,12 @@ class EnemyLearner:
 
     match_threshold = 0.82
     max_templates = 64
+    history_frames = 6
 
     def __init__(self, state_name: str) -> None:
         self.state_name = state_name
-        self.previous_gray: np.ndarray | None = None
         self.previous_hit = False
+        self.frame_history: deque[np.ndarray] = deque(maxlen=self.history_frames)
         self.templates: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self._loaded_root: Path | None = None
 
@@ -54,12 +56,12 @@ class EnemyLearner:
         if hit and not self.previous_hit:
             learned = tuple(self._learn_hit_regions(frame, gray, actor))
         detections = tuple(self._detect(gray))
-        self.previous_gray = gray
+        self.frame_history.append(gray.copy())
         self.previous_hit = hit
         return EnemyObservation(detections=detections, learned_enemy_ids=learned)
 
     def reset(self) -> None:
-        self.previous_gray = None
+        self.frame_history.clear()
         self.previous_hit = False
 
     def _learn_hit_regions(self, frame: np.ndarray, gray: np.ndarray, actor: Position) -> list[str]:
@@ -85,13 +87,13 @@ class EnemyLearner:
         height, width = gray.shape
         actor_x = int(np.clip(actor.position_x / max(1, actor.screen_size) * width, 0, width - 1))
         actor_y = int(np.clip(actor.position_y / max(1, actor.screen_size) * height, 0, height - 1))
-        if self.previous_gray is None or self.previous_gray.shape != gray.shape:
+        history = [previous for previous in self.frame_history if previous.shape == gray.shape]
+        if not history:
             return []
 
-        difference = cv2.absdiff(gray, self.previous_gray)
-        _, motion_mask = cv2.threshold(difference, 32, 255, cv2.THRESH_BINARY)
+        difference = np.maximum.reduce([cv2.absdiff(gray, previous) for previous in history])
+        _, motion_mask = cv2.threshold(difference, 12, 255, cv2.THRESH_BINARY)
         kernel = np.ones((3, 3), np.uint8)
-        motion_mask = cv2.morphologyEx(motion_mask, cv2.MORPH_OPEN, kernel)
         motion_mask = cv2.morphologyEx(motion_mask, cv2.MORPH_CLOSE, kernel)
         # A large fraction of the screen changing at once is a camera scroll,
         # transition, or title card—not evidence for an individual sprite.
@@ -107,9 +109,7 @@ class EnemyLearner:
             compactness = moving_pixels / max(1, box_area)
             contains_actor = x - 2 <= actor_x <= x + w + 2 and y - 2 <= actor_y <= y + h + 2
             if (
-                16 <= box_area <= width * height * 0.04
-                and w >= 3
-                and h >= 3
+                1 <= box_area <= width * height * 0.04
                 and compactness >= 0.18
                 and not contains_actor
                 and distance <= max(width, height) * 0.25
@@ -122,14 +122,57 @@ class EnemyLearner:
 
         crops = []
         for _, x, y, w, h in sorted(boxes)[:2]:
-            padding = max(2, min(w, h) // 8)
+            # Motion may be only a one-pixel animation or damage-flash change.
+            # Give segmentation enough surrounding context to recover the full
+            # current sprite instead of storing that changed pixel as the sprite.
+            padding = max(8, max(w, h))
             x1, y1 = max(0, x - padding), max(0, y - padding)
             x2, y2 = min(width, x + w + padding), min(height, y + h + padding)
             rgb = np.asarray(frame[y1:y2, x1:x2, :3], dtype=np.uint8)
-            alpha = motion_mask[y1:y2, x1:x2]
+            seed = motion_mask[y1:y2, x1:x2]
+            alpha = self._isolate_foreground(rgb, seed)
             if rgb.size and cv2.countNonZero(alpha) >= 16:
                 crops.append(np.dstack((rgb, alpha)))
         return crops
+
+    @staticmethod
+    def _isolate_foreground(rgb: np.ndarray, motion_seed: np.ndarray) -> np.ndarray:
+        """Expand changed pixels into the complete current-frame sprite."""
+        if not rgb.size or min(rgb.shape[:2]) < 3:
+            return motion_seed
+
+        border = np.concatenate((rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]), axis=0)
+        background_color = np.median(border.astype(np.float32), axis=0)
+        color_distance = np.linalg.norm(rgb.astype(np.float32) - background_color, axis=2)
+        foreground_seed = (motion_seed > 0) & (color_distance >= 24.0)
+        if np.count_nonzero(foreground_seed) < 2:
+            foreground_seed = motion_seed > 0
+
+        grabcut_mask = np.full(rgb.shape[:2], cv2.GC_PR_BGD, dtype=np.uint8)
+        grabcut_mask[color_distance >= 24.0] = cv2.GC_PR_FGD
+        grabcut_mask[[0, -1], :] = cv2.GC_BGD
+        grabcut_mask[:, [0, -1]] = cv2.GC_BGD
+        grabcut_mask[foreground_seed] = cv2.GC_FGD
+        try:
+            cv2.grabCut(
+                rgb,
+                grabcut_mask,
+                None,
+                np.zeros((1, 65), np.float64),
+                np.zeros((1, 65), np.float64),
+                3,
+                cv2.GC_INIT_WITH_MASK,
+            )
+        except cv2.error:
+            return cv2.dilate(motion_seed, np.ones((3, 3), np.uint8))
+
+        foreground = np.isin(grabcut_mask, (cv2.GC_FGD, cv2.GC_PR_FGD)).astype(np.uint8)
+        component_count, labels = cv2.connectedComponents(foreground)
+        touching_labels = set(int(label) for label in labels[foreground_seed] if label)
+        if component_count <= 1 or not touching_labels:
+            return cv2.dilate(motion_seed, np.ones((3, 3), np.uint8))
+        isolated = np.isin(labels, tuple(touching_labels)).astype(np.uint8) * 255
+        return cv2.morphologyEx(isolated, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
 
     def _detect(self, gray: np.ndarray) -> list[EnemyDetection]:
         detections = []
@@ -157,7 +200,7 @@ class EnemyLearner:
         if root == self._loaded_root:
             return
         self.templates = {}
-        self.previous_gray = None
+        self.frame_history.clear()
         self.previous_hit = False
         for path in sorted(root.glob("*.png"))[: self.max_templates]:
             image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)

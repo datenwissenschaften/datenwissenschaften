@@ -47,6 +47,27 @@ def test_hit_signal_without_motion_does_not_learn_background(tmp_path: Path, mon
     assert second.learned_enemy_ids == ()
 
 
+def test_single_changed_pixel_expands_to_complete_sprite(tmp_path: Path, monkeypatch):
+    runtime = SimpleNamespace(cache_dir=tmp_path, game="Game", savestate="Level1")
+    monkeypatch.setattr(enemy_learner, "get_runtime", lambda: runtime)
+    monkeypatch.setattr(enemy_learner, "publish_metadata", lambda *_args, **_kwargs: None)
+    learner = EnemyLearner("Explore")
+    before = np.zeros((96, 96, 3), dtype=np.uint8)
+    before[40:52, 54:66] = np.asarray([180, 20, 20], dtype=np.uint8)
+    collision = before.copy()
+    collision[46, 60] = np.asarray([255, 20, 20], dtype=np.uint8)
+
+    learner.observe(before, Position(128, 128), hit=False)
+    learned_ids = learner.observe(collision, Position(128, 128), hit=True).learned_enemy_ids
+
+    assert learned_ids
+    learned = cv2.imread(
+        str(next((tmp_path / "learned_enemies" / "Game").glob("*.png"))),
+        cv2.IMREAD_UNCHANGED,
+    )
+    assert cv2.countNonZero(learned[..., 3]) >= 100
+
+
 def test_templates_are_shared_across_savestates_for_the_game(tmp_path: Path, monkeypatch):
     runtime = SimpleNamespace(cache_dir=tmp_path, game="Game", savestate="Level1")
     monkeypatch.setattr(enemy_learner, "get_runtime", lambda: runtime)
