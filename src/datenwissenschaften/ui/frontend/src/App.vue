@@ -95,7 +95,7 @@ const states = computed(() => (configuredStates.value.length ? configuredStates.
 const availableSavestates = computed(() => [...new Set([
   ...(run.value.savestates || []),
   ...Object.keys(savestateSummaries.value),
-])].filter(Boolean))
+])].filter(Boolean).sort((left, right) => left.localeCompare(right)))
 const activeSummary = computed(() => selectedSavestate.value
   ? savestateSummaries.value[selectedSavestate.value] || {}
   : summary.value)
