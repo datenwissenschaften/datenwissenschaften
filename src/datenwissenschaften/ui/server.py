@@ -11,6 +11,7 @@ from importlib.resources import files
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, urlsplit
 
+import cv2
 from loguru import logger
 
 from datenwissenschaften.runtime import get_runtime
@@ -102,6 +103,15 @@ def learned_enemies() -> list[dict[str, str | int]]:
     root = get_runtime().cache_dir / "learned_enemies"
     result = []
     for path in sorted(root.glob("*/*/*/*.png")):
+        image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        if image is None or image.ndim != 3 or image.shape[2] != 4:
+            path.unlink(missing_ok=True)
+            continue
+        alpha = image[..., 3]
+        foreground_pixels = cv2.countNonZero(alpha)
+        if foreground_pixels < 16 or foreground_pixels == alpha.size:
+            path.unlink(missing_ok=True)
+            continue
         game, savestate, state, filename = path.relative_to(root).parts
         result.append(
             {

@@ -277,7 +277,7 @@ const label = key => key.replaceAll('_', ' ')
 
     <section class="observatory-section">
       <div class="section-heading">
-        <div><p class="eyebrow">VISUAL ENEMY MEMORY</p><h2>Learned enemies</h2><p>Sprite candidates captured by Explorer when the RAM-defined hit signal fires.</p></div>
+        <div><p class="eyebrow">VISUAL ENEMY MEMORY</p><h2>Learned enemies</h2><p>Motion-isolated sprites captured near Explorer when the RAM-defined hit signal fires.</p></div>
         <span>{{ visibleEnemies.length }} images</span>
       </div>
       <div v-if="visibleEnemies.length" class="enemy-gallery">

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import time
 from collections import Counter
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -89,7 +89,6 @@ class StateTrainer:
         observations = venv.reset()
         savestate_scheduler = SavestateScheduler(
             config.training.savestates,
-            interval_seconds=config.training.savestate_rotation_seconds,
         )
         rollouts = SegmentedRecurrentRollouts(models, venv.num_envs)
         updates = 0
@@ -228,7 +227,7 @@ class StateTrainer:
                 "training_state": "state-routed",
                 "savestate": savestate,
                 "savestates": list(config.training.savestates),
-                "savestate_rotation_seconds": config.training.savestate_rotation_seconds,
+                "savestate_rotation": "daily at local midnight",
                 "configured_envs": config.training.num_envs,
                 "state_models": list(models),
             },
@@ -332,7 +331,7 @@ class StateTrainer:
                 "training_state": "state-routed",
                 "savestate": config.training.active_savestate,
                 "savestates": list(config.training.savestates),
-                "savestate_rotation_seconds": config.training.savestate_rotation_seconds,
+                "savestate_rotation": "daily at local midnight",
                 "configured_envs": config.training.num_envs,
                 "state_models": list(models),
             },
@@ -352,27 +351,23 @@ class SavestateScheduler:
         self,
         savestates: Sequence[str],
         *,
-        interval_seconds: int,
-        clock=time.monotonic,
+        clock=datetime.now,
     ) -> None:
         self.savestates = tuple(savestates)
-        self.interval_seconds = interval_seconds
         self.clock = clock
         self.index = 0
-        self.rotated_at = self.clock()
+        self.rotation_day = self.clock().date()
 
     def rotation_reason(self, *, won: bool) -> str | None:
         if len(self.savestates) < 2:
             return None
-        if won:
-            return "successful episode"
-        if self.clock() - self.rotated_at >= self.interval_seconds:
-            return f"{self.interval_seconds} seconds"
+        if self.clock().date() > self.rotation_day:
+            return "local midnight"
         return None
 
     def rotate(self) -> str:
         if not self.savestates:
             raise ValueError("Cannot rotate an empty savestate list.")
         self.index = (self.index + 1) % len(self.savestates)
-        self.rotated_at = self.clock()
+        self.rotation_day = self.clock().date()
         return self.savestates[self.index]

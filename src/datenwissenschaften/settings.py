@@ -26,7 +26,6 @@ class TrainingSettings:
     game_identity: str
     savestate: str | None
     savestates: tuple[str, ...]
-    savestate_rotation_seconds: int
     num_envs: int
 
     @property
@@ -94,7 +93,6 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
             game_identity=_optional_string(training, "game_identity") or _string(training, "game"),
             savestate=savestate,
             savestates=savestates,
-            savestate_rotation_seconds=_positive_int(training, "savestate_rotation_seconds", default=14_400),
             num_envs=_environment_count(training, "num_envs"),
         ),
         log_level=_string(document, "log_level"),

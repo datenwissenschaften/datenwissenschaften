@@ -1,3 +1,4 @@
+from datetime import datetime
 from types import SimpleNamespace
 
 from datenwissenschaften import state_trainer
@@ -6,35 +7,36 @@ from datenwissenschaften.state_trainer import SavestateScheduler, StateTrainer
 
 class Clock:
     def __init__(self):
-        self.now = 0.0
+        self.now = datetime(2026, 7, 17, 23, 0)
 
     def __call__(self):
         return self.now
 
 
-def test_savestate_scheduler_rotates_after_win():
+def test_savestate_scheduler_does_not_rotate_after_win():
     clock = Clock()
-    scheduler = SavestateScheduler(("Level1", "Level2"), interval_seconds=14_400, clock=clock)
+    scheduler = SavestateScheduler(("Level1", "Level2"), clock=clock)
 
-    assert scheduler.rotation_reason(won=True) == "successful episode"
-    assert scheduler.rotate() == "Level2"
+    assert scheduler.rotation_reason(won=True) is None
 
 
-def test_savestate_scheduler_rotates_after_four_hours():
+def test_savestate_scheduler_rotates_once_after_local_midnight():
     clock = Clock()
-    scheduler = SavestateScheduler(("Level1", "Level2"), interval_seconds=14_400, clock=clock)
+    scheduler = SavestateScheduler(("Level1", "Level2"), clock=clock)
 
-    clock.now = 14_399
+    clock.now = datetime(2026, 7, 17, 23, 59, 59)
     assert scheduler.rotation_reason(won=False) is None
-    clock.now = 14_400
-    assert scheduler.rotation_reason(won=False) == "14400 seconds"
+    clock.now = datetime(2026, 7, 18, 0, 0)
+    assert scheduler.rotation_reason(won=False) == "local midnight"
     assert scheduler.rotate() == "Level2"
+    clock.now = datetime(2026, 7, 18, 12, 0)
+    assert scheduler.rotation_reason(won=True) is None
 
 
 def test_savestate_scheduler_does_not_rotate_single_savestate():
     clock = Clock()
-    scheduler = SavestateScheduler(("Level1",), interval_seconds=14_400, clock=clock)
-    clock.now = 20_000
+    scheduler = SavestateScheduler(("Level1",), clock=clock)
+    clock.now = datetime(2026, 7, 18, 12, 0)
 
     assert scheduler.rotation_reason(won=True) is None
 
