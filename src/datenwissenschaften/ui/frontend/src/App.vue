@@ -205,10 +205,15 @@ const label = key => key.replaceAll('_', ' ')
       <article class="panel metric"><p>Episodes</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>{{ activeSavestateLabel }} observed</small></article>
     </section>
 
-    <section class="details-grid">
-      <article v-for="row in stateRows" :key="row.state" class="panel detail-card">
+    <section class="observatory-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">STATE CURRICULUM</p><h2>Training state models</h2><p>One learned policy per game state, ordered by the generated workflow.</p></div>
+        <span>{{ stateRows.length }} models</span>
+      </div>
+      <div class="details-grid state-model-grid">
+      <article v-for="(row, index) in stateRows" :key="row.state" class="panel detail-card state-model-card">
         <div class="card-heading">
-          <div><p class="eyebrow">STATE MODEL</p><h2>{{ row.state }}</h2></div>
+          <div class="state-title"><span class="state-index">{{ index + 1 }}</span><div><p class="eyebrow">LEARNED STATE POLICY</p><h2>{{ row.state }}</h2></div></div>
           <span class="chip" :class="{ muted: !row.active_environments }">{{ row.active_environments ? `${row.active_environments} active` : 'Waiting' }}</span>
         </div>
         <dl>
@@ -224,26 +229,32 @@ const label = key => key.replaceAll('_', ' ')
           <dt>Curriculum status</dt><dd>{{ row.curriculum.mastered ? 'Mastered' : row.curriculum.active ? 'Training now' : 'Waiting' }}</dd>
         </dl>
       </article>
+      </div>
     </section>
 
-    <section :class="['details-grid', { 'two-column': !entries(rnd).length }]">
+    <section class="observatory-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">TRAINING ENGINE</p><h2>Runtime and learning system</h2><p>Shared environment configuration and optimization details used by every state model.</p></div>
+      </div>
+      <div :class="['details-grid system-grid', { 'two-column': !entries(rnd).length }]">
       <article class="panel detail-card">
-        <div class="card-heading"><div><p class="eyebrow">RUNTIME</p><h2>Environment</h2></div><span class="chip">{{ environment.num_envs || run.configured_envs || '—' }} envs</span></div>
+        <div class="card-heading"><div><p class="eyebrow">SHARED RUNTIME</p><h2>Environment</h2><p class="card-description">Emulator, wrappers, observations, and action spaces.</p></div><span class="chip">{{ environment.num_envs || run.configured_envs || '—' }} envs</span></div>
         <dl><template v-for="([key, value]) in entries(runtimeDetails)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
       </article>
       <article v-if="activeAlgorithm === 'ppo'" class="panel detail-card">
-        <div class="card-heading"><div><p class="eyebrow">POLICY OPTIMIZATION</p><h2>{{ modelName }}</h2><p v-if="model.description" class="placeholder">{{ model.description }}</p></div><span class="chip" :class="{ muted: !entries(ppo).length }">{{ entries(ppo).length ? 'Configured' : 'Not active' }}</span></div>
+        <div class="card-heading"><div><p class="eyebrow">SHARED OPTIMIZER</p><h2>{{ modelName }}</h2><p class="card-description">PPO settings used to update each learned state policy.</p><p v-if="model.description" class="placeholder">{{ model.description }}</p></div><span class="chip" :class="{ muted: !entries(ppo).length }">{{ entries(ppo).length ? 'Configured' : 'Not active' }}</span></div>
         <dl v-if="entries(ppo).length"><template v-for="([key, value]) in entries(ppo)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
         <p v-else class="placeholder">No PPO parameters on the active model.</p>
       </article>
       <article v-if="activeAlgorithm === 'ppo' && entries(rnd).length" class="panel detail-card">
-        <div class="card-heading"><div><p class="eyebrow">ADAPTIVE EXPLORATION</p><h2>Self-tuned RND</h2><p class="placeholder">Uses score staleness and missing wins to tune curiosity, entropy, PPO step size, clip range, and RND update pressure.</p></div><span class="chip">Active</span></div>
+        <div class="card-heading"><div><p class="eyebrow">SHARED EXPLORATION</p><h2>Self-tuned RND</h2><p class="card-description">Curiosity and exploration pressure shared across state training.</p><p class="placeholder">Uses score staleness and missing wins to tune curiosity, entropy, PPO step size, clip range, and RND update pressure.</p></div><span class="chip">Active</span></div>
         <dl><template v-for="([key, value]) in entries(rnd)" :key="key"><dt>{{ label(key) }}</dt><dd>{{ display(value) }}</dd></template></dl>
       </article>
       <article v-if="!activeAlgorithm" class="panel detail-card">
         <div class="card-heading"><div><p class="eyebrow">MODEL</p><h2>Algorithm</h2></div><span class="chip muted">Waiting</span></div>
         <p class="placeholder">Algorithm details appear when PPO starts.</p>
       </article>
+      </div>
     </section>
 
     <section class="panel source-browser">
