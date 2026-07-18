@@ -11,7 +11,6 @@ from datenwissenschaften.curriculum import ReverseCurriculum
 from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.ram import RamInfo
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
-from datenwissenschaften.states.explorer import Explorer
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
 from datenwissenschaften.ui import publish_metadata
@@ -40,11 +39,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         config = load_config(config_path)
         setup_logging(config.log_level)
-        state_classes = tuple(dict.fromkeys((self.start_state_cls, *self.training_state_classes)))
-        for state_cls in state_classes:
-            if issubclass(state_cls, Explorer):
-                state_cls.enemy_cache_dir = config.paths.cache_dir
-                state_cls.enemy_game = config.training.game
 
         self.state_machine = StateMachine[T](
             self.start_state_cls(),
@@ -83,6 +77,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             "visual": visual_space,
             "ram": gym.spaces.Box(low=0.0, high=1.0, shape=(ram_size,), dtype=np.float32),
         }
+        state_classes = dict.fromkeys((self.start_state_cls, *self.training_state_classes))
         self.auxiliary_feature_count = max(
             (len(state_cls().auxiliary_features()) for state_cls in state_classes),
             default=0,

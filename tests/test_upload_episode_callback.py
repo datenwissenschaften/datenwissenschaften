@@ -7,38 +7,31 @@ from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeC
 from datenwissenschaften.settings import UploadSettings
 
 
-def test_only_uploads_rollout_best_when_it_won(monkeypatch):
+def test_uploads_every_won_episode_started_from_initial_savestate(monkeypatch):
     callback = UploadEpisodeCallback(UploadSettings(url="https://example.test", api_key="key"))
     flush = Mock()
     monkeypatch.setattr(callback, "_flush_successful_episodes", flush)
     won = EpisodeRecord(0, 0)
     won.won = True
+    won.started_from_initial_savestate = True
     won.score = 10.0
-    lost = EpisodeRecord(1, 0)
+    second_won = EpisodeRecord(1, 0)
+    second_won.won = True
+    second_won.started_from_initial_savestate = True
+    checkpoint_won = EpisodeRecord(2, 0)
+    checkpoint_won.won = True
+    checkpoint_won.started_from_initial_savestate = False
+    lost = EpisodeRecord(3, 0)
+    lost.started_from_initial_savestate = True
     lost.score = 20.0
-    callback.completed_episodes = [won, lost]
+    callback.completed_episodes = [won, second_won, checkpoint_won, lost]
 
     callback._on_rollout_end()
 
     flush.assert_called_once_with()
-    assert callback.successful_episodes == []
-
-    won.score = 30.0
-    callback.completed_episodes = [won, lost]
-    callback._on_rollout_end()
-
-    assert len(callback.successful_episodes) == 1
-    assert callback.successful_episodes[0].won is True
-
-    callback.successful_episodes.clear()
-    won.curriculum_state = "ActivateScale"
-    won.score = 10.0
-    lost.curriculum_state = "Explore"
-    callback.completed_episodes = [won, lost]
-    callback._on_rollout_end()
-
-    assert len(callback.successful_episodes) == 1
-    assert callback.successful_episodes[0].curriculum_state == "ActivateScale"
+    assert len(callback.successful_episodes) == 2
+    assert all(episode.won for episode in callback.successful_episodes)
+    assert all(episode.started_from_initial_savestate is True for episode in callback.successful_episodes)
 
 
 def test_episode_path_resolves_nested_runner_recording_layout(tmp_path: Path):

@@ -162,16 +162,11 @@ class UploadEpisodeCallback(BaseCallback):
 
     def _on_rollout_end(self):
         if self.completed_episodes:
-            best_by_curriculum: dict[str, EpisodeRecord] = {}
-            for episode in self.completed_episodes:
-                curriculum = episode.curriculum_state or "default"
-                incumbent = best_by_curriculum.get(curriculum)
-                if incumbent is None or (episode.score, -episode.step_count) > (
-                    incumbent.score,
-                    -incumbent.step_count,
-                ):
-                    best_by_curriculum[curriculum] = episode
-            self.successful_episodes.extend(episode.clone() for episode in best_by_curriculum.values() if episode.won)
+            self.successful_episodes.extend(
+                episode.clone()
+                for episode in self.completed_episodes
+                if episode.won and episode.started_from_initial_savestate is True
+            )
             self.completed_episodes.clear()
         self._flush_successful_episodes()
         return True

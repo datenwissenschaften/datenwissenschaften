@@ -11,7 +11,6 @@ from importlib.resources import files
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, urlsplit
 
-import cv2
 from loguru import logger
 
 from datenwissenschaften.runtime import get_runtime
@@ -97,41 +96,6 @@ def _redact_config_secrets(content: str) -> str:
             line = f'{indentation}api_key: "[REDACTED]"{newline}'
         lines.append(line)
     return "".join(lines)
-
-
-def learned_enemies() -> list[dict[str, str | int]]:
-    root = get_runtime().cache_dir / "learned_enemies"
-    result = []
-    for path in sorted(root.glob("*/*.png")):
-        image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
-        if image is None or image.ndim != 3 or image.shape[2] != 4:
-            path.unlink(missing_ok=True)
-            continue
-        alpha = image[..., 3]
-        foreground_pixels = cv2.countNonZero(alpha)
-        if foreground_pixels < 16 or foreground_pixels == alpha.size:
-            path.unlink(missing_ok=True)
-            continue
-        game, filename = path.relative_to(root).parts
-        result.append(
-            {
-                "id": path.stem,
-                "path": "/".join((game, filename)),
-                "game": game,
-                "savestate": "",
-                "state": "Explorer",
-                "size": path.stat().st_size,
-            }
-        )
-    return result
-
-
-def learned_enemy_path(relative_path: str) -> Path:
-    root = (get_runtime().cache_dir / "learned_enemies").resolve()
-    candidate = (root / relative_path).resolve()
-    if candidate.suffix.lower() != ".png" or not candidate.is_relative_to(root) or not candidate.is_file():
-        raise FileNotFoundError(relative_path)
-    return candidate
 
 
 def rollout_videos() -> list[dict[str, str | int | float | bool]]:
@@ -240,16 +204,6 @@ class _DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json(generated_source(requested))
             except (FileNotFoundError, OSError, UnicodeError):
                 self.send_error(HTTPStatus.NOT_FOUND, "Generated source file not found")
-            return
-        if path == "/api/enemies":
-            self._send_json({"enemies": learned_enemies()})
-            return
-        if path == "/api/enemy":
-            requested = parse_qs(request.query).get("path", [""])[0]
-            try:
-                self._send_binary(learned_enemy_path(requested), "image/png")
-            except (FileNotFoundError, OSError):
-                self.send_error(HTTPStatus.NOT_FOUND, "Learned enemy image not found")
             return
         if path == "/api/rollout-videos":
             self._send_json({"videos": rollout_videos()})

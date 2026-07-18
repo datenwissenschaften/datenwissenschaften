@@ -16,7 +16,6 @@ class EpisodeRecord:
     bk2_path: str = field(init=False)
     won: bool = field(init=False)
     step_count: int = field(init=False)
-    time_until_won: int | None = field(init=False)
     started_from_initial_savestate: bool | None = field(init=False)
     score: float = field(init=False)
     curriculum_state: str | None = field(init=False)
@@ -25,7 +24,6 @@ class EpisodeRecord:
         self.bk2_path = ""
         self.won = False
         self.step_count = 0
-        self.time_until_won = None
         self.started_from_initial_savestate = None
         self.score = 0.0
         self.curriculum_state = None
@@ -45,14 +43,12 @@ class EpisodeRecord:
             self.score = float(monitor_episode["r"])
         if _require_won(info) and not self.won:
             self.won = True
-            self.time_until_won = self.step_count
 
     def clone(self) -> "EpisodeRecord":
         episode = EpisodeRecord(self.env_index, self.episode_index)
         episode.bk2_path = self.bk2_path
         episode.won = self.won
         episode.step_count = self.step_count
-        episode.time_until_won = self.time_until_won
         episode.started_from_initial_savestate = self.started_from_initial_savestate
         episode.score = self.score
         episode.curriculum_state = self.curriculum_state

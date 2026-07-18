@@ -1,8 +1,5 @@
 from pathlib import Path
 
-import cv2
-import numpy as np
-from datenwissenschaften.ui import server
 from datenwissenschaften.ui.control import ModelResetRequest, perform_model_reset
 from datenwissenschaften.ui.server import generated_source, generated_sources
 
@@ -24,32 +21,6 @@ def test_generated_config_source_redacts_upload_api_key(tmp_path: Path):
 
     assert 'api_key: "[REDACTED]"' in source["content"]
     assert 'api_key: "secret"' not in source["content"]
-
-
-def test_learned_enemy_gallery_only_lists_cached_png_files(tmp_path: Path, monkeypatch):
-    root = tmp_path / "learned_enemies" / "Game"
-    root.mkdir(parents=True)
-    sprite = np.zeros((8, 8, 4), dtype=np.uint8)
-    sprite[2:6, 2:6] = (20, 80, 255, 255)
-    cv2.imwrite(str(root / "enemy.png"), sprite)
-    cv2.imwrite(str(root / "old-background.png"), np.zeros((8, 8, 3), dtype=np.uint8))
-    (root / "ignored.txt").write_text("not an image", encoding="utf-8")
-    monkeypatch.setattr(server, "get_runtime", lambda: type("Runtime", (), {"cache_dir": tmp_path})())
-
-    enemies = server.learned_enemies()
-
-    assert enemies == [
-        {
-            "id": "enemy",
-            "path": "Game/enemy.png",
-            "game": "Game",
-            "savestate": "",
-            "state": "Explorer",
-            "size": (root / "enemy.png").stat().st_size,
-        }
-    ]
-    assert not (root / "old-background.png").exists()
-    assert server.learned_enemy_path(enemies[0]["path"]) == root / "enemy.png"
 
 
 def test_model_reset_deletes_and_recreates_all_runner_artifact_directories(tmp_path: Path):
