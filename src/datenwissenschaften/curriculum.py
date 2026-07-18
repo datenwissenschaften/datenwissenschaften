@@ -12,6 +12,9 @@ from typing import Iterator
 class ReverseCurriculum:
     """Persistent deepest-checkpoint-first curriculum for a state sequence."""
 
+    WIN_TARGET = 8
+    BAD_CHECKPOINT_EVIDENCE_TARGET = 8
+
     def __init__(self, root: Path, state_names: Sequence[str]) -> None:
         self.root = root
         self.state_names = tuple(state_names)
@@ -41,75 +44,95 @@ class ReverseCurriculum:
         self._require_state(state_name)
         with self._lock(state_name):
             self._record_longest_attempt(state_name, episode_steps)
-            longest_success = max(episode_steps, self._read_int(self._success_steps_path(state_name)))
-            self._atomic_write(self._success_steps_path(state_name), str(longest_success).encode("utf-8"))
-            threshold = self.success_threshold(state_name)
-            successes = min(threshold, self.successes(state_name) + 1)
-            self._atomic_write(self._success_path(state_name), str(successes).encode("utf-8"))
-            self._failure_path(state_name).unlink(missing_ok=True)
-            mastered = successes >= threshold
+            target = self.win_target(state_name)
+            wins = min(target, self.wins(state_name) + 1)
+            self._atomic_write(self._success_path(state_name), str(wins).encode("utf-8"))
+            self._clear_score_evidence(state_name)
+            mastered = wins >= target
             if mastered:
                 self._checkpoint_path(state_name).unlink(missing_ok=True)
             return mastered
 
-    def record_failure(self, state_name: str, episode_steps: int) -> bool:
+    def record_failure(self, state_name: str, episode_steps: int, score: float) -> bool:
         self._require_state(state_name)
         with self._lock(state_name):
             if self.is_mastered(state_name):
                 return False
-            self._success_path(state_name).unlink(missing_ok=True)
             self._record_longest_attempt(state_name, episode_steps)
             checkpoint = self._checkpoint_path(state_name)
             if state_name == self.state_names[0] or not checkpoint.is_file():
                 return False
-            typical_steps = self.typical_steps(state_name)
-            severity = max(1, math.ceil(typical_steps / max(1, episode_steps)))
-            failures = self.failures(state_name) + severity
-            if failures < self.failure_threshold(state_name):
-                self._atomic_write(self._failure_path(state_name), str(failures).encode("utf-8"))
+
+            score = float(score)
+            if not math.isfinite(score):
+                raise ValueError(f"Curriculum score must be finite, got {score}")
+            best_score = self.best_score(state_name)
+            last_score = self.last_score(state_name)
+            self._atomic_write(self._last_score_path(state_name), repr(score).encode("utf-8"))
+
+            if best_score is None or score > best_score:
+                self._atomic_write(self._best_score_path(state_name), repr(score).encode("utf-8"))
+                self._evidence_path(state_name).unlink(missing_ok=True)
                 return False
+
+            evidence_added = 2 if last_score is not None and score < last_score else 1
+            evidence = self.stagnation_evidence(state_name) + evidence_added
+            if evidence < self.bad_checkpoint_evidence_target(state_name):
+                self._atomic_write(self._evidence_path(state_name), str(evidence).encode("utf-8"))
+                return False
+
             checkpoint.unlink(missing_ok=True)
-            self._failure_path(state_name).unlink(missing_ok=True)
+            self._clear_score_evidence(state_name)
             return True
 
-    def successes(self, state_name: str) -> int:
+    def wins(self, state_name: str) -> int:
         self._require_state(state_name)
         try:
-            return max(0, int(self._success_path(state_name).read_text(encoding="utf-8").strip()))
+            persisted_wins = int(self._success_path(state_name).read_text(encoding="utf-8").strip())
+            return min(self.WIN_TARGET, max(0, persisted_wins))
         except (FileNotFoundError, ValueError):
             return 0
 
     def is_mastered(self, state_name: str) -> bool:
-        return self.successes(state_name) >= self.success_threshold(state_name)
+        return self.wins(state_name) >= self.win_target(state_name)
 
     def typical_steps(self, state_name: str) -> int:
         self._require_state(state_name)
         return max(1, self._read_int(self._attempt_steps_path(state_name)))
 
-    def success_threshold(self, state_name: str) -> int:
-        successful_steps = self._read_int(self._success_steps_path(state_name))
-        typical_steps = successful_steps or self.typical_steps(state_name)
-        return max(2, math.ceil(math.log2(typical_steps + 1)) - 1)
+    def win_target(self, state_name: str) -> int:
+        self._require_state(state_name)
+        return self.WIN_TARGET
 
-    def failure_threshold(self, state_name: str) -> int:
-        typical_steps = self.typical_steps(state_name)
-        return math.ceil(2 * math.sqrt(typical_steps) + math.log2(typical_steps + 1))
+    def bad_checkpoint_evidence_target(self, state_name: str) -> int:
+        self._require_state(state_name)
+        return self.BAD_CHECKPOINT_EVIDENCE_TARGET
 
-    def failures(self, state_name: str) -> int:
+    def stagnation_evidence(self, state_name: str) -> int:
         self._require_state(state_name)
         try:
-            return max(0, int(self._failure_path(state_name).read_text(encoding="utf-8").strip()))
+            return max(0, int(self._evidence_path(state_name).read_text(encoding="utf-8").strip()))
         except (FileNotFoundError, ValueError):
             return 0
 
-    def progress(self) -> dict[str, dict[str, int | bool]]:
+    def best_score(self, state_name: str) -> float | None:
+        self._require_state(state_name)
+        return self._read_float(self._best_score_path(state_name))
+
+    def last_score(self, state_name: str) -> float | None:
+        self._require_state(state_name)
+        return self._read_float(self._last_score_path(state_name))
+
+    def progress(self) -> dict[str, dict[str, int | float | bool | None]]:
         active_state = self.active_state()
         return {
             state_name: {
-                "consecutive_successes": self.successes(state_name),
-                "success_threshold": self.success_threshold(state_name),
-                "bad_checkpoint_evidence": self.failures(state_name),
-                "failure_threshold": self.failure_threshold(state_name),
+                "wins": self.wins(state_name),
+                "win_target": self.win_target(state_name),
+                "bad_checkpoint_evidence": self.stagnation_evidence(state_name),
+                "bad_checkpoint_evidence_target": self.bad_checkpoint_evidence_target(state_name),
+                "best_checkpoint_score": self.best_score(state_name),
+                "last_checkpoint_score": self.last_score(state_name),
                 "typical_episode_steps": self.typical_steps(state_name),
                 "mastered": self.is_mastered(state_name),
                 "has_checkpoint": self._checkpoint_path(state_name).is_file(),
@@ -128,14 +151,17 @@ class ReverseCurriculum:
     def _success_path(self, state_name: str) -> Path:
         return self.root / f"{state_name}.successes"
 
-    def _failure_path(self, state_name: str) -> Path:
-        return self.root / f"{state_name}.failures"
+    def _evidence_path(self, state_name: str) -> Path:
+        return self.root / f"{state_name}.score_stagnation"
+
+    def _best_score_path(self, state_name: str) -> Path:
+        return self.root / f"{state_name}.best_score"
+
+    def _last_score_path(self, state_name: str) -> Path:
+        return self.root / f"{state_name}.last_score"
 
     def _attempt_steps_path(self, state_name: str) -> Path:
         return self.root / f"{state_name}.attempt_steps"
-
-    def _success_steps_path(self, state_name: str) -> Path:
-        return self.root / f"{state_name}.success_steps"
 
     def _record_longest_attempt(self, state_name: str, episode_steps: int) -> None:
         longest = max(1, episode_steps, self._read_int(self._attempt_steps_path(state_name)))
@@ -147,6 +173,19 @@ class ReverseCurriculum:
             return max(0, int(path.read_text(encoding="utf-8").strip()))
         except (FileNotFoundError, ValueError):
             return 0
+
+    @staticmethod
+    def _read_float(path: Path) -> float | None:
+        try:
+            value = float(path.read_text(encoding="utf-8").strip())
+            return value if math.isfinite(value) else None
+        except (FileNotFoundError, ValueError):
+            return None
+
+    def _clear_score_evidence(self, state_name: str) -> None:
+        self._evidence_path(state_name).unlink(missing_ok=True)
+        self._best_score_path(state_name).unlink(missing_ok=True)
+        self._last_score_path(state_name).unlink(missing_ok=True)
 
     @contextmanager
     def _lock(self, state_name: str) -> Iterator[None]:

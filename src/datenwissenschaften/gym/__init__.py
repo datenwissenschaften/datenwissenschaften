@@ -169,11 +169,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             checkpoint_deleted = self.curriculum.record_failure(
                 self._curriculum_start_state,
                 self._curriculum_episode_steps,
+                self._state_return + reward,
             )
             if checkpoint_deleted:
-                logger.warning(
-                    f"Deleted dynamically detected bad automatic checkpoint for " f"{self._curriculum_start_state}"
-                )
+                logger.warning(f"Deleted score-stagnant automatic checkpoint for " f"{self._curriculum_start_state}")
             self._publish_curriculum_progress()
 
         self._state_return += reward
@@ -291,17 +290,14 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self._curriculum_start_state,
             self._curriculum_episode_steps,
         )
-        successes = self.curriculum.successes(self._curriculum_start_state)
-        threshold = self.curriculum.success_threshold(self._curriculum_start_state)
+        wins = self.curriculum.wins(self._curriculum_start_state)
+        target = self.curriculum.win_target(self._curriculum_start_state)
         if mastered:
             logger.info(
                 f"Mastered curriculum state {self._curriculum_start_state}; " "backtracking to the preceding checkpoint"
             )
         else:
-            logger.info(
-                f"Curriculum success for {self._curriculum_start_state}: "
-                f"{successes}/{threshold} dynamically required consecutive"
-            )
+            logger.info(f"Curriculum win for {self._curriculum_start_state}: " f"{wins}/{target} total wins")
         self._publish_curriculum_progress()
 
     def _restore_automatic_savestate(self, savestate: bytes) -> np.ndarray:
