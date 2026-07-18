@@ -17,6 +17,17 @@ def _configure(tmp_path: Path, monkeypatch) -> EnemyLearner:
     return EnemyLearner("Explore")
 
 
+def test_explicit_worker_storage_does_not_require_runtime(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        enemy_learner,
+        "get_runtime",
+        lambda: (_ for _ in ()).throw(AssertionError("runtime must not be read")),
+    )
+    learner = EnemyLearner("Explore", cache_dir=tmp_path, game="Game")
+
+    assert learner._root() == tmp_path / "learned_enemies" / "Game"
+
+
 def _frame(actor_x: int, extras=()) -> np.ndarray:
     frame = np.zeros((96, 96, 3), dtype=np.uint8)
     frame[48:60, actor_x : actor_x + 12] = ACTOR_COLOR

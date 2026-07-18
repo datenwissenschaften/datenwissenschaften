@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TypeVar
 
 import numpy as np
@@ -32,6 +33,8 @@ class Explorer(TargetState[T], ABC):
     enemy_hit_penalty = 100.0
     enemy_danger_distance = 48.0
     enemy_proximity_penalty_scale = 0.1
+    enemy_cache_dir: Path | None = None
+    enemy_game: str | None = None
 
     visited_areas: set[tuple[int, int]]
     visited_positions: set[tuple[int, int]]
@@ -42,7 +45,11 @@ class Explorer(TargetState[T], ABC):
     steps_since_frontier: int
 
     def __init__(self) -> None:
-        self.enemy_learner = EnemyLearner(self.__class__.__name__)
+        self.enemy_learner = EnemyLearner(
+            self.__class__.__name__,
+            cache_dir=self.enemy_cache_dir,
+            game=self.enemy_game,
+        )
         self.enemy_features = [0.0, 0.0, 0.0, 0.0]
         self.enemy_seen = False
         self.enemy_distance = 0.0

@@ -78,8 +78,16 @@ class EnemyLearner:
     track_max_misses = 8
     learner_version = "3"
 
-    def __init__(self, state_name: str) -> None:
+    def __init__(
+        self,
+        state_name: str,
+        *,
+        cache_dir: Path | None = None,
+        game: str | None = None,
+    ) -> None:
         self.state_name = state_name
+        self.cache_dir = cache_dir
+        self.game = game
         self.previous_hit = False
         self.frame_history: deque[np.ndarray] = deque(maxlen=self.history_frames)
         self.visual_tracks: dict[int, _VisualTrack] = {}
@@ -627,6 +635,8 @@ class EnemyLearner:
         path.replace(quarantine)
 
     def _root(self) -> Path:
+        if self.cache_dir is not None and self.game:
+            return self.cache_dir / "learned_enemies" / self.game
         runtime = get_runtime()
         return runtime.cache_dir / "learned_enemies" / runtime.game
 

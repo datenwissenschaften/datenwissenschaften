@@ -11,6 +11,7 @@ from datenwissenschaften.curriculum import ReverseCurriculum
 from datenwissenschaften.logger import setup_logging
 from datenwissenschaften.ram import RamInfo
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
+from datenwissenschaften.states.explorer import Explorer
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
 from datenwissenschaften.ui import publish_metadata
@@ -37,6 +38,14 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     ):
         super().__init__(env)
 
+        config = load_config(config_path)
+        setup_logging(config.log_level)
+        state_classes = tuple(dict.fromkeys((self.start_state_cls, *self.training_state_classes)))
+        for state_cls in state_classes:
+            if issubclass(state_cls, Explorer):
+                state_cls.enemy_cache_dir = config.paths.cache_dir
+                state_cls.enemy_game = config.training.game
+
         self.state_machine = StateMachine[T](
             self.start_state_cls(),
             terminate_on_transition=self.terminate_on_transition,
@@ -51,8 +60,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.action_space = gym.spaces.Discrete(len(action_table)) if action_table is not None else env.action_space
         self.action_table = action_table
         self.obs_size = obs_size
-        config = load_config(config_path)
-        setup_logging(config.log_level)
         self.initial_savestate = config.training.active_savestate
         self._curriculum_root = config.paths.cache_dir / "automatic_savestates" / config.training.game_identity
         self.curriculum = self._create_curriculum()
@@ -76,7 +83,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             "visual": visual_space,
             "ram": gym.spaces.Box(low=0.0, high=1.0, shape=(ram_size,), dtype=np.float32),
         }
-        state_classes = dict.fromkeys((self.start_state_cls, *self.training_state_classes))
         self.auxiliary_feature_count = max(
             (len(state_cls().auxiliary_features()) for state_cls in state_classes),
             default=0,
