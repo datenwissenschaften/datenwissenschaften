@@ -33,6 +33,14 @@ class _VisualComponent:
     appearance: np.ndarray
 
 
+@dataclass(frozen=True)
+class _EnemyTemplate:
+    rgb: np.ndarray
+    gray: np.ndarray
+    mask: np.ndarray
+    color_histogram: np.ndarray
+
+
 @dataclass
 class _VisualTrack:
     track_id: int
@@ -51,16 +59,24 @@ class EnemyLearner:
     Motion components are tracked over time without RAM coordinates.  The actor
     is the uniquely persistent, translating visual track; stationary animated
     scenery cannot qualify.  A hit can only teach an enemy after that actor track
-    is confident, and only from the current motion component touching it.
+    is confident, and only from the current motion component touching it. A
+    candidate becomes detectable and reward-bearing only after a second,
+    independent hit produces a matching contact crop.
     """
 
-    match_threshold = 0.82
+    match_threshold = 0.88
+    color_match_threshold = 0.80
+    duplicate_shape_threshold = 0.62
+    duplicate_color_threshold = 0.88
+    duplicate_appearance_threshold = 0.84
+    detection_confirmation_frames = 2
+    maximum_detections_per_template = 8
     max_templates = 64
     history_frames = 6
     actor_confirmation_frames = 6
     actor_minimum_age = 8
     track_max_misses = 8
-    learner_version = "2"
+    learner_version = "3"
 
     def __init__(self, state_name: str) -> None:
         self.state_name = state_name
@@ -69,7 +85,9 @@ class EnemyLearner:
         self.visual_tracks: dict[int, _VisualTrack] = {}
         self.actor_track_id: int | None = None
         self._next_track_id = 1
-        self.templates: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        self.templates: dict[str, _EnemyTemplate] = {}
+        self.candidate_templates: dict[str, _EnemyTemplate] = {}
+        self._detection_streaks: dict[str, list[tuple[tuple[int, int, int, int], int]]] = {}
         self._loaded_root: Path | None = None
 
     def observe(self, frame: np.ndarray, hit: bool) -> EnemyObservation:
@@ -79,7 +97,7 @@ class EnemyLearner:
         learned = ()
         if hit and not self.previous_hit and self.actor_confident:
             learned = tuple(self._learn_hit_regions(frame, gray))
-        detections = tuple(self._detect(gray)) if self.actor_confident else ()
+        detections = tuple(self._detect(frame)) if self.actor_confident else ()
         self.frame_history.append(gray.copy())
         self.previous_hit = hit
         return EnemyObservation(detections=detections, learned_enemy_ids=learned)
@@ -90,6 +108,7 @@ class EnemyLearner:
         self.visual_tracks.clear()
         self.actor_track_id = None
         self._next_track_id = 1
+        self._detection_streaks.clear()
 
     @property
     def actor_confident(self) -> bool:
@@ -108,23 +127,49 @@ class EnemyLearner:
         return x + width / 2, y + height / 2
 
     def _learn_hit_regions(self, frame: np.ndarray, gray: np.ndarray) -> list[str]:
+        """Stage first-hit crops and promote them only after an independent matching hit."""
         crops = self._candidate_crops(frame, gray)
         learned = []
         for crop in crops:
-            enemy_id = self._crop_id(crop)
-            if enemy_id in self.templates:
+            duplicate_id = self._find_duplicate_template(crop)
+            if duplicate_id is not None:
+                logger.debug(f"Hit revalidated learned enemy visual {duplicate_id}")
                 continue
-            root = self._root()
+            candidate_id = self._find_duplicate_template(crop, self.candidate_templates)
+            if candidate_id is not None:
+                if self._promote_candidate(candidate_id):
+                    learned.append(candidate_id)
+                    logger.info(f"Revalidated game-wide enemy visual {candidate_id}")
+                continue
+            enemy_id = self._crop_id(crop)
+            if enemy_id in self.candidate_templates:
+                continue
+            root = self._candidate_root()
             root.mkdir(parents=True, exist_ok=True)
             path = root / f"{enemy_id}.png"
             if not cv2.imwrite(str(path), cv2.cvtColor(crop, cv2.COLOR_RGBA2BGRA)):
                 continue
-            self.templates[enemy_id] = (self._gray(crop[..., :3]), crop[..., 3])
-            learned.append(enemy_id)
-            logger.info(f"Learned game-wide enemy visual {enemy_id}")
+            self.candidate_templates[enemy_id] = self._make_template(crop[..., :3], crop[..., 3])
+            logger.info(f"Staged enemy visual {enemy_id}; another matching hit is required")
         if learned:
             self._publish()
         return learned
+
+    def _promote_candidate(self, enemy_id: str) -> bool:
+        template = self.candidate_templates.get(enemy_id)
+        source = self._candidate_root() / f"{enemy_id}.png"
+        if template is None or not source.is_file():
+            return False
+        root = self._root()
+        root.mkdir(parents=True, exist_ok=True)
+        destination = root / f"{enemy_id}.png"
+        try:
+            source.replace(destination)
+        except OSError:
+            return False
+        self.candidate_templates.pop(enemy_id, None)
+        self.templates[enemy_id] = template
+        return True
 
     def _update_visual_tracks(self, frame: np.ndarray, gray: np.ndarray) -> None:
         """Track independently moving sprites and select a confident actor."""
@@ -382,26 +427,66 @@ class EnemyLearner:
         isolated = np.isin(labels, tuple(touching_labels)).astype(np.uint8) * 255
         return cv2.morphologyEx(isolated, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
 
-    def _detect(self, gray: np.ndarray) -> list[EnemyDetection]:
-        detections = []
-        for enemy_id, (template, mask) in tuple(self.templates.items())[: self.max_templates]:
-            height, width = template.shape
+    def _detect(self, frame: np.ndarray) -> list[EnemyDetection]:
+        """Return only spatially and temporally consistent color-template matches."""
+        rgb = np.asarray(frame[..., :3], dtype=np.uint8)
+        gray = self._gray(rgb)
+        raw_detections = []
+        actor_bounds = self.actor_bounds
+        for enemy_id, template in tuple(self.templates.items())[: self.max_templates]:
+            height, width = template.gray.shape
             if height > gray.shape[0] or width > gray.shape[1]:
                 continue
-            result = cv2.matchTemplate(gray, template, cv2.TM_CCORR_NORMED, mask=mask)
-            _, score, _, location = cv2.minMaxLoc(result)
-            if not np.isfinite(score) or score < self.match_threshold:
-                continue
-            x, y = location
-            detections.append(
-                EnemyDetection(
-                    enemy_id=enemy_id,
-                    score=float(score),
-                    center=(x + width // 2, y + height // 2),
-                    bounds=(x, y, width, height),
+            result = cv2.matchTemplate(gray, template.gray, cv2.TM_CCORR_NORMED, mask=template.mask)
+            finite_result = np.where(np.isfinite(result), result, -1.0)
+            local_maxima = finite_result == cv2.dilate(finite_result, np.ones((3, 3), np.float32))
+            locations = np.argwhere(local_maxima & (finite_result >= self.match_threshold))
+            ranked_locations = sorted(locations, key=lambda point: finite_result[tuple(point)], reverse=True)
+            for y, x in ranked_locations[: self.maximum_detections_per_template]:
+                bounds = (int(x), int(y), width, height)
+                if actor_bounds is not None and self._intersection_over_union(bounds, actor_bounds) > 0.10:
+                    continue
+                patch = rgb[y : y + height, x : x + width]
+                color_score = cv2.compareHist(
+                    template.color_histogram,
+                    self._color_histogram(patch, template.mask),
+                    cv2.HISTCMP_CORREL,
                 )
-            )
-        return detections
+                if not np.isfinite(color_score) or color_score < self.color_match_threshold:
+                    continue
+                gray_score = float(finite_result[y, x])
+                raw_detections.append(
+                    EnemyDetection(
+                        enemy_id=enemy_id,
+                        score=float(np.clip(gray_score * 0.65 + color_score * 0.35, 0.0, 1.0)),
+                        center=(int(x) + width // 2, int(y) + height // 2),
+                        bounds=bounds,
+                    )
+                )
+
+        # Multiple learned animation frames can still match the same object.
+        # Greedy NMS exposes one detection, independent of how many templates exist.
+        suppressed = []
+        for detection in sorted(raw_detections, key=lambda item: item.score, reverse=True):
+            if all(self._intersection_over_union(detection.bounds, kept.bounds) < 0.35 for kept in suppressed):
+                suppressed.append(detection)
+
+        confirmed = []
+        next_streaks: dict[str, list[tuple[tuple[int, int, int, int], int]]] = {}
+        for detection in suppressed:
+            previous = self._detection_streaks.get(detection.enemy_id, [])
+            matching_streaks = [
+                streak
+                for bounds, streak in previous
+                if self._center_distance(bounds, detection.bounds)
+                <= max(4.0, np.hypot(detection.bounds[2], detection.bounds[3]))
+            ]
+            streak = max(matching_streaks, default=0) + 1
+            next_streaks.setdefault(detection.enemy_id, []).append((detection.bounds, streak))
+            if streak >= self.detection_confirmation_frames:
+                confirmed.append(detection)
+        self._detection_streaks = next_streaks
+        return confirmed
 
     def _load_templates(self) -> None:
         root = self._root()
@@ -413,7 +498,21 @@ class EnemyLearner:
             version = version_file.read_text(encoding="utf-8").strip()
         except OSError:
             version = ""
-        if version != self.learner_version:
+        if version == "2":
+            # Version 2 templates had one supervised hit. Keep them as
+            # provisional evidence, but require the new independent contact hit
+            # before they can drive observations or rewards again.
+            candidate_root = self._candidate_root()
+            candidate_root.mkdir(parents=True, exist_ok=True)
+            for path in root.glob("*.png"):
+                destination = candidate_root / path.name
+                suffix = 1
+                while destination.exists():
+                    destination = candidate_root / f"{path.stem}-{suffix}{path.suffix}"
+                    suffix += 1
+                path.replace(destination)
+            version_file.write_text(self.learner_version, encoding="utf-8")
+        elif version != self.learner_version:
             # Earlier files were learned without a confirmed actor/contact and
             # cannot be distinguished reliably from animated scenery.
             for path in root.glob("*.png"):
@@ -425,11 +524,13 @@ class EnemyLearner:
                 path.replace(quarantine)
             version_file.write_text(self.learner_version, encoding="utf-8")
         self.templates = {}
+        self.candidate_templates = {}
         self.frame_history.clear()
         self.previous_hit = False
         self.visual_tracks.clear()
         self.actor_track_id = None
         self._next_track_id = 1
+        self._detection_streaks.clear()
         for path in sorted(root.glob("*.png"))[: self.max_templates]:
             image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
             # Old candidates were opaque rectangular screenshots.  Never load
@@ -441,15 +542,96 @@ class EnemyLearner:
             if cv2.countNonZero(alpha) < 16 or cv2.countNonZero(alpha) == alpha.size:
                 path.unlink(missing_ok=True)
                 continue
-            self.templates[path.stem] = (
-                cv2.cvtColor(image[..., :3], cv2.COLOR_BGR2GRAY),
-                alpha,
-            )
+            rgb = cv2.cvtColor(image[..., :3], cv2.COLOR_BGR2RGB)
+            candidate = np.dstack((rgb, alpha))
+            duplicate_id = self._find_duplicate_template(candidate)
+            if duplicate_id is not None:
+                self._quarantine_duplicate(path, duplicate_id)
+                continue
+            self.templates[path.stem] = self._make_template(rgb, alpha)
+        candidate_root = self._candidate_root()
+        candidate_root.mkdir(parents=True, exist_ok=True)
+        for path in sorted(candidate_root.glob("*.png"))[: self.max_templates]:
+            image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+            if image is None or image.ndim != 3 or image.shape[2] != 4:
+                path.unlink(missing_ok=True)
+                continue
+            alpha = image[..., 3]
+            if cv2.countNonZero(alpha) < 16 or cv2.countNonZero(alpha) == alpha.size:
+                path.unlink(missing_ok=True)
+                continue
+            rgb = cv2.cvtColor(image[..., :3], cv2.COLOR_BGR2RGB)
+            candidate = np.dstack((rgb, alpha))
+            if self._find_duplicate_template(candidate) is not None:
+                self._quarantine_duplicate(path, "verified")
+                continue
+            duplicate_id = self._find_duplicate_template(candidate, self.candidate_templates)
+            if duplicate_id is not None:
+                self._quarantine_duplicate(path, duplicate_id)
+                continue
+            self.candidate_templates[path.stem] = self._make_template(rgb, alpha)
         self._loaded_root = root
+
+    def _find_duplicate_template(
+        self,
+        crop: np.ndarray,
+        templates: dict[str, _EnemyTemplate] | None = None,
+    ) -> str | None:
+        """Find the same sprite despite small crop, palette, or animation differences."""
+        candidate_rgb = np.asarray(crop[..., :3], dtype=np.uint8)
+        candidate_mask = np.asarray(crop[..., 3], dtype=np.uint8)
+        size = (24, 24)
+        candidate_gray = cv2.resize(self._gray(candidate_rgb), size, interpolation=cv2.INTER_AREA)
+        candidate_alpha = cv2.resize(candidate_mask, size, interpolation=cv2.INTER_NEAREST) > 0
+        candidate_histogram = self._color_histogram(candidate_rgb, candidate_mask)
+        for enemy_id, template in (self.templates if templates is None else templates).items():
+            known_gray = cv2.resize(template.gray, size, interpolation=cv2.INTER_AREA)
+            known_alpha = cv2.resize(template.mask, size, interpolation=cv2.INTER_NEAREST) > 0
+            intersection = candidate_alpha & known_alpha
+            union = candidate_alpha | known_alpha
+            shape_score = float(np.count_nonzero(intersection) / max(1, np.count_nonzero(union)))
+            if shape_score < self.duplicate_shape_threshold or np.count_nonzero(intersection) < 16:
+                continue
+            comparison_mask = intersection.astype(np.uint8) * 255
+            appearance_score = float(
+                cv2.matchTemplate(candidate_gray, known_gray, cv2.TM_CCORR_NORMED, mask=comparison_mask)[0, 0]
+            )
+            color_score = float(cv2.compareHist(candidate_histogram, template.color_histogram, cv2.HISTCMP_CORREL))
+            if (
+                np.isfinite(appearance_score)
+                and np.isfinite(color_score)
+                and appearance_score >= self.duplicate_appearance_threshold
+                and color_score >= self.duplicate_color_threshold
+            ):
+                return enemy_id
+        return None
+
+    @classmethod
+    def _make_template(cls, rgb: np.ndarray, mask: np.ndarray) -> _EnemyTemplate:
+        rgb = np.asarray(rgb, dtype=np.uint8).copy()
+        mask = np.asarray(mask, dtype=np.uint8).copy()
+        return _EnemyTemplate(rgb, cls._gray(rgb), mask, cls._color_histogram(rgb, mask))
+
+    @staticmethod
+    def _color_histogram(rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        histogram = cv2.calcHist([rgb], [0, 1, 2], mask, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+        return cv2.normalize(histogram, histogram, alpha=1.0, norm_type=cv2.NORM_L1).ravel()
+
+    @staticmethod
+    def _quarantine_duplicate(path: Path, duplicate_id: str) -> None:
+        quarantine = path.with_suffix(f"{path.suffix}.duplicate-of-{duplicate_id}")
+        suffix = 1
+        while quarantine.exists():
+            quarantine = path.with_suffix(f"{path.suffix}.duplicate-of-{duplicate_id}-{suffix}")
+            suffix += 1
+        path.replace(quarantine)
 
     def _root(self) -> Path:
         runtime = get_runtime()
         return runtime.cache_dir / "learned_enemies" / runtime.game
+
+    def _candidate_root(self) -> Path:
+        return self._root() / ".candidates"
 
     def _publish(self) -> None:
         publish_metadata(

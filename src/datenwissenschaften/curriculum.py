@@ -89,7 +89,7 @@ class ReverseCurriculum:
     def success_threshold(self, state_name: str) -> int:
         successful_steps = self._read_int(self._success_steps_path(state_name))
         typical_steps = successful_steps or self.typical_steps(state_name)
-        return max(2, math.ceil(math.log2(typical_steps + 1)))
+        return max(2, math.ceil(math.log2(typical_steps + 1)) - 1)
 
     def failure_threshold(self, state_name: str) -> int:
         typical_steps = self.typical_steps(state_name)
