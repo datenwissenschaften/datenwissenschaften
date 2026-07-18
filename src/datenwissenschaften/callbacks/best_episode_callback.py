@@ -4,6 +4,7 @@ from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften.callbacks.episode_record import EpisodeRecord
+from datenwissenschaften.rollout_video import record_rollout_videos
 from datenwissenschaften.runtime import get_runtime
 
 
@@ -16,6 +17,7 @@ class BestEpisodeCallback(BaseCallback):
         self.episode_counts: list[int] = []
         self.finished_episode_count = 0
         self.best_time_until_won: int | None = None
+        self.rollout_count = 0
 
     def _on_training_start(self) -> None:
         self._ensure_episode_slots(self.training_env.num_envs)
@@ -43,7 +45,7 @@ class BestEpisodeCallback(BaseCallback):
         for env_index in range(len(rewards)):
             episode = self.active_episodes[env_index]
 
-            episode.add_step(infos[env_index])
+            episode.add_step(infos[env_index], rewards[env_index])
 
             if dones[env_index]:
                 self._finish_episode(env_index, episode)
@@ -51,6 +53,8 @@ class BestEpisodeCallback(BaseCallback):
         return True
 
     def _on_rollout_end(self) -> bool:
+        self.rollout_count += 1
+        record_rollout_videos(self.episodes, self.rollout_count)
         if not self.episodes:
             get_runtime().set_state_value("best_episode", "")
             logger.debug("No finished episodes in rollout. won unavailable.")

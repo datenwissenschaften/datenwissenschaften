@@ -137,6 +137,7 @@ class UploadEpisodeCallback(BaseCallback):
         self.settings = load_config(config_path).upload if settings is None else settings
         self.upload_url = self.settings.url
         self.successful_episodes: list[EpisodeRecord] = []
+        self.completed_episodes: list[EpisodeRecord] = []
         self.active_episodes: list[EpisodeRecord] = []
         self.episode_counts: list[int] = []
 
@@ -150,21 +151,28 @@ class UploadEpisodeCallback(BaseCallback):
 
         self._ensure_episode_slots(len(rewards))
 
-        successful_episode_finished = False
         for env_index in range(len(rewards)):
             episode = self.active_episodes[env_index]
-            episode.add_step(infos[env_index])
+            episode.add_step(infos[env_index], rewards[env_index])
 
             if dones[env_index]:
                 self._finish_episode(env_index, episode)
-                successful_episode_finished = successful_episode_finished or episode.won
-
-        if successful_episode_finished:
-            self._flush_successful_episodes()
 
         return True
 
     def _on_rollout_end(self):
+        if self.completed_episodes:
+            best_by_curriculum: dict[str, EpisodeRecord] = {}
+            for episode in self.completed_episodes:
+                curriculum = episode.curriculum_state or "default"
+                incumbent = best_by_curriculum.get(curriculum)
+                if incumbent is None or (episode.score, -episode.step_count) > (
+                    incumbent.score,
+                    -incumbent.step_count,
+                ):
+                    best_by_curriculum[curriculum] = episode
+            self.successful_episodes.extend(episode.clone() for episode in best_by_curriculum.values() if episode.won)
+            self.completed_episodes.clear()
         self._flush_successful_episodes()
         return True
 
@@ -218,8 +226,7 @@ class UploadEpisodeCallback(BaseCallback):
         filename = f"{runtime.game}-{runtime.savestate}-{episode.episode_index:06d}.bk2"
         episode.bk2_path = os.path.join(runtime.record_dir, str(env_index), filename)
 
-        if episode.won:
-            self.successful_episodes.append(episode.clone())
+        self.completed_episodes.append(episode.clone())
 
         self.episode_counts[env_index] += 1
         self.active_episodes[env_index] = EpisodeRecord(env_index, self.episode_counts[env_index])

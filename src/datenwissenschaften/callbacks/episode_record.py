@@ -18,6 +18,8 @@ class EpisodeRecord:
     step_count: int = field(init=False)
     time_until_won: int | None = field(init=False)
     started_from_initial_savestate: bool | None = field(init=False)
+    score: float = field(init=False)
+    curriculum_state: str | None = field(init=False)
 
     def __post_init__(self) -> None:
         self.bk2_path = ""
@@ -25,13 +27,22 @@ class EpisodeRecord:
         self.step_count = 0
         self.time_until_won = None
         self.started_from_initial_savestate = None
+        self.score = 0.0
+        self.curriculum_state = None
 
-    def add_step(self, info: dict) -> None:
+    def add_step(self, info: dict, reward: float | None = None) -> None:
         if self.step_count == 0:
             started_from_initial = info.get("started_from_initial_savestate")
             if isinstance(started_from_initial, bool):
                 self.started_from_initial_savestate = started_from_initial
+            curriculum_state = info.get("curriculum_state")
+            if curriculum_state:
+                self.curriculum_state = str(curriculum_state)
         self.step_count += 1
+        self.score += float(info.get("extrinsic_reward", reward or 0.0))
+        monitor_episode = info.get("episode")
+        if isinstance(monitor_episode, dict) and monitor_episode.get("r") is not None:
+            self.score = float(monitor_episode["r"])
         if _require_won(info) and not self.won:
             self.won = True
             self.time_until_won = self.step_count
@@ -43,4 +54,6 @@ class EpisodeRecord:
         episode.step_count = self.step_count
         episode.time_until_won = self.time_until_won
         episode.started_from_initial_savestate = self.started_from_initial_savestate
+        episode.score = self.score
+        episode.curriculum_state = self.curriculum_state
         return episode

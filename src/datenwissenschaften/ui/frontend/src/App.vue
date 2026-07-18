@@ -26,6 +26,7 @@ const sourceError = ref('')
 const selectedSavestate = ref('')
 const savestateSelectionInitialized = ref(false)
 const learnedEnemies = ref([])
+const rolloutVideos = ref([])
 let timer
 let enemyTimer
 
@@ -93,10 +94,20 @@ const loadEnemies = async () => {
   }
 }
 
+const loadRolloutVideos = async () => {
+  try {
+    const response = await fetch('/api/rollout-videos', { cache: 'no-store' })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    rolloutVideos.value = (await response.json()).videos || []
+  } catch {
+    rolloutVideos.value = []
+  }
+}
+
 onMounted(() => {
-  load(); loadSources(); loadEnemies()
+  load(); loadSources(); loadEnemies(); loadRolloutVideos()
   timer = window.setInterval(load, 1500)
-  enemyTimer = window.setInterval(loadEnemies, 5000)
+  enemyTimer = window.setInterval(() => { loadEnemies(); loadRolloutVideos() }, 5000)
 })
 onBeforeUnmount(() => { window.clearInterval(timer); window.clearInterval(enemyTimer) })
 
@@ -118,10 +129,20 @@ const activeSummary = computed(() => selectedSavestate.value
 const activeSavestateLabel = computed(() => selectedSavestate.value || 'All savestates')
 const visibleEnemies = computed(() => learnedEnemies.value.filter(enemy =>
   !enemy.savestate || !selectedSavestate.value || enemy.savestate === selectedSavestate.value))
+const visibleRolloutVideos = computed(() => rolloutVideos.value.filter(video =>
+  !video.savestate || !selectedSavestate.value || video.savestate === selectedSavestate.value))
+const latestVideoByState = computed(() => {
+  const videos = new Map()
+  for (const video of visibleRolloutVideos.value) {
+    if (!videos.has(video.curriculum)) videos.set(video.curriculum, video)
+  }
+  return videos
+})
 const stateRows = computed(() => states.value.map(state => ({
   state,
   ...(stateTraining.value[state] || {}),
   curriculum: savestateCurriculum.value[state] || {},
+  video: latestVideoByState.value.get(state),
 })))
 const summarizedEpisodes = computed(() => Number(activeSummary.value.episodes) || 0)
 const best = computed(() => activeSummary.value.best_fitness ?? null)
@@ -246,6 +267,14 @@ const label = key => key.replaceAll('_', ' ')
           <dt>Bad-checkpoint evidence</dt><dd>{{ fmt(row.curriculum.bad_checkpoint_evidence) }} / {{ fmt(row.curriculum.failure_threshold) }}</dd>
           <dt>Curriculum status</dt><dd>{{ row.curriculum.mastered ? 'Mastered' : row.curriculum.active ? 'Training now' : 'Waiting' }}</dd>
         </dl>
+        <div v-if="row.video" class="state-video">
+          <div class="state-video-heading">
+            <div><p class="eyebrow">ROLLOUT BEST EPISODE</p><strong>Score {{ fmt(row.video.score, 2) }}</strong></div>
+            <span>Rollout {{ fmt(row.video.rollout) }} · {{ row.video.won ? 'Won' : 'Not won' }}</span>
+          </div>
+          <video controls preload="metadata" :src="`/api/rollout-video?path=${encodeURIComponent(row.video.path)}`"></video>
+        </div>
+        <div v-else class="state-video-empty">A playable best-score video appears after this curriculum completes an episode in a rollout.</div>
       </article>
       </div>
     </section>

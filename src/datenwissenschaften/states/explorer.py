@@ -63,7 +63,7 @@ class Explorer(TargetState[T], ABC):
             self.remember_detected_target()
             reward += self.target_found_reward
         hit = bool(self._hit())
-        enemies = self.enemy_learner.observe(self.frame, position.viewport, hit)
+        enemies = self.enemy_learner.observe(self.frame, hit)
         reward += self._enemy_reward(enemies, hit)
         self._update_enemy_features(enemies, hit)
         return reward
@@ -80,8 +80,8 @@ class Explorer(TargetState[T], ABC):
         reward = len(observation.learned_enemy_ids) * self.enemy_discovery_reward
         if hit:
             reward -= self.enemy_hit_penalty
-        if observation.detections:
-            actor_x, actor_y = self._actor_frame_position()
+        if observation.detections and self.enemy_learner.actor_center is not None:
+            actor_x, actor_y = self.enemy_learner.actor_center
             nearest = min(
                 np.hypot(detection.center[0] - actor_x, detection.center[1] - actor_y)
                 for detection in observation.detections
@@ -91,8 +91,8 @@ class Explorer(TargetState[T], ABC):
 
     def _update_enemy_features(self, observation: EnemyObservation, hit: bool) -> None:
         frame_height, frame_width = self.frame.shape[:2]
-        if observation.detections:
-            actor_x, actor_y = self._actor_frame_position()
+        if observation.detections and self.enemy_learner.actor_center is not None:
+            actor_x, actor_y = self.enemy_learner.actor_center
             nearest = min(
                 observation.detections,
                 key=lambda detection: np.hypot(
@@ -115,14 +115,6 @@ class Explorer(TargetState[T], ABC):
             float(np.clip(confidence, 0.0, 1.0)),
             float(hit),
         ]
-
-    def _actor_frame_position(self) -> tuple[float, float]:
-        actor = self._actor_position(self.ram).viewport
-        frame_height, frame_width = self.frame.shape[:2]
-        return (
-            actor.position_x / max(1, actor.screen_size) * frame_width,
-            actor.position_y / max(1, actor.screen_size) * frame_height,
-        )
 
     def _next(self) -> type[State[T]] | None:
         return self._target_state() if self.target_detector.seen else None

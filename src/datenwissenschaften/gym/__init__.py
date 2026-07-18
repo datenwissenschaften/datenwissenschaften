@@ -199,6 +199,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "state_segment_end": state_segment_end,
                 "ram": ram.to_dict(),
                 "started_from_initial_savestate": self._started_from_initial_savestate,
+                "curriculum_state": self._curriculum_start_state,
                 "curriculum_complete": self.curriculum.is_mastered(self.start_state_cls.__name__),
             },
         )

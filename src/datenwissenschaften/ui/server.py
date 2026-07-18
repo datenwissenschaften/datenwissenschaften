@@ -134,6 +134,37 @@ def learned_enemy_path(relative_path: str) -> Path:
     return candidate
 
 
+def rollout_videos() -> list[dict[str, str | int | float | bool]]:
+    root = get_runtime().record_dir.resolve()
+    result = []
+    for metadata_path in root.glob("**/*.rollout.json"):
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            video_path = metadata_path.with_name(metadata_path.name.removesuffix(".rollout.json") + ".mp4")
+            if not isinstance(metadata, dict) or not video_path.is_file():
+                continue
+            result.append(
+                {
+                    **metadata,
+                    "path": video_path.relative_to(root).as_posix(),
+                    "size": video_path.stat().st_size,
+                }
+            )
+        except (json.JSONDecodeError, OSError, ValueError):
+            continue
+    return sorted(result, key=lambda item: str(item.get("recorded_at", "")), reverse=True)
+
+
+def rollout_video_path(relative_path: str) -> Path:
+    root = get_runtime().record_dir.resolve()
+    candidate = (root / relative_path).resolve()
+    if candidate.suffix.lower() != ".mp4" or not candidate.is_relative_to(root) or not candidate.is_file():
+        raise FileNotFoundError(relative_path)
+    if not candidate.with_suffix(".rollout.json").is_file():
+        raise FileNotFoundError(relative_path)
+    return candidate
+
+
 class DashboardServer:
     def __init__(self, settings: UISettings) -> None:
         self.settings = settings
@@ -220,6 +251,16 @@ class _DashboardHandler(BaseHTTPRequestHandler):
             except (FileNotFoundError, OSError):
                 self.send_error(HTTPStatus.NOT_FOUND, "Learned enemy image not found")
             return
+        if path == "/api/rollout-videos":
+            self._send_json({"videos": rollout_videos()})
+            return
+        if path == "/api/rollout-video":
+            requested = parse_qs(request.query).get("path", [""])[0]
+            try:
+                self._send_video(rollout_video_path(requested))
+            except (FileNotFoundError, OSError):
+                self.send_error(HTTPStatus.NOT_FOUND, "Rollout video not found")
+            return
         self._send_asset(path)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -271,6 +312,40 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_video(self, path: Path) -> None:
+        size = path.stat().st_size
+        start, end = 0, size - 1
+        status = HTTPStatus.OK
+        requested_range = self.headers.get("Range")
+        if requested_range:
+            try:
+                unit, value = requested_range.split("=", 1)
+                first, last = value.split("-", 1)
+                if unit != "bytes" or not first:
+                    raise ValueError
+                start = int(first)
+                end = min(int(last), size - 1) if last else size - 1
+                if start < 0 or start > end or start >= size:
+                    raise ValueError
+                status = HTTPStatus.PARTIAL_CONTENT
+            except ValueError:
+                self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+        length = end - start + 1
+        self.send_response(status)
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Content-Length", str(length))
+        if status == HTTPStatus.PARTIAL_CONTENT:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+        with path.open("rb") as video_file:
+            video_file.seek(start)
+            self.wfile.write(video_file.read(length))
 
     def _send_asset(self, requested_path: str) -> None:
         relative = requested_path.lstrip("/") or "index.html"
