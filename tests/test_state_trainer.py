@@ -78,3 +78,34 @@ def test_publish_state_training_includes_unreached_and_active_states(monkeypatch
         "best_fitness": 12.5,
     }
     assert published["values"]["Eat"]["collected_steps"] == 0
+
+
+def test_state_model_update_keeps_configured_minibatch_size(monkeypatch, tmp_path):
+    class Model:
+        batch_size = 256
+
+        def __init__(self):
+            self.trained_batch_size = None
+
+        def train(self):
+            self.trained_batch_size = self.batch_size
+
+    model = Model()
+    rollouts = SimpleNamespace(build_buffer=lambda state_name: SimpleNamespace(buffer_size=8192))
+    trainer = object.__new__(StateTrainer)
+    trainer.config_path = "unused.yaml"
+    monkeypatch.setattr(
+        state_trainer,
+        "load_config",
+        lambda path: SimpleNamespace(
+            paths=SimpleNamespace(models_dir=tmp_path),
+            training=SimpleNamespace(game_identity="game"),
+        ),
+    )
+    monkeypatch.setattr(state_trainer, "atomic_save", lambda model, path: None)
+
+    trainer._update_model("ActivateScale", model, rollouts)
+
+    assert model.rollout_buffer.buffer_size == 8192
+    assert model.trained_batch_size == 256
+    assert model.batch_size == 256

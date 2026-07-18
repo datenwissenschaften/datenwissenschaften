@@ -242,12 +242,7 @@ class StateTrainer:
     ) -> None:
         model.rollout_buffer = rollouts.build_buffer(state_name)
         model._current_progress_remaining = 1.0
-        configured_batch_size = model.batch_size
-        model.batch_size = model.rollout_buffer.buffer_size
-        try:
-            model.train()
-        finally:
-            model.batch_size = configured_batch_size
+        model.train()
         model_path = get_model_path(
             str((config := load_config(self.config_path)).paths.models_dir),
             config.training.game_identity,
