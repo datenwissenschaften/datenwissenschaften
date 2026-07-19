@@ -319,6 +319,12 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def _restore_automatic_savestate(self, savestate: bytes) -> np.ndarray:
         emulator = self.env.unwrapped
         emulator.em.set_state(savestate)
+        movie = getattr(emulator, "movie", None)
+        if movie is not None:
+            # Retro starts recording during env.reset(), before the curriculum
+            # wrapper replaces the configured initial state. Keep the BK2's
+            # embedded state aligned with the state used by this episode.
+            movie.set_state(savestate)
         emulator.data.reset()
         emulator.data.update_ram()
         return emulator.get_screen(apply_rotation=True)
