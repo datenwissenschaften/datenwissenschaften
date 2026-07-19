@@ -13,7 +13,7 @@ from datenwissenschaften.callbacks import BestEpisodeCallback, EpisodeTelemetryC
 from datenwissenschaften.callbacks.save_model_callback import atomic_save
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
 from datenwissenschaften.core.protocols import TrainableModel
-from datenwissenschaften.model import ModelBuilder, get_model_metadata, get_model_path
+from datenwissenschaften.model import ModelBuilder, get_model_metadata, get_model_path, model_parameters_are_finite
 from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.segmented_rollout import SegmentedRecurrentRollouts
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
@@ -252,6 +252,8 @@ class StateTrainer:
         model.rollout_buffer = rollouts.build_buffer(state_name)
         model._current_progress_remaining = 1.0
         model.train()
+        if not model_parameters_are_finite(model):
+            raise FloatingPointError(f"Training produced non-finite parameters for state {state_name}")
         model_path = get_model_path(
             str((config := load_config(self.config_path)).paths.models_dir),
             config.training.game_identity,

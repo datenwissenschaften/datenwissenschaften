@@ -22,7 +22,11 @@ def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[P
     for episode in episodes:
         curriculum = episode.curriculum_state or runtime.savestate or "default"
         incumbent = best_by_curriculum.get(curriculum)
-        if incumbent is None or (episode.score, -episode.step_count) > (incumbent.score, -incumbent.step_count):
+        candidate_rank = (episode.curriculum_succeeded, episode.score, -episode.step_count)
+        incumbent_rank = (
+            (incumbent.curriculum_succeeded, incumbent.score, -incumbent.step_count) if incumbent is not None else None
+        )
+        if incumbent_rank is None or candidate_rank > incumbent_rank:
             best_by_curriculum[curriculum] = episode
 
     videos = []
@@ -58,6 +62,7 @@ def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[P
                 "score": episode.score,
                 "steps": episode.step_count,
                 "won": episode.won,
+                "curriculum_succeeded": episode.curriculum_succeeded,
                 "video": video.name,
                 "recorded_at": datetime.now(UTC).isoformat(),
             }
@@ -82,5 +87,8 @@ def _resolve_recording(requested_path: str, record_root: Path) -> Path | None:
     requested = Path(requested_path)
     if requested.is_file():
         return requested
-    matches = list(record_root.glob(f"**/{requested.name}"))
-    return matches[0] if matches else None
+    # Preserve the worker directory when resolving legacy callback paths.
+    # Episode counters are local to each worker, so matching only by filename
+    # can silently render another environment's movie with the selected score.
+    matches = list(record_root.glob(f"**/{requested.parent.name}/{requested.name}"))
+    return max(matches, key=lambda path: path.stat().st_mtime_ns) if matches else None

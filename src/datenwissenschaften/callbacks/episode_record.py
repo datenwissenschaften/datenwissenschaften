@@ -19,6 +19,7 @@ class EpisodeRecord:
     started_from_initial_savestate: bool | None = field(init=False)
     score: float = field(init=False)
     curriculum_state: str | None = field(init=False)
+    curriculum_succeeded: bool = field(init=False)
 
     def __post_init__(self) -> None:
         self.bk2_path = ""
@@ -27,6 +28,7 @@ class EpisodeRecord:
         self.started_from_initial_savestate = None
         self.score = 0.0
         self.curriculum_state = None
+        self.curriculum_succeeded = False
 
     def add_step(self, info: dict, reward: float | None = None) -> None:
         if self.step_count == 0:
@@ -43,6 +45,8 @@ class EpisodeRecord:
             self.score = float(monitor_episode["r"])
         if _require_won(info) and not self.won:
             self.won = True
+        if info.get("curriculum_succeeded") is True:
+            self.curriculum_succeeded = True
 
     def clone(self) -> "EpisodeRecord":
         episode = EpisodeRecord(self.env_index, self.episode_index)
@@ -52,4 +56,5 @@ class EpisodeRecord:
         episode.started_from_initial_savestate = self.started_from_initial_savestate
         episode.score = self.score
         episode.curriculum_state = self.curriculum_state
+        episode.curriculum_succeeded = self.curriculum_succeeded
         return episode

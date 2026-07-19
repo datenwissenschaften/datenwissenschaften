@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import torch
 from loguru import logger
 from stable_baselines3 import PPO
 
@@ -14,6 +15,26 @@ from datenwissenschaften.core.protocols import TrainableModel
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 
 ModelLoader = Callable[..., TrainableModel]
+
+
+def model_parameters_are_finite(model: Any) -> bool:
+    get_parameters = getattr(model, "get_parameters", None)
+    if not callable(get_parameters):
+        return True
+
+    def tensors(value: Any):
+        if torch.is_tensor(value):
+            yield value
+        elif isinstance(value, dict):
+            for nested in value.values():
+                yield from tensors(nested)
+        elif isinstance(value, (list, tuple)):
+            for nested in value:
+                yield from tensors(nested)
+
+    return all(
+        not tensor.is_floating_point() or bool(torch.isfinite(tensor).all()) for tensor in tensors(get_parameters())
+    )
 
 
 def get_model_path(models_dir: str, game: str, state_name: str) -> str:
@@ -129,7 +150,10 @@ def load_or_create_model(
 
     try:
         logger.info(f"Loading existing model: {model_path}.zip")
-        return load_model(model_path, env=venv, verbose=0)
+        model = load_model(model_path, env=venv, verbose=0)
+        if not model_parameters_are_finite(model):
+            raise ValueError("model checkpoint contains non-finite parameters")
+        return model
     except Exception as error:
         logger.warning(f"Failed to load model: {error}")
         logger.info("Starting fresh training session.")

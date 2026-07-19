@@ -73,4 +73,4 @@ class BestEpisodeCallback(BaseCallback):
     def _bk2_path(self, env_index: int, episode_index: int) -> str:
         runtime = get_runtime()
         filename = f"{runtime.game}-{runtime.savestate}-{episode_index:06d}.bk2"
-        return os.path.join(runtime.record_dir, str(env_index), filename)
+        return os.path.join(runtime.record_dir, runtime.game, runtime.savestate, str(env_index), filename)

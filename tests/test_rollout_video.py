@@ -6,12 +6,20 @@ from datenwissenschaften import rollout_video, rollout_video_playback
 from datenwissenschaften.callbacks.episode_record import EpisodeRecord
 
 
-def _episode(path: Path, curriculum: str, score: float, steps: int = 10) -> EpisodeRecord:
+def _episode(
+    path: Path,
+    curriculum: str,
+    score: float,
+    steps: int = 10,
+    *,
+    curriculum_succeeded: bool = False,
+) -> EpisodeRecord:
     episode = EpisodeRecord(0, 0)
     episode.bk2_path = str(path)
     episode.curriculum_state = curriculum
     episode.score = score
     episode.step_count = steps
+    episode.curriculum_succeeded = curriculum_succeeded
     return episode
 
 
@@ -57,6 +65,37 @@ def test_records_highest_scoring_episode_per_curriculum(monkeypatch, tmp_path: P
     assert metadata["score"] == 9.0
 
 
+def test_stage_completing_episode_is_preferred_over_higher_failed_score(monkeypatch, tmp_path: Path):
+    failed_path = tmp_path / "failed.bk2"
+    completed_path = tmp_path / "completed.bk2"
+    failed_path.write_bytes(b"failed")
+    completed_path.write_bytes(b"completed")
+    runtime = SimpleNamespace(
+        record_dir=tmp_path,
+        savestate="Level1",
+        game="Game",
+        paths=SimpleNamespace(roms_path=tmp_path / "roms"),
+    )
+    monkeypatch.setattr(rollout_video, "get_runtime", lambda: runtime)
+
+    def render(command, **_kwargs):
+        Path(command[-1]).with_suffix(".mp4").write_bytes(b"video")
+
+    monkeypatch.setattr(rollout_video.subprocess, "run", render)
+
+    videos = rollout_video.record_rollout_videos(
+        [
+            _episode(failed_path, "FindDispenser", 10_000.0),
+            _episode(completed_path, "FindDispenser", 100.0, curriculum_succeeded=True),
+        ],
+        rollout=4,
+    )
+
+    assert videos == [completed_path.with_suffix(".mp4")]
+    metadata = json.loads(completed_path.with_suffix(".rollout.json").read_text())
+    assert metadata["curriculum_succeeded"] is True
+
+
 def test_playback_imports_configured_roms_first(monkeypatch):
     calls = []
     monkeypatch.setattr(rollout_video_playback, "import_roms", lambda path: calls.append(("roms", path)))
@@ -88,3 +127,26 @@ def test_episode_score_uses_terminal_monitor_score():
 
     assert episode.curriculum_state == "Explore"
     assert episode.score == 12.5
+
+
+def test_episode_records_curriculum_success():
+    episode = EpisodeRecord(0, 0)
+
+    episode.add_step({"won": False, "curriculum_state": "FindDispenser"}, 1.0)
+    episode.add_step({"won": False, "curriculum_succeeded": True}, 1.0)
+
+    assert episode.curriculum_succeeded is True
+    assert episode.clone().curriculum_succeeded is True
+
+
+def test_recording_resolution_never_crosses_worker_directories(tmp_path: Path):
+    filename = "Game-Level1-000007.bk2"
+    requested = tmp_path / "7" / filename
+    correct = tmp_path / "Game" / "Level1" / "7" / filename
+    wrong = tmp_path / "Game" / "Level1" / "3" / filename
+    correct.parent.mkdir(parents=True)
+    wrong.parent.mkdir(parents=True)
+    correct.write_bytes(b"worker 7")
+    wrong.write_bytes(b"worker 3")
+
+    assert rollout_video._resolve_recording(str(requested), tmp_path) == correct

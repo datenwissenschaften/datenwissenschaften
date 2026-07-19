@@ -133,6 +133,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         action = self.translate_action(action)
         reward_state = self.state_machine.state_name
         transition: tuple[str, str] | None = None
+        curriculum_succeeded = False
 
         for _ in range(self.action_repeat):
             self._curriculum_episode_steps += 1
@@ -160,6 +161,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             if self.state_machine.last_transition is not None or terminated or truncated:
                 if self.state_machine.last_transition is not None:
                     if self._handle_curriculum_transition(*self.state_machine.last_transition):
+                        curriculum_succeeded = True
                         terminated = True
                 break
 
@@ -169,6 +171,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         current_state = self.state_machine.current_state
         won = current_state._won()
         if won:
+            curriculum_succeeded = curriculum_succeeded or not self._curriculum_outcome_recorded
             self._record_curriculum_success()
             terminated = True
         elif (terminated or truncated) and not self._curriculum_outcome_recorded:
@@ -206,6 +209,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "ram": ram.to_dict(),
                 "started_from_initial_savestate": self._started_from_initial_savestate,
                 "curriculum_state": self._curriculum_start_state,
+                "curriculum_succeeded": curriculum_succeeded,
                 "curriculum_complete": self.curriculum.is_complete(),
             },
         )

@@ -1,6 +1,8 @@
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+import torch
 from datenwissenschaften import state_trainer
 from datenwissenschaften.state_trainer import SavestateScheduler, StateTrainer
 
@@ -126,3 +128,20 @@ def test_state_model_update_keeps_configured_minibatch_size(monkeypatch, tmp_pat
     assert model.rollout_buffer.buffer_size == 8192
     assert model.trained_batch_size == 256
     assert model.batch_size == 256
+
+
+def test_state_model_update_rejects_non_finite_parameters(monkeypatch, tmp_path):
+    class Model:
+        def train(self):
+            pass
+
+        def get_parameters(self):
+            return {"policy": {"weight": torch.tensor([float("nan")])}}
+
+    trainer = object.__new__(StateTrainer)
+    trainer.config_path = "unused.yaml"
+    rollouts = SimpleNamespace(build_buffer=lambda state_name: object())
+    monkeypatch.setattr(state_trainer, "atomic_save", lambda model, path: pytest.fail("must not save"))
+
+    with pytest.raises(FloatingPointError, match="FindScale"):
+        trainer._update_model("FindScale", Model(), rollouts)

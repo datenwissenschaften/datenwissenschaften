@@ -219,7 +219,13 @@ class UploadEpisodeCallback(BaseCallback):
     def _finish_episode(self, env_index: int, episode: EpisodeRecord) -> None:
         runtime = get_runtime()
         filename = f"{runtime.game}-{runtime.savestate}-{episode.episode_index:06d}.bk2"
-        episode.bk2_path = os.path.join(runtime.record_dir, str(env_index), filename)
+        episode.bk2_path = os.path.join(
+            runtime.record_dir,
+            runtime.game,
+            runtime.savestate,
+            str(env_index),
+            filename,
+        )
 
         self.completed_episodes.append(episode.clone())
 

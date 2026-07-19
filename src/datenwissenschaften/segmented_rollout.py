@@ -161,18 +161,28 @@ class SegmentedRecurrentRollouts:
             n_envs=1,
         )
         advantages = _advantages(transitions, gamma=model.gamma, gae_lambda=model.gae_lambda)
-        for transition in transitions:
+        # Transitions arrive interleaved across vector workers. A recurrent
+        # buffer with n_envs=1 would otherwise interpret that interleaving as
+        # one sequence, creating highly padded minibatches with as little as
+        # one valid advantage. Group workers while retaining their chronology.
+        order = sorted(range(count), key=lambda index: transitions[index].env_index)
+        previous_env: int | None = None
+        for index in order:
+            transition = transitions[index]
+            worker_boundary = transition.env_index != previous_env
             buffer.add(
                 transition.observation,
                 transition.action,
                 np.asarray([transition.reward], dtype=np.float32),
-                np.asarray([transition.episode_start], dtype=np.float32),
+                np.asarray([transition.episode_start or worker_boundary], dtype=np.float32),
                 transition.value,
                 transition.log_prob,
                 lstm_states=transition.lstm_states,
             )
-        buffer.advantages[:, 0] = advantages
-        buffer.returns[:, 0] = advantages + buffer.values[:, 0]
+            previous_env = transition.env_index
+        ordered_advantages = advantages[order]
+        buffer.advantages[:, 0] = ordered_advantages
+        buffer.returns[:, 0] = ordered_advantages + buffer.values[:, 0]
         self.transitions[state_name] = []
         return buffer
 

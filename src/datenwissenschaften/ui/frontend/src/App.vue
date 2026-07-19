@@ -273,7 +273,7 @@ const label = key => key.replaceAll('_', ' ')
         <div v-if="row.video" class="state-video">
           <div class="state-video-heading">
             <div><p class="eyebrow">ROLLOUT BEST EPISODE</p><strong>Score {{ fmt(row.video.score, 2) }}</strong></div>
-            <span>Rollout {{ fmt(row.video.rollout) }} · {{ row.video.won ? 'Won' : 'Not won' }}</span>
+            <span>Rollout {{ fmt(row.video.rollout) }} · {{ row.video.curriculum_succeeded ? 'Stage completed' : row.video.won ? 'Won' : 'Not completed' }}</span>
           </div>
           <video controls preload="metadata" :src="`/api/rollout-video?path=${encodeURIComponent(row.video.path)}`"></video>
         </div>
