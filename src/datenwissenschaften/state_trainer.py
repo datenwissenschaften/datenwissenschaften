@@ -177,6 +177,9 @@ class StateTrainer:
                 if rotation_reason is not None
                 else full
             )
+            if states_to_update:
+                for callback in episode_callbacks:
+                    callback.on_rollout_end()
             for state_name in states_to_update:
                 self._update_model(state_name, models[state_name], rollouts)
                 updates += 1
@@ -186,10 +189,6 @@ class StateTrainer:
                         "State-routed training progress: {}",
                         ", ".join(f"{name}={model.num_timesteps:,}" for name, model in models.items()),
                     )
-            if states_to_update:
-                for callback in episode_callbacks:
-                    callback.on_rollout_end()
-
             if rotation_reason is not None:
                 next_savestate = savestate_scheduler.rotate()
                 logger.info(f"Rotating savestate to {next_savestate} after {rotation_reason}.")
