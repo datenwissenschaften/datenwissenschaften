@@ -42,7 +42,7 @@ def test_bad_checkpoint_is_deleted_after_persistent_score_stagnation(tmp_path: P
     curriculum.save_checkpoint("Finish", b"unrecoverable")
 
     assert curriculum.record_failure("Finish", 100, 10.0) is False
-    for _ in range(7):
+    for _ in range(31):
         assert curriculum.record_failure("Finish", 100, 10.0) is False
     assert curriculum.record_failure("Finish", 100, 10.0) is True
     assert curriculum.active_state() is None
@@ -60,6 +60,13 @@ def test_score_improvement_resets_stagnation_evidence(tmp_path: Path):
     curriculum.record_failure("Finish", 100, 11.0)
     assert curriculum.stagnation_evidence("Finish") == 0
     assert curriculum.best_score("Finish") == 11.0
+
+
+def test_bad_checkpoint_evidence_target_allows_extended_stagnation(tmp_path: Path):
+    curriculum = ReverseCurriculum(tmp_path, ("Start", "Finish"))
+
+    assert curriculum.bad_checkpoint_evidence_target("Finish") == 32
+    assert curriculum.progress()["Finish"]["bad_checkpoint_evidence_target"] == 32
 
 
 def test_declining_scores_accumulate_evidence_twice_as_fast(tmp_path: Path):

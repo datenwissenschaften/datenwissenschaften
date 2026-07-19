@@ -42,3 +42,22 @@ def test_model_reset_deletes_and_recreates_all_runner_artifact_directories(tmp_p
 
     assert all(path.is_dir() and not list(path.iterdir()) for path in artifact_dirs)
     assert (unrelated / "game.rom").read_text(encoding="utf-8") == "keep"
+
+
+def test_model_reset_runs_memory_cleanup_and_clears_metadata(tmp_path: Path):
+    from datenwissenschaften.ui.telemetry import get_store
+
+    memory_cleanup = []
+    store = get_store()
+    store.publish_metadata("savestate_curriculum", {"State": {"has_checkpoint": True}}, replace=True)
+
+    perform_model_reset(
+        ModelResetRequest(
+            game="TestGame",
+            model_dir=tmp_path / "models",
+            on_reset=lambda: memory_cleanup.append(True),
+        )
+    )
+
+    assert memory_cleanup == [True]
+    assert "savestate_curriculum" not in store.snapshot()["metadata"]

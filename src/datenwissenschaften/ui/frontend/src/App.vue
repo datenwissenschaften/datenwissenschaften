@@ -125,10 +125,24 @@ const latestVideoByState = computed(() => {
   }
   return videos
 })
+const normalizedCurriculum = state => {
+  const curriculum = savestateCurriculum.value[state] || {}
+  return {
+    ...curriculum,
+    has_checkpoint: Boolean(curriculum.has_checkpoint),
+    wins: Number(curriculum.wins ?? curriculum.consecutive_successes ?? 0),
+    win_target: Number(curriculum.win_target ?? curriculum.success_threshold ?? 8),
+    typical_episode_steps: Number(curriculum.typical_episode_steps ?? 1),
+    bad_checkpoint_evidence: Number(curriculum.bad_checkpoint_evidence ?? 0),
+    bad_checkpoint_evidence_target: Number(curriculum.bad_checkpoint_evidence_target ?? curriculum.failure_threshold ?? 32),
+    mastered: Boolean(curriculum.mastered),
+    active: Boolean(curriculum.active),
+  }
+}
 const stateRows = computed(() => states.value.map(state => ({
   state,
   ...(stateTraining.value[state] || {}),
-  curriculum: savestateCurriculum.value[state] || {},
+  curriculum: normalizedCurriculum(state),
   video: latestVideoByState.value.get(state),
 })))
 const summarizedEpisodes = computed(() => Number(activeSummary.value.episodes) || 0)

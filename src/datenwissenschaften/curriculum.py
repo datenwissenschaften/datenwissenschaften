@@ -13,7 +13,7 @@ class ReverseCurriculum:
     """Persistent deepest-checkpoint-first curriculum for a state sequence."""
 
     WIN_TARGET = 8
-    BAD_CHECKPOINT_EVIDENCE_TARGET = 8
+    BAD_CHECKPOINT_EVIDENCE_TARGET = 32
 
     def __init__(self, root: Path, state_names: Sequence[str]) -> None:
         self.root = root

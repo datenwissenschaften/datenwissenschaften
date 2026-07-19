@@ -274,6 +274,7 @@ class TelemetryStore:
                 except RedisError as error:
                     logger.warning(f"Could not delete training UI history from Redis key {history_key}: {error}")
             with self._lock:
+                self._metadata.clear()
                 self._summary = _empty_summary()
                 self._sequence = 0
                 self._started_at = _timestamp()

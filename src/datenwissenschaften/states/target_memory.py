@@ -54,6 +54,13 @@ class TargetMemory:
         self._save()
         return True
 
+    @classmethod
+    def reset_all(cls) -> None:
+        """Delete persisted target memories and clear live environment copies."""
+        for memory in cls._registry.values():
+            memory._store.delete(*memory._scope)
+            memory.coordinates = None
+
     def features(self, current_coordinates: Sequence[float] | None = None) -> list[float]:
         current = self.origin if current_coordinates is None else self._validate_dimensions(current_coordinates)
         if self.coordinates is None:

@@ -13,6 +13,7 @@ from datenwissenschaften.ram import RamInfo
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
+from datenwissenschaften.states.target_memory import TargetMemory
 from datenwissenschaften.ui import publish_metadata
 
 T = TypeVar("T", bound=RamInfo)
@@ -246,8 +247,13 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._publish_curriculum_progress()
         return savestate
 
-    def curriculum_progress(self) -> dict[str, dict[str, int | bool]]:
+    def curriculum_progress(self) -> dict[str, dict[str, int | float | bool | None]]:
         return self.curriculum.progress()
+
+    def reset_training_memory(self) -> None:
+        TargetMemory.reset_all()
+        self.curriculum = self._create_curriculum()
+        self._publish_curriculum_progress()
 
     def _resolve_state_class(self, state_name: str) -> type[State[T]]:
         known_classes = {*self._training_classes(), self.start_state_cls}

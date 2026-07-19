@@ -68,6 +68,11 @@ class Trainer:
             game=self.config.training.game,
             model_dir=model_dir,
             restart_supported=bool(getattr(model, "supports_ui_restart", False)),
+            artifact_dirs=(
+                self.config.paths.models_dir,
+                self.config.paths.record_dir,
+                self.config.paths.cache_dir,
+            ),
             on_reset=lambda: self._reset_for_restart(model),
         )
         if start_ui(self.config.ui) is None:
@@ -91,6 +96,9 @@ class Trainer:
     def _reset_for_restart(self, model) -> None:
         self._savestate = self.config.training.active_savestate
         self.callbacks[:] = self._default_callbacks() + self._additional_callbacks
+        env = model.get_env() if callable(getattr(model, "get_env", None)) else getattr(model, "env", None)
+        if callable(getattr(env, "env_method", None)):
+            env.env_method("reset_training_memory")
 
     @staticmethod
     def _environment_metadata(env) -> dict[str, Any]:

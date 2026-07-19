@@ -201,8 +201,10 @@ class StateTrainer:
                     callback.on_training_end()
                 episode_callbacks = self._start_episode_callbacks(models, config)
                 self._publish_run_savestate(config, models, next_savestate)
+                self._publish_curriculum_progress(venv, config)
                 continue
             if config.ui.enabled and (global_steps % 128 < venv.num_envs or full):
+                self._publish_curriculum_progress(venv, config)
                 self._publish_state_training(
                     models,
                     rollouts,
@@ -213,6 +215,14 @@ class StateTrainer:
                     config,
                 )
             observations = new_observations
+
+    @staticmethod
+    def _publish_curriculum_progress(venv: Any, config: Any) -> None:
+        if not config.ui.enabled:
+            return
+        progress = venv.env_method("curriculum_progress")
+        if progress:
+            publish_metadata("savestate_curriculum", progress[0], replace=True)
 
     @staticmethod
     def _publish_run_savestate(config: Any, models: dict[str, TrainableModel], savestate: str) -> None:
@@ -314,6 +324,7 @@ class StateTrainer:
                 config.paths.record_dir,
                 config.paths.cache_dir,
             ),
+            on_reset=lambda: venv.env_method("reset_training_memory"),
         )
         if start_ui(config.ui) is None:
             return
@@ -336,6 +347,7 @@ class StateTrainer:
             {state_name: get_model_metadata(model) for state_name, model in models.items()},
             replace=True,
         )
+        StateTrainer._publish_curriculum_progress(venv, config)
         publish_metadata("model", get_model_metadata(next(iter(models.values()))), replace=True)
         publish_metadata("environment", Trainer._environment_metadata(venv), replace=True)
 

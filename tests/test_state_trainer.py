@@ -80,6 +80,23 @@ def test_publish_state_training_includes_unreached_and_active_states(monkeypatch
     assert published["values"]["Eat"]["collected_steps"] == 0
 
 
+def test_publish_curriculum_progress_uses_environment_values(monkeypatch):
+    published = {}
+    progress = {"Eat": {"wins": 3, "win_target": 8, "bad_checkpoint_evidence_target": 32}}
+    venv = SimpleNamespace(env_method=lambda method: [progress])
+    monkeypatch.setattr(
+        state_trainer,
+        "publish_metadata",
+        lambda section, values, *, replace=False: published.update(
+            {"section": section, "values": values, "replace": replace}
+        ),
+    )
+
+    StateTrainer._publish_curriculum_progress(venv, SimpleNamespace(ui=SimpleNamespace(enabled=True)))
+
+    assert published == {"section": "savestate_curriculum", "values": progress, "replace": True}
+
+
 def test_state_model_update_keeps_configured_minibatch_size(monkeypatch, tmp_path):
     class Model:
         batch_size = 256
