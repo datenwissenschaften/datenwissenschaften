@@ -21,13 +21,19 @@ def test_records_highest_scoring_episode_per_curriculum(monkeypatch, tmp_path: P
     other_path = tmp_path / "other.bk2"
     for path in (low_path, high_path, other_path):
         path.write_bytes(b"movie")
-    runtime = SimpleNamespace(record_dir=tmp_path, savestate="Level1", game="Game")
+    runtime = SimpleNamespace(
+        record_dir=tmp_path,
+        savestate="Level1",
+        game="Game",
+        paths=SimpleNamespace(roms_path=tmp_path / "roms"),
+    )
     monkeypatch.setattr(rollout_video, "get_runtime", lambda: runtime)
 
     rendered = []
 
     def render(command, **_kwargs):
         assert command[2] == "datenwissenschaften.rollout_video_playback"
+        assert command[3:5] == ["--roms-dir", str(tmp_path / "roms")]
         source = Path(command[-1])
         source.with_suffix(".mp4").write_bytes(b"video")
         rendered.append(source.name)
@@ -53,12 +59,26 @@ def test_records_highest_scoring_episode_per_curriculum(monkeypatch, tmp_path: P
 
 def test_playback_imports_configured_roms_first(monkeypatch):
     calls = []
-    monkeypatch.setattr(rollout_video_playback, "import_roms", lambda: calls.append("roms"))
-    monkeypatch.setattr(rollout_video_playback, "playback_main", lambda argv: calls.append(argv))
+    monkeypatch.setattr(rollout_video_playback, "import_roms", lambda path: calls.append(("roms", path)))
+    monkeypatch.setattr(
+        rollout_video_playback.retro,
+        "make",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
 
-    rollout_video_playback.main(["--no-audio", "episode.bk2"])
+    def playback(movie, args, monitor_csv):
+        calls.append((movie, args.no_audio, monitor_csv))
+        rollout_video_playback.retro.make("Game")
 
-    assert calls == ["roms", ["--no-audio", "episode.bk2"]]
+    monkeypatch.setattr(rollout_video_playback, "play_movie", playback)
+
+    rollout_video_playback.main(["--roms-dir", "/roms", "--no-audio", "episode.bk2"])
+
+    assert calls == [
+        ("roms", "/roms"),
+        ("episode.bk2", True, None),
+        (("Game",), {"render_mode": "rgb_array"}),
+    ]
 
 
 def test_episode_score_uses_terminal_monitor_score():

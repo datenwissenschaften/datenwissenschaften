@@ -106,8 +106,10 @@ const savestateSummaries = computed(() => summary.value.by_savestate || {})
 const stateTraining = computed(() => snapshot.value.metadata?.state_training || {})
 const savestateCurriculum = computed(() => snapshot.value.metadata?.savestate_curriculum || {})
 const configuredStates = computed(() => Object.keys(stateTraining.value))
-const states = computed(() => (configuredStates.value.length ? configuredStates.value : Object.keys(stateSummaries.value))
-  .sort((left, right) => left.localeCompare(right)))
+const curriculumStates = computed(() => Object.keys(savestateCurriculum.value))
+const states = computed(() => curriculumStates.value.length
+  ? curriculumStates.value
+  : configuredStates.value.length ? configuredStates.value : Object.keys(stateSummaries.value))
 const availableSavestates = computed(() => [...new Set([
   ...(run.value.savestates || []),
   ...Object.keys(savestateSummaries.value),

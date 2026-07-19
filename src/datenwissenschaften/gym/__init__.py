@@ -97,14 +97,18 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         frame, _ = self.env.reset(**kwargs)
 
         active_state = self.curriculum.active_state()
-        self._started_from_initial_savestate = active_state is None
+        episode_start_state = self.curriculum.episode_start_state()
+        restore_checkpoint = episode_start_state is not None
+        self._started_from_initial_savestate = not restore_checkpoint
         self._curriculum_start_state = active_state or self.start_state_cls.__name__
-        self._curriculum_outcome_recorded = False
+        self._curriculum_outcome_recorded = active_state is None
         self._curriculum_episode_steps = 0
-        self._episode_start_state = active_state or self.initial_savestate or self.start_state_cls.__name__
-        state_cls = self._resolve_state_class(active_state) if active_state else None
-        if active_state:
-            frame = self._restore_automatic_savestate(self.curriculum.checkpoint(active_state))
+        self._episode_start_state = (
+            episode_start_state if restore_checkpoint else self.initial_savestate or self.start_state_cls.__name__
+        )
+        state_cls = self._resolve_state_class(episode_start_state) if restore_checkpoint else None
+        if restore_checkpoint:
+            frame = self._restore_automatic_savestate(self.curriculum.checkpoint(episode_start_state))
 
         ram = self._read_ram()
         observation = self._process_observation(frame)
@@ -155,7 +159,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             # the very next emulator action during this same episode.
             if self.state_machine.last_transition is not None or terminated or truncated:
                 if self.state_machine.last_transition is not None:
-                    self._handle_curriculum_transition(*self.state_machine.last_transition)
+                    if self._handle_curriculum_transition(*self.state_machine.last_transition):
+                        terminated = True
                 break
 
         if frame is None or observation is None:
@@ -201,7 +206,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "ram": ram.to_dict(),
                 "started_from_initial_savestate": self._started_from_initial_savestate,
                 "curriculum_state": self._curriculum_start_state,
-                "curriculum_complete": self.curriculum.is_mastered(self.start_state_cls.__name__),
+                "curriculum_complete": self.curriculum.is_complete(),
             },
         )
 
@@ -275,18 +280,25 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         )
         return curriculum
 
-    def _handle_curriculum_transition(self, previous_state_name: str, new_state_name: str) -> None:
+    def _handle_curriculum_transition(self, previous_state_name: str, new_state_name: str) -> bool:
         emulator_state = bytes(self.env.unwrapped.em.get_state())
         if self.curriculum.save_checkpoint(new_state_name, emulator_state):
             logger.info(f"Saved automatic curriculum checkpoint for {new_state_name}")
 
-        # Reaching the next state qualifies an automatically restored state. The
-        # original level start only qualifies after a complete level win.
-        if self._started_from_initial_savestate or self._curriculum_outcome_recorded:
+        # When a rejected checkpoint must be rebuilt, the episode starts at the
+        # beginning and traverses the already-mastered prefix. Count steps only
+        # after it reaches the current curriculum target.
+        if new_state_name == self._curriculum_start_state:
+            self._curriculum_episode_steps = 0
+
+        if self._curriculum_outcome_recorded:
             self._publish_curriculum_progress()
-            return
+            return False
         if previous_state_name == self._curriculum_start_state:
             self._record_curriculum_success()
+            return True
+        self._publish_curriculum_progress()
+        return False
 
     def _record_curriculum_success(self) -> None:
         if self._curriculum_outcome_recorded:
@@ -299,9 +311,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         wins = self.curriculum.wins(self._curriculum_start_state)
         target = self.curriculum.win_target(self._curriculum_start_state)
         if mastered:
-            logger.info(
-                f"Mastered curriculum state {self._curriculum_start_state}; " "backtracking to the preceding checkpoint"
-            )
+            logger.info(f"Mastered curriculum state {self._curriculum_start_state}; advancing to the next state")
         else:
             logger.info(f"Curriculum win for {self._curriculum_start_state}: " f"{wins}/{target} total wins")
         self._publish_curriculum_progress()

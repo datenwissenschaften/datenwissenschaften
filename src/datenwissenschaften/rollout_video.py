@@ -38,6 +38,8 @@ def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[P
                     sys.executable,
                     "-m",
                     "datenwissenschaften.rollout_video_playback",
+                    "--roms-dir",
+                    str(runtime.paths.roms_path),
                     "--no-audio",
                     str(source),
                 ],

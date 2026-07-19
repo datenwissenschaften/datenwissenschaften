@@ -10,7 +10,12 @@ from typing import Iterator
 
 
 class ReverseCurriculum:
-    """Persistent deepest-checkpoint-first curriculum for a state sequence."""
+    """Persistent ordered curriculum for a state sequence.
+
+    States are mastered from first to last. A missing or rejected checkpoint
+    never removes mastery, but may temporarily start from the nearest earlier
+    mastered checkpoint so the environment can rebuild the bad savestate.
+    """
 
     WIN_TARGET = 8
     BAD_CHECKPOINT_EVIDENCE_TARGET = 32
@@ -31,10 +36,33 @@ class ReverseCurriculum:
         return True
 
     def active_state(self) -> str | None:
-        for state_name in reversed(self.state_names[1:]):
-            if not self.is_mastered(state_name) and self._checkpoint_path(state_name).is_file():
+        for state_name in self.state_names:
+            if not self.is_mastered(state_name):
                 return state_name
         return None
+
+    def has_checkpoint(self, state_name: str) -> bool:
+        self._require_state(state_name)
+        return self._checkpoint_path(state_name).is_file()
+
+    def episode_start_state(self) -> str | None:
+        """Return the checkpoint state to restore for the current target.
+
+        Normally this is the unmastered target itself. If that checkpoint was
+        rejected, fall back through mastered states until a usable checkpoint
+        is found. ``None`` means the configured initial savestate is required.
+        """
+        target_state = self.active_state()
+        if target_state is None:
+            return None
+        target_index = self.state_names.index(target_state)
+        for state_name in reversed(self.state_names[1 : target_index + 1]):
+            if self.has_checkpoint(state_name):
+                return state_name
+        return None
+
+    def is_complete(self) -> bool:
+        return all(self.is_mastered(state_name) for state_name in self.state_names)
 
     def checkpoint(self, state_name: str) -> bytes:
         self._require_state(state_name)
@@ -43,14 +71,14 @@ class ReverseCurriculum:
     def record_success(self, state_name: str, episode_steps: int) -> bool:
         self._require_state(state_name)
         with self._lock(state_name):
+            if self.is_mastered(state_name):
+                return False
             self._record_longest_attempt(state_name, episode_steps)
             target = self.win_target(state_name)
             wins = min(target, self.wins(state_name) + 1)
             self._atomic_write(self._success_path(state_name), str(wins).encode("utf-8"))
             self._clear_score_evidence(state_name)
             mastered = wins >= target
-            if mastered:
-                self._checkpoint_path(state_name).unlink(missing_ok=True)
             return mastered
 
     def record_failure(self, state_name: str, episode_steps: int, score: float) -> bool:
@@ -135,8 +163,8 @@ class ReverseCurriculum:
                 "last_checkpoint_score": self.last_score(state_name),
                 "typical_episode_steps": self.typical_steps(state_name),
                 "mastered": self.is_mastered(state_name),
-                "has_checkpoint": self._checkpoint_path(state_name).is_file(),
-                "active": state_name == (active_state or self.state_names[0]),
+                "has_checkpoint": self.has_checkpoint(state_name),
+                "active": state_name == active_state,
             }
             for state_name in self.state_names
         }
