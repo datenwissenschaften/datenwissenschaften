@@ -37,7 +37,7 @@ def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[P
                 [
                     sys.executable,
                     "-m",
-                    "stable_retro.scripts.playback_movie",
+                    "datenwissenschaften.rollout_video_playback",
                     "--no-audio",
                     str(source),
                 ],
@@ -67,7 +67,12 @@ def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[P
             )
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
             video.unlink(missing_ok=True)
-            logger.warning(f"Could not render rollout video from {source.name}: {error}")
+            details = (
+                error.stderr.strip()
+                if isinstance(error, subprocess.CalledProcessError) and error.stderr
+                else str(error)
+            )
+            logger.warning(f"Could not render rollout video from {source.name}: {details}")
     return videos
 
 

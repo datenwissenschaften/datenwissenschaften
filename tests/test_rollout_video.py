@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from datenwissenschaften import rollout_video
+from datenwissenschaften import rollout_video, rollout_video_playback
 from datenwissenschaften.callbacks.episode_record import EpisodeRecord
 
 
@@ -27,6 +27,7 @@ def test_records_highest_scoring_episode_per_curriculum(monkeypatch, tmp_path: P
     rendered = []
 
     def render(command, **_kwargs):
+        assert command[2] == "datenwissenschaften.rollout_video_playback"
         source = Path(command[-1])
         source.with_suffix(".mp4").write_bytes(b"video")
         rendered.append(source.name)
@@ -48,6 +49,16 @@ def test_records_highest_scoring_episode_per_curriculum(monkeypatch, tmp_path: P
     assert metadata["curriculum"] == "Explore"
     assert metadata["rollout"] == 7
     assert metadata["score"] == 9.0
+
+
+def test_playback_imports_configured_roms_first(monkeypatch):
+    calls = []
+    monkeypatch.setattr(rollout_video_playback, "import_roms", lambda: calls.append("roms"))
+    monkeypatch.setattr(rollout_video_playback, "playback_main", lambda argv: calls.append(argv))
+
+    rollout_video_playback.main(["--no-audio", "episode.bk2"])
+
+    assert calls == ["roms", ["--no-audio", "episode.bk2"]]
 
 
 def test_episode_score_uses_terminal_monitor_score():
