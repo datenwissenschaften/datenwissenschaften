@@ -96,9 +96,15 @@ class Trainer:
     def _reset_for_restart(self, model) -> None:
         self._savestate = self.config.training.active_savestate
         self.callbacks[:] = self._default_callbacks() + self._additional_callbacks
+        self._delete_persisted_states()
         env = model.get_env() if callable(getattr(model, "get_env", None)) else getattr(model, "env", None)
         if callable(getattr(env, "env_method", None)):
             env.env_method("reset_training_memory")
+
+    def _delete_persisted_states(self) -> None:
+        game_identity = self.config.training.game_identity
+        self._store.delete_prefix("state", game_identity)
+        self._store.delete_prefix("target-memory", game_identity)
 
     @staticmethod
     def _environment_metadata(env) -> dict[str, Any]:

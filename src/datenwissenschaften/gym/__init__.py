@@ -134,6 +134,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         reward_state = self.state_machine.state_name
         transition: tuple[str, str] | None = None
         curriculum_succeeded = False
+        curriculum_mastered = False
 
         for _ in range(self.action_repeat):
             self._curriculum_episode_steps += 1
@@ -160,8 +161,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             # the very next emulator action during this same episode.
             if self.state_machine.last_transition is not None or terminated or truncated:
                 if self.state_machine.last_transition is not None:
-                    if self._handle_curriculum_transition(*self.state_machine.last_transition):
-                        curriculum_succeeded = True
+                    curriculum_succeeded, curriculum_mastered = self._handle_curriculum_transition(
+                        *self.state_machine.last_transition
+                    )
+                    if curriculum_succeeded:
                         terminated = True
                 break
 
@@ -172,7 +175,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         won = current_state._won()
         if won:
             curriculum_succeeded = curriculum_succeeded or not self._curriculum_outcome_recorded
-            self._record_curriculum_success()
+            curriculum_mastered = self._record_curriculum_success() or curriculum_mastered
             terminated = True
         elif (terminated or truncated) and not self._curriculum_outcome_recorded:
             checkpoint_deleted = self.curriculum.record_failure(
@@ -181,7 +184,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 self._state_return + reward,
             )
             if checkpoint_deleted:
-                logger.warning(f"Deleted score-stagnant automatic checkpoint for " f"{self._curriculum_start_state}")
+                logger.warning(f"Deleted score-stagnant automatic checkpoint for {self._curriculum_start_state}")
             self._publish_curriculum_progress()
 
         self._state_return += reward
@@ -210,6 +213,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "started_from_initial_savestate": self._started_from_initial_savestate,
                 "curriculum_state": self._curriculum_start_state,
                 "curriculum_succeeded": curriculum_succeeded,
+                "curriculum_mastered": curriculum_mastered,
                 "curriculum_complete": self.curriculum.is_complete(),
             },
         )
@@ -284,7 +288,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         )
         return curriculum
 
-    def _handle_curriculum_transition(self, previous_state_name: str, new_state_name: str) -> bool:
+    def _handle_curriculum_transition(self, previous_state_name: str, new_state_name: str) -> tuple[bool, bool]:
         emulator_state = bytes(self.env.unwrapped.em.get_state())
         if self.curriculum.save_checkpoint(new_state_name, emulator_state):
             logger.info(f"Saved automatic curriculum checkpoint for {new_state_name}")
@@ -297,16 +301,15 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         if self._curriculum_outcome_recorded:
             self._publish_curriculum_progress()
-            return False
+            return False, False
         if previous_state_name == self._curriculum_start_state:
-            self._record_curriculum_success()
-            return True
+            return True, self._record_curriculum_success()
         self._publish_curriculum_progress()
-        return False
+        return False, False
 
-    def _record_curriculum_success(self) -> None:
+    def _record_curriculum_success(self) -> bool:
         if self._curriculum_outcome_recorded:
-            return
+            return False
         self._curriculum_outcome_recorded = True
         mastered = self.curriculum.record_success(
             self._curriculum_start_state,
@@ -317,8 +320,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         if mastered:
             logger.info(f"Mastered curriculum state {self._curriculum_start_state}; advancing to the next state")
         else:
-            logger.info(f"Curriculum win for {self._curriculum_start_state}: " f"{wins}/{target} total wins")
+            logger.info(f"Curriculum win for {self._curriculum_start_state}: {wins}/{target} total wins")
         self._publish_curriculum_progress()
+        return mastered
 
     def _restore_automatic_savestate(self, savestate: bytes) -> np.ndarray:
         emulator = self.env.unwrapped

@@ -61,10 +61,19 @@ class BestEpisodeCallback(BaseCallback):
     def _finish_episode(self, env_index: int, episode: EpisodeRecord) -> None:
         episode.bk2_path = self._bk2_path(env_index, episode.episode_index)
 
-        self.episodes.append(episode.clone())
+        finished_episode = episode.clone()
+        # A mastered state will no longer contribute transitions, so its
+        # partially filled rollout may never reach the normal render boundary.
+        # Render the decisive episode immediately and retain it for a retry at
+        # rollout end if the movie is not ready yet.
+        recorded = bool(
+            finished_episode.curriculum_mastered and record_rollout_videos([finished_episode], self.rollout_count + 1)
+        )
+        if not recorded:
+            self.episodes.append(finished_episode)
         self.finished_episode_count += 1
         logger.debug(
-            f"Env {env_index} finished episode {episode.episode_index}: " f"won={episode.won}, score={episode.score:g}"
+            f"Env {env_index} finished episode {episode.episode_index}: won={episode.won}, score={episode.score:g}"
         )
 
         self.episode_counts[env_index] += 1

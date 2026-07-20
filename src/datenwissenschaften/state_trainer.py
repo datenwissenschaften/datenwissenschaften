@@ -14,6 +14,7 @@ from datenwissenschaften.callbacks.save_model_callback import atomic_save
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
 from datenwissenschaften.core.protocols import TrainableModel
 from datenwissenschaften.model import ModelBuilder, get_model_metadata, get_model_path, model_parameters_are_finite
+from datenwissenschaften.persistence import RedisStore
 from datenwissenschaften.runtime import get_runtime
 from datenwissenschaften.segmented_rollout import SegmentedRecurrentRollouts
 from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
@@ -326,7 +327,7 @@ class StateTrainer:
                 config.paths.record_dir,
                 config.paths.cache_dir,
             ),
-            on_reset=lambda: venv.env_method("reset_training_memory"),
+            on_reset=lambda: StateTrainer._reset_for_restart(venv, config),
         )
         if start_ui(config.ui) is None:
             return
@@ -352,6 +353,13 @@ class StateTrainer:
         StateTrainer._publish_curriculum_progress(venv, config)
         publish_metadata("model", get_model_metadata(next(iter(models.values()))), replace=True)
         publish_metadata("environment", Trainer._environment_metadata(venv), replace=True)
+
+    @staticmethod
+    def _reset_for_restart(venv: Any, config: Any) -> None:
+        store = RedisStore(config.ui.redis_url)
+        store.delete_prefix("state", config.training.game_identity)
+        store.delete_prefix("target-memory", config.training.game_identity)
+        venv.env_method("reset_training_memory")
 
 
 class SavestateScheduler:

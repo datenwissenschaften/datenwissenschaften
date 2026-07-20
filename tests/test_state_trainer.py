@@ -99,6 +99,23 @@ def test_publish_curriculum_progress_uses_environment_values(monkeypatch):
     assert published == {"section": "savestate_curriculum", "values": progress, "replace": True}
 
 
+def test_reset_for_restart_deletes_all_game_states(monkeypatch):
+    deleted = []
+    environment_calls = []
+    store = SimpleNamespace(delete_prefix=lambda *scope: deleted.append(scope))
+    monkeypatch.setattr(state_trainer, "RedisStore", lambda redis_url: store)
+    config = SimpleNamespace(
+        ui=SimpleNamespace(redis_url="redis://example"),
+        training=SimpleNamespace(game_identity="Game"),
+    )
+    venv = SimpleNamespace(env_method=lambda method: environment_calls.append(method))
+
+    StateTrainer._reset_for_restart(venv, config)
+
+    assert deleted == [("state", "Game"), ("target-memory", "Game")]
+    assert environment_calls == ["reset_training_memory"]
+
+
 def test_state_model_update_keeps_configured_minibatch_size(monkeypatch, tmp_path):
     class Model:
         batch_size = 256

@@ -6,6 +6,7 @@ paths:
 
 training:
   game: Airstriker-Genesis-v0
+  fingerprint: null
   savestate: null
   savestate_beaten_threshold: 1
   total_timesteps: 1000000

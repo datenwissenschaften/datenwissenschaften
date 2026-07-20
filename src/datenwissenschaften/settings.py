@@ -27,6 +27,7 @@ class TrainingSettings:
     savestate: str | None
     savestates: tuple[str, ...]
     num_envs: int
+    fingerprint: str | None = None
 
     @property
     def active_savestate(self) -> str | None:
@@ -91,6 +92,7 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> RetroSpeedlabC
         training=TrainingSettings(
             game=_string(training, "game"),
             game_identity=_optional_string(training, "game_identity") or _string(training, "game"),
+            fingerprint=_optional_string(training, "fingerprint"),
             savestate=savestate,
             savestates=savestates,
             num_envs=_environment_count(training, "num_envs"),

@@ -30,6 +30,14 @@ class RedisStore:
     def delete(self, *parts: str) -> None:
         self._redis.delete(self.key(*parts))
 
+    def delete_prefix(self, *parts: str) -> None:
+        """Delete a namespace and all keys nested below it."""
+        prefix = self.key(*parts)
+        keys = list(self._redis.scan_iter(match=f"{prefix}:*"))
+        if keys:
+            self._redis.delete(*keys)
+        self._redis.delete(prefix)
+
     def key(self, *parts: str) -> str:
         escaped = (str(part).replace(":", "_") for part in parts)
         return ":".join((self._prefix, *escaped))

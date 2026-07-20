@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -12,9 +13,59 @@ from stable_baselines3 import PPO
 from datenwissenschaften.accelerator import configure_accelerator
 from datenwissenschaften.core.protocols import ModelBuilder as ModelFactory
 from datenwissenschaften.core.protocols import TrainableModel
-from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, load_config
+from datenwissenschaften.persistence import RedisStore
+from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfig, empty_all_paths, load_config
 
 ModelLoader = Callable[..., TrainableModel]
+
+
+def datenwissenschaften_version() -> str:
+    try:
+        return version("datenwissenschaften")
+    except PackageNotFoundError:
+        return "DEVELOPMENT"
+
+
+def reset_for_training_change(
+    config: RetroSpeedlabConfig,
+    venv: Any,
+    *,
+    config_path: str | Path = DEFAULT_CONFIG_PATH,
+    current_version: str | None = None,
+) -> bool:
+    """Clear incompatible data after an engine version or database fingerprint change."""
+    current_version = current_version or datenwissenschaften_version()
+    game_identity = config.training.game_identity
+    current_fingerprint = config.training.fingerprint
+    state_store = RedisStore(config.ui.redis_url)
+    previous_version = state_store.get("engine-version", game_identity)
+    previous_fingerprint = state_store.get("database-fingerprint", game_identity)
+    if previous_version == current_version and previous_fingerprint == current_fingerprint:
+        return False
+
+    changes = []
+    if previous_version != current_version:
+        changes.append(f"datenwissenschaften {previous_version or 'unrecorded'} -> {current_version}")
+    if previous_fingerprint != current_fingerprint:
+        changes.append(
+            f"database fingerprint {previous_fingerprint or 'unrecorded'} -> {current_fingerprint or 'unset'}"
+        )
+    logger.warning(f"Training identity changed for {game_identity} ({'; '.join(changes)}); starting fresh.")
+    empty_all_paths(config_path)
+    for path in (config.paths.models_dir, config.paths.record_dir, config.paths.cache_dir):
+        path.mkdir(parents=True, exist_ok=True)
+    state_store.delete_prefix("state", game_identity)
+    state_store.delete_prefix("target-memory", game_identity)
+    history_store = RedisStore(config.ui.redis_url, key_prefix=config.ui.history_key_prefix)
+    history_store.delete(game_identity)
+
+    reset_training_memory = getattr(venv, "env_method", None)
+    if callable(reset_training_memory):
+        reset_training_memory("reset_training_memory")
+
+    state_store.set("engine-version", game_identity, value=current_version)
+    state_store.set("database-fingerprint", game_identity, value=current_fingerprint)
+    return True
 
 
 def model_parameters_are_finite(model: Any) -> bool:
@@ -138,6 +189,7 @@ def load_or_create_model(
 ) -> TrainableModel:
     configure_accelerator()
     config = load_config(config_path)
+    reset_for_training_change(config, venv, config_path=config_path)
     model_path = get_model_path(str(config.paths.models_dir), config.training.game_identity, state_name)
     model_zip_path = f"{model_path}.zip"
     cleanup = getattr(build_model, "cleanup_incompatible_artifacts", None)

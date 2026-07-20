@@ -139,6 +139,23 @@ def test_episode_records_curriculum_success():
     assert episode.clone().curriculum_succeeded is True
 
 
+def test_episode_records_curriculum_mastery():
+    episode = EpisodeRecord(0, 0)
+
+    episode.add_step(
+        {
+            "won": False,
+            "curriculum_state": "FindDispenser",
+            "curriculum_succeeded": True,
+            "curriculum_mastered": True,
+        },
+        1.0,
+    )
+
+    assert episode.curriculum_mastered is True
+    assert episode.clone().curriculum_mastered is True
+
+
 def test_recording_resolution_never_crosses_worker_directories(tmp_path: Path):
     filename = "Game-Level1-000007.bk2"
     requested = tmp_path / "7" / filename

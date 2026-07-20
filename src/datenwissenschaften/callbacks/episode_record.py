@@ -20,6 +20,7 @@ class EpisodeRecord:
     score: float = field(init=False)
     curriculum_state: str | None = field(init=False)
     curriculum_succeeded: bool = field(init=False)
+    curriculum_mastered: bool = field(init=False)
 
     def __post_init__(self) -> None:
         self.bk2_path = ""
@@ -29,6 +30,7 @@ class EpisodeRecord:
         self.score = 0.0
         self.curriculum_state = None
         self.curriculum_succeeded = False
+        self.curriculum_mastered = False
 
     def add_step(self, info: dict, reward: float | None = None) -> None:
         if self.step_count == 0:
@@ -47,6 +49,8 @@ class EpisodeRecord:
             self.won = True
         if info.get("curriculum_succeeded") is True:
             self.curriculum_succeeded = True
+        if info.get("curriculum_mastered") is True:
+            self.curriculum_mastered = True
 
     def clone(self) -> "EpisodeRecord":
         episode = EpisodeRecord(self.env_index, self.episode_index)
@@ -57,4 +61,5 @@ class EpisodeRecord:
         episode.score = self.score
         episode.curriculum_state = self.curriculum_state
         episode.curriculum_succeeded = self.curriculum_succeeded
+        episode.curriculum_mastered = self.curriculum_mastered
         return episode

@@ -63,14 +63,14 @@ def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[P
                 "steps": episode.step_count,
                 "won": episode.won,
                 "curriculum_succeeded": episode.curriculum_succeeded,
+                "curriculum_mastered": episode.curriculum_mastered,
                 "video": video.name,
                 "recorded_at": datetime.now(UTC).isoformat(),
             }
             video.with_suffix(".rollout.json").write_text(json.dumps(metadata), encoding="utf-8")
             videos.append(video)
             logger.info(
-                f"Recorded rollout {rollout} best episode for {curriculum}: "
-                f"score={episode.score:g}, video={video.name}"
+                f"Recorded rollout {rollout} best episode for {curriculum}: score={episode.score:g}, video={video.name}"
             )
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
             video.unlink(missing_ok=True)
