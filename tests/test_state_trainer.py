@@ -1,6 +1,7 @@
 from datetime import datetime
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import torch
 from datenwissenschaften import state_trainer
@@ -162,3 +163,32 @@ def test_state_model_update_rejects_non_finite_parameters(monkeypatch, tmp_path)
 
     with pytest.raises(FloatingPointError, match="FindScale"):
         trainer._update_model("FindScale", Model(), rollouts)
+
+
+def test_state_model_update_safely_normalizes_single_valid_advantage(monkeypatch, tmp_path):
+    buffer = SimpleNamespace(advantages=np.asarray([[5.0]], dtype=np.float32))
+
+    class Model:
+        normalize_advantage = True
+
+        def train(self):
+            assert self.normalize_advantage is False
+            assert self.rollout_buffer.advantages.tolist() == [[0.0]]
+
+    model = Model()
+    trainer = object.__new__(StateTrainer)
+    trainer.config_path = "unused.yaml"
+    rollouts = SimpleNamespace(build_buffer=lambda state_name: buffer)
+    monkeypatch.setattr(
+        state_trainer,
+        "load_config",
+        lambda path: SimpleNamespace(
+            paths=SimpleNamespace(models_dir=tmp_path),
+            training=SimpleNamespace(game_identity="game"),
+        ),
+    )
+    monkeypatch.setattr(state_trainer, "atomic_save", lambda model, path: None)
+
+    trainer._update_model("FindDispenser", model, rollouts)
+
+    assert model.normalize_advantage is True

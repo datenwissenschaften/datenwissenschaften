@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
@@ -250,9 +251,29 @@ class StateTrainer:
         model: TrainableModel,
         rollouts: SegmentedRecurrentRollouts,
     ) -> None:
-        model.rollout_buffer = rollouts.build_buffer(state_name)
+        rollout_buffer = rollouts.build_buffer(state_name)
+        model.rollout_buffer = rollout_buffer
         model._current_progress_remaining = 1.0
-        model.train()
+        normalize_advantage = bool(getattr(model, "normalize_advantage", False))
+        if normalize_advantage:
+            advantages = np.asarray(rollout_buffer.advantages)
+            if not np.isfinite(advantages).all():
+                raise FloatingPointError(f"Rollout contains non-finite advantages for state {state_name}")
+            # Recurrent minibatches contain padding. SB3 normalizes only the
+            # valid entries in each minibatch, and a minibatch with one valid
+            # entry gets an undefined sample standard deviation. Normalize
+            # once over the complete, unpadded state rollout instead.
+            rollout_buffer.advantages = (
+                (advantages - advantages.mean()) / (advantages.std(ddof=0) + 1e-8)
+                if advantages.size > 1
+                else np.zeros_like(advantages)
+            )
+            model.normalize_advantage = False
+        try:
+            model.train()
+        finally:
+            if normalize_advantage:
+                model.normalize_advantage = True
         if not model_parameters_are_finite(model):
             raise FloatingPointError(f"Training produced non-finite parameters for state {state_name}")
         model_path = get_model_path(
