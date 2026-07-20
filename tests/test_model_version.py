@@ -31,7 +31,7 @@ def _config(root=Path(".")):
             record_dir=root / "recordings",
             cache_dir=root / "cache",
         ),
-        training=SimpleNamespace(game_identity="Game", fingerprint="fingerprint-a"),
+        training=SimpleNamespace(game="Game", game_identity="Game", fingerprint="fingerprint-a"),
         ui=SimpleNamespace(
             redis_url="redis://example",
             history_key_prefix="datenwissenschaften:history",
@@ -45,11 +45,12 @@ def test_version_change_clears_artifacts_states_history_and_live_memory(monkeypa
         ("datenwissenschaften", "database-fingerprint", "Game"): "fingerprint-a",
     }
     FakeRedisStore.deleted = []
-    cleared = []
     environment_calls = []
     monkeypatch.setattr(model, "RedisStore", FakeRedisStore)
-    monkeypatch.setattr(model, "empty_all_paths", lambda path: cleared.append(path))
     venv = SimpleNamespace(env_method=lambda method: environment_calls.append(method))
+    for path in (tmp_path / "models", tmp_path / "recordings", tmp_path / "cache"):
+        path.mkdir()
+        (path / "stale-artifact").write_text("stale", encoding="utf-8")
 
     changed = model.reset_for_training_change(
         _config(tmp_path),
@@ -59,8 +60,10 @@ def test_version_change_clears_artifacts_states_history_and_live_memory(monkeypa
     )
 
     assert changed is True
-    assert cleared == [tmp_path / "config.yaml"]
-    assert all((tmp_path / name).is_dir() for name in ("models", "recordings", "cache"))
+    assert all(
+        path.is_dir() and not list(path.iterdir())
+        for path in (tmp_path / "models", tmp_path / "recordings", tmp_path / "cache")
+    )
     assert FakeRedisStore.deleted == [
         ("datenwissenschaften", "state", "Game", "*"),
         ("datenwissenschaften", "target-memory", "Game", "*"),
@@ -78,7 +81,6 @@ def test_matching_version_keeps_existing_training_data(monkeypatch):
     }
     FakeRedisStore.deleted = []
     monkeypatch.setattr(model, "RedisStore", FakeRedisStore)
-    monkeypatch.setattr(model, "empty_all_paths", lambda path: (_ for _ in ()).throw(AssertionError(path)))
 
     changed = model.reset_for_training_change(
         _config(),
@@ -96,9 +98,7 @@ def test_database_fingerprint_change_resets_on_the_same_engine_version(monkeypat
         ("datenwissenschaften", "database-fingerprint", "Game"): "fingerprint-a",
     }
     FakeRedisStore.deleted = []
-    cleared = []
     monkeypatch.setattr(model, "RedisStore", FakeRedisStore)
-    monkeypatch.setattr(model, "empty_all_paths", lambda path: cleared.append(path))
     config = _config(tmp_path)
     config.training.fingerprint = "fingerprint-b"
 
@@ -110,5 +110,4 @@ def test_database_fingerprint_change_resets_on_the_same_engine_version(monkeypat
     )
 
     assert changed is True
-    assert cleared == [tmp_path / "config.yaml"]
     assert FakeRedisStore.values[("datenwissenschaften", "database-fingerprint", "Game")] == "fingerprint-b"

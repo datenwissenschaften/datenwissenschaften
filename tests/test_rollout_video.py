@@ -13,8 +13,10 @@ def _episode(
     steps: int = 10,
     *,
     curriculum_succeeded: bool = False,
+    env_index: int = 0,
+    episode_index: int = 0,
 ) -> EpisodeRecord:
-    episode = EpisodeRecord(0, 0)
+    episode = EpisodeRecord(env_index, episode_index)
     episode.bk2_path = str(path)
     episode.curriculum_state = curriculum
     episode.score = score
@@ -24,9 +26,11 @@ def _episode(
 
 
 def test_records_highest_scoring_episode_per_curriculum(monkeypatch, tmp_path: Path):
-    low_path = tmp_path / "low.bk2"
-    high_path = tmp_path / "high.bk2"
-    other_path = tmp_path / "other.bk2"
+    worker_dir = tmp_path / "Game" / "Level1" / "0"
+    worker_dir.mkdir(parents=True)
+    low_path = worker_dir / "low.bk2"
+    high_path = worker_dir / "high.bk2"
+    other_path = worker_dir / "other.bk2"
     for path in (low_path, high_path, other_path):
         path.write_bytes(b"movie")
     runtime = SimpleNamespace(
@@ -63,11 +67,15 @@ def test_records_highest_scoring_episode_per_curriculum(monkeypatch, tmp_path: P
     assert metadata["curriculum"] == "Explore"
     assert metadata["rollout"] == 7
     assert metadata["score"] == 9.0
+    assert metadata["environment"] == 0
+    assert metadata["recording"] == "high.bk2"
 
 
 def test_stage_completing_episode_is_preferred_over_higher_failed_score(monkeypatch, tmp_path: Path):
-    failed_path = tmp_path / "failed.bk2"
-    completed_path = tmp_path / "completed.bk2"
+    worker_dir = tmp_path / "Game" / "Level1" / "0"
+    worker_dir.mkdir(parents=True)
+    failed_path = worker_dir / "failed.bk2"
+    completed_path = worker_dir / "completed.bk2"
     failed_path.write_bytes(b"failed")
     completed_path.write_bytes(b"completed")
     runtime = SimpleNamespace(
@@ -166,4 +174,95 @@ def test_recording_resolution_never_crosses_worker_directories(tmp_path: Path):
     correct.write_bytes(b"worker 7")
     wrong.write_bytes(b"worker 3")
 
-    assert rollout_video._resolve_recording(str(requested), tmp_path) == correct
+    assert (
+        rollout_video._resolve_recording(
+            str(requested),
+            tmp_path,
+            game="Game",
+            savestate="Level1",
+            env_index=7,
+        )
+        == correct.resolve()
+    )
+
+
+def test_existing_recording_from_another_worker_is_rejected(tmp_path: Path):
+    filename = "Game-Level1-000007.bk2"
+    wrong = tmp_path / "Game" / "Level1" / "3" / filename
+    wrong.parent.mkdir(parents=True)
+    wrong.write_bytes(b"worker 3")
+
+    assert (
+        rollout_video._resolve_recording(
+            str(wrong),
+            tmp_path,
+            game="Game",
+            savestate="Level1",
+            env_index=7,
+        )
+        is None
+    )
+
+
+def test_parallel_workers_with_same_filename_render_the_selected_worker(monkeypatch, tmp_path: Path):
+    filename = "Game-Level1-000007.bk2"
+    worker_2 = tmp_path / "Game" / "Level1" / "2" / filename
+    worker_9 = tmp_path / "Game" / "Level1" / "9" / filename
+    worker_2.parent.mkdir(parents=True)
+    worker_9.parent.mkdir(parents=True)
+    worker_2.write_bytes(b"worker 2")
+    worker_9.write_bytes(b"worker 9")
+    runtime = SimpleNamespace(
+        record_dir=tmp_path,
+        savestate="Level1",
+        game="Game",
+        paths=SimpleNamespace(roms_path=tmp_path / "roms"),
+    )
+    monkeypatch.setattr(rollout_video, "get_runtime", lambda: runtime)
+    rendered = []
+
+    def render(command, **_kwargs):
+        source = Path(command[-1])
+        rendered.append(source)
+        source.with_suffix(".mp4").write_bytes(b"video")
+
+    monkeypatch.setattr(rollout_video.subprocess, "run", render)
+
+    videos = rollout_video.record_rollout_videos(
+        [
+            _episode(worker_2, "Explore", 4.0, env_index=2, episode_index=7),
+            _episode(worker_9, "Explore", 12.0, env_index=9, episode_index=7),
+        ],
+        rollout=3,
+    )
+
+    assert rendered == [worker_9.resolve()]
+    assert videos == [worker_9.with_suffix(".mp4").resolve()]
+    assert worker_2.read_bytes() == b"worker 2"
+
+
+def test_stale_video_is_not_accepted_as_fresh_output(monkeypatch, tmp_path: Path):
+    source = tmp_path / "Game" / "Level1" / "4" / "Game-Level1-000002.bk2"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"worker 4")
+    stale_video = source.with_suffix(".mp4")
+    stale_metadata = source.with_suffix(".rollout.json")
+    stale_video.write_bytes(b"stale video")
+    stale_metadata.write_text("stale metadata", encoding="utf-8")
+    runtime = SimpleNamespace(
+        record_dir=tmp_path,
+        savestate="Level1",
+        game="Game",
+        paths=SimpleNamespace(roms_path=tmp_path / "roms"),
+    )
+    monkeypatch.setattr(rollout_video, "get_runtime", lambda: runtime)
+    monkeypatch.setattr(rollout_video.subprocess, "run", lambda *_args, **_kwargs: None)
+
+    videos = rollout_video.record_rollout_videos(
+        [_episode(source, "Explore", 9.0, env_index=4, episode_index=2)],
+        rollout=7,
+    )
+
+    assert videos == []
+    assert not stale_video.exists()
+    assert not stale_metadata.exists()

@@ -1,11 +1,8 @@
-import os
-
 from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften.callbacks.episode_record import EpisodeRecord
 from datenwissenschaften.rollout_video import record_rollout_videos
-from datenwissenschaften.runtime import get_runtime
 
 
 # noinspection PyMethodMayBeStatic
@@ -59,9 +56,6 @@ class BestEpisodeCallback(BaseCallback):
             self.episode_counts.append(0)
 
     def _finish_episode(self, env_index: int, episode: EpisodeRecord) -> None:
-        if not episode.bk2_path:
-            episode.bk2_path = self._bk2_path(env_index, episode.episode_index)
-
         finished_episode = episode.clone()
         # A mastered state will no longer contribute transitions, so its
         # partially filled rollout may never reach the normal render boundary.
@@ -79,8 +73,3 @@ class BestEpisodeCallback(BaseCallback):
 
         self.episode_counts[env_index] += 1
         self.active_episodes[env_index] = EpisodeRecord(env_index, self.episode_counts[env_index])
-
-    def _bk2_path(self, env_index: int, episode_index: int) -> str:
-        runtime = get_runtime()
-        filename = f"{runtime.game}-{runtime.savestate}-{episode_index:06d}.bk2"
-        return os.path.join(runtime.record_dir, runtime.game, runtime.savestate, str(env_index), filename)

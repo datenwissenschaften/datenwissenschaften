@@ -174,6 +174,15 @@ def start_ui(settings: UISettings) -> DashboardServer | None:
 class _DashboardHandler(BaseHTTPRequestHandler):
     server_version = "DatenwissenschaftenUI/1.0"
 
+    def handle(self) -> None:
+        try:
+            super().handle()
+        except ConnectionError:
+            # Browsers routinely cancel stale media requests when a video source
+            # changes or the page refreshes. The response is no longer useful and
+            # the disconnect should not become a socketserver traceback.
+            return
+
     def do_GET(self) -> None:  # noqa: N802
         request = urlsplit(self.path)
         path = request.path
@@ -211,9 +220,11 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/rollout-video":
             requested = parse_qs(request.query).get("path", [""])[0]
             try:
-                self._send_video(rollout_video_path(requested))
+                video_path = rollout_video_path(requested)
             except (FileNotFoundError, OSError):
                 self.send_error(HTTPStatus.NOT_FOUND, "Rollout video not found")
+                return
+            self._send_video(video_path)
             return
         self._send_asset(path)
 
@@ -299,7 +310,13 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         with path.open("rb") as video_file:
             video_file.seek(start)
-            self.wfile.write(video_file.read(length))
+            remaining = length
+            while remaining:
+                chunk = video_file.read(min(256 * 1024, remaining))
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                remaining -= len(chunk)
 
     def _send_asset(self, requested_path: str) -> None:
         relative = requested_path.lstrip("/") or "index.html"

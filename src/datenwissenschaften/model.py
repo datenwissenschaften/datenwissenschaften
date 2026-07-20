@@ -14,7 +14,8 @@ from datenwissenschaften.accelerator import configure_accelerator
 from datenwissenschaften.core.protocols import ModelBuilder as ModelFactory
 from datenwissenschaften.core.protocols import TrainableModel
 from datenwissenschaften.persistence import RedisStore
-from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfig, empty_all_paths, load_config
+from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfig, load_config
+from datenwissenschaften.ui.control import ModelResetRequest, perform_model_reset
 
 ModelLoader = Callable[..., TrainableModel]
 
@@ -51,17 +52,28 @@ def reset_for_training_change(
             f"database fingerprint {previous_fingerprint or 'unrecorded'} -> {current_fingerprint or 'unset'}"
         )
     logger.warning(f"Training identity changed for {game_identity} ({'; '.join(changes)}); starting fresh.")
-    empty_all_paths(config_path)
-    for path in (config.paths.models_dir, config.paths.record_dir, config.paths.cache_dir):
-        path.mkdir(parents=True, exist_ok=True)
-    state_store.delete_prefix("state", game_identity)
-    state_store.delete_prefix("target-memory", game_identity)
-    history_store = RedisStore(config.ui.redis_url, key_prefix=config.ui.history_key_prefix)
-    history_store.delete(game_identity)
 
-    reset_training_memory = getattr(venv, "env_method", None)
-    if callable(reset_training_memory):
-        reset_training_memory("reset_training_memory")
+    def reset_runtime_state() -> None:
+        state_store.delete_prefix("state", game_identity)
+        state_store.delete_prefix("target-memory", game_identity)
+        # The dashboard reset deletes this through its configured telemetry
+        # store. During startup that store is not configured yet, so remove the
+        # same persisted history explicitly.
+        history_store = RedisStore(config.ui.redis_url, key_prefix=config.ui.history_key_prefix)
+        history_store.delete(game_identity)
+
+        reset_training_memory = getattr(venv, "env_method", None)
+        if callable(reset_training_memory):
+            reset_training_memory("reset_training_memory")
+
+    perform_model_reset(
+        ModelResetRequest(
+            game=config.training.game,
+            model_dir=config.paths.models_dir,
+            artifact_dirs=(config.paths.models_dir, config.paths.record_dir, config.paths.cache_dir),
+            on_reset=reset_runtime_state,
+        )
+    )
 
     state_store.set("engine-version", game_identity, value=current_version)
     state_store.set("database-fingerprint", game_identity, value=current_fingerprint)

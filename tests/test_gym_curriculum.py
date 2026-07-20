@@ -66,3 +66,22 @@ def test_active_movie_path_uses_stable_retro_movie_id(tmp_path: Path):
     path = StateMachineGymWrapper._active_movie_path(wrapper)
 
     assert path == str(tmp_path / "Game-Level1-000011.bk2")
+
+
+def test_movie_directory_is_recreated_after_artifact_cleanup(tmp_path: Path):
+    movie_path = tmp_path / "recordings" / "Game" / "Level1" / "2"
+    emulator = SimpleNamespace(movie_path=str(movie_path))
+    wrapper = SimpleNamespace(env=SimpleNamespace(unwrapped=emulator))
+
+    StateMachineGymWrapper._ensure_movie_directory(wrapper)
+
+    assert movie_path.is_dir()
+
+
+def test_movie_directory_repair_allows_disabled_recording(tmp_path: Path):
+    emulator = SimpleNamespace(movie_path=None)
+    wrapper = SimpleNamespace(env=SimpleNamespace(unwrapped=emulator))
+
+    StateMachineGymWrapper._ensure_movie_directory(wrapper)
+
+    assert list(tmp_path.iterdir()) == []

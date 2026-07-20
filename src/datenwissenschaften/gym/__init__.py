@@ -95,6 +95,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self._publish_curriculum_progress()
 
     def reset(self, **kwargs):
+        # Artifact cleanup can remove the recording tree after Retro has been
+        # constructed. Retro retains ``movie_path`` but does not recreate its
+        # parent directory when it opens the next BK2.
+        self._ensure_movie_directory()
         frame, _ = self.env.reset(**kwargs)
         self._episode_bk2_path = self._active_movie_path()
 
@@ -270,6 +274,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def reset_training_memory(self) -> None:
         TargetMemory.reset_all()
         self.curriculum = self._create_curriculum()
+        self._ensure_movie_directory()
         self._publish_curriculum_progress()
 
     def _resolve_state_class(self, state_name: str) -> type[State[T]]:
@@ -352,6 +357,12 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             return None
         state_name = Path(str(state)).stem
         return str(Path(movie_path) / f"{game}-{state_name}-{movie_id - 1:06d}.bk2")
+
+    def _ensure_movie_directory(self) -> None:
+        """Restore Retro's configured recording directory if cleanup removed it."""
+        movie_path = getattr(self.env.unwrapped, "movie_path", None)
+        if movie_path:
+            Path(movie_path).mkdir(parents=True, exist_ok=True)
 
     def _publish_curriculum_progress(self) -> None:
         publish_metadata("savestate_curriculum", self.curriculum.progress(), replace=True)

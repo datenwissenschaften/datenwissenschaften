@@ -102,6 +102,28 @@ onBeforeUnmount(() => { window.clearInterval(timer); window.clearInterval(mediaT
 
 const summary = computed(() => snapshot.value.summary || {})
 const savestateSummaries = computed(() => summary.value.by_savestate || {})
+const savestateCurriculum = computed(() => snapshot.value.metadata?.savestate_curriculum || {})
+const curriculumRows = computed(() => Object.entries(savestateCurriculum.value).map(([state, value]) => {
+  const curriculum = value && typeof value === 'object' ? value : {}
+  const wins = Math.max(0, Number(curriculum.wins) || 0)
+  const target = Math.max(1, Number(curriculum.win_target) || 64)
+  return {
+    state,
+    wins,
+    target,
+    mastered: Boolean(curriculum.mastered) || wins >= target,
+    active: Boolean(curriculum.active),
+  }
+}))
+const currentCurriculumState = computed(() => curriculumRows.value.find(row => row.active)
+  || curriculumRows.value.find(row => !row.mastered)
+  || null)
+const curriculumComplete = computed(() => curriculumRows.value.length > 0
+  && curriculumRows.value.every(row => row.mastered))
+const masteredStateCount = computed(() => curriculumRows.value.filter(row => row.mastered).length)
+const currentStateProgress = computed(() => currentCurriculumState.value
+  ? Math.min(100, currentCurriculumState.value.wins / currentCurriculumState.value.target * 100)
+  : 0)
 const availableSavestates = computed(() => [...new Set([
   ...(run.value.savestates || []),
   ...Object.keys(savestateSummaries.value),
@@ -212,6 +234,29 @@ const label = key => key.replaceAll('_', ' ')
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
       <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latestDuration) }} latest episode</small></article>
       <article class="panel metric"><p>Full runs</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>Started from {{ activeSavestateLabel }}</small></article>
+    </section>
+
+    <section v-if="curriculumRows.length && !curriculumComplete" class="observatory-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">STATE CURRICULUM</p><h2>Current training state</h2><p>Only the state currently being learned and overall sequence progress are shown.</p></div>
+        <span>{{ masteredStateCount }} / {{ curriculumRows.length }} mastered</span>
+      </div>
+      <article v-if="currentCurriculumState" class="panel curriculum-progress">
+        <div class="card-heading">
+          <div><p class="eyebrow">TRAINING NOW</p><h2>{{ currentCurriculumState.state }}</h2></div>
+          <span class="chip">{{ fmt(currentCurriculumState.wins) }} / {{ fmt(currentCurriculumState.target) }} beaten</span>
+        </div>
+        <div class="progress-track" role="progressbar" :aria-valuenow="currentCurriculumState.wins" aria-valuemin="0" :aria-valuemax="currentCurriculumState.target">
+          <span :style="{ width: `${currentStateProgress}%` }"></span>
+        </div>
+        <div class="state-sequence" aria-label="Curriculum state sequence">
+          <span
+            v-for="row in curriculumRows"
+            :key="row.state"
+            :class="{ mastered: row.mastered, current: row.state === currentCurriculumState.state }"
+          >{{ row.state }}</span>
+        </div>
+      </article>
     </section>
 
     <section v-if="latestFullRunVideo" class="observatory-section">

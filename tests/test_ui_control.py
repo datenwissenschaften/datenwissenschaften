@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pytest
+from datenwissenschaften.ui import server
 from datenwissenschaften.ui.control import ModelResetRequest, perform_model_reset
-from datenwissenschaften.ui.server import generated_source, generated_sources
+from datenwissenschaften.ui.server import _DashboardHandler, generated_source, generated_sources
 
 
 def test_generated_sources_only_exposes_runner_project_files(tmp_path: Path):
@@ -61,3 +63,22 @@ def test_model_reset_runs_memory_cleanup_and_clears_metadata(tmp_path: Path):
 
     assert memory_cleanup == [True]
     assert "savestate_curriculum" not in store.snapshot()["metadata"]
+
+
+def test_dashboard_ignores_client_disconnects(monkeypatch):
+    handler = object.__new__(_DashboardHandler)
+    monkeypatch.setattr(
+        server.BaseHTTPRequestHandler,
+        "handle",
+        lambda _handler: (_ for _ in ()).throw(BrokenPipeError()),
+    )
+
+    handler.handle()
+
+
+def test_dashboard_does_not_hide_unrelated_handler_errors(monkeypatch):
+    handler = object.__new__(_DashboardHandler)
+    monkeypatch.setattr(server.BaseHTTPRequestHandler, "handle", lambda _handler: (_ for _ in ()).throw(ValueError()))
+
+    with pytest.raises(ValueError):
+        handler.handle()
