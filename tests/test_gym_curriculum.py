@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -51,3 +52,17 @@ def test_automatic_savestate_restore_allows_disabled_movie_recording():
     StateMachineGymWrapper._restore_automatic_savestate(wrapper, emulator_state)
 
     assert em.states == [emulator_state]
+
+
+def test_active_movie_path_uses_stable_retro_movie_id(tmp_path: Path):
+    emulator = SimpleNamespace(
+        movie_path=str(tmp_path),
+        movie_id=12,
+        gamename="Game",
+        statename="nested/Level1.state",
+    )
+    wrapper = SimpleNamespace(env=SimpleNamespace(unwrapped=emulator))
+
+    path = StateMachineGymWrapper._active_movie_path(wrapper)
+
+    assert path == str(tmp_path / "Game-Level1-000011.bk2")

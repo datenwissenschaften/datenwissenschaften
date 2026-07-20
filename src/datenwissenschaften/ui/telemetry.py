@@ -29,6 +29,12 @@ def _empty_summary() -> dict[str, Any]:
     return {
         "episodes": 0,
         "wins": 0,
+        "full_run_episodes": 0,
+        "full_run_wins": 0,
+        "full_run_timed_episodes": 0,
+        "full_run_duration_seconds_total": 0.0,
+        "full_run_best_fitness": None,
+        "latest_full_run_duration_seconds": None,
         "timed_episodes": 0,
         "duration_seconds_total": 0.0,
         "best_fitness": None,
@@ -75,19 +81,34 @@ def _summarize_episode(summary: dict[str, Any], episode: dict[str, Any]) -> None
 
 def _update_summary_bucket(bucket: dict[str, Any], episode: dict[str, Any]) -> None:
     bucket["episodes"] = int(bucket.get("episodes", 0)) + 1
+    full_run = episode.get("started_from_initial_savestate") is True
+    if full_run:
+        bucket["full_run_episodes"] = int(bucket.get("full_run_episodes", 0)) + 1
     if episode.get("won") is True:
         bucket["wins"] = int(bucket.get("wins", 0)) + 1
+        if full_run:
+            bucket["full_run_wins"] = int(bucket.get("full_run_wins", 0)) + 1
 
     duration = episode.get("duration_seconds")
     if isinstance(duration, int | float) and not isinstance(duration, bool):
         bucket["timed_episodes"] = int(bucket.get("timed_episodes", 0)) + 1
         bucket["duration_seconds_total"] = float(bucket.get("duration_seconds_total", 0.0)) + float(duration)
+        if full_run:
+            bucket["full_run_timed_episodes"] = int(bucket.get("full_run_timed_episodes", 0)) + 1
+            bucket["full_run_duration_seconds_total"] = float(
+                bucket.get("full_run_duration_seconds_total", 0.0)
+            ) + float(duration)
+            bucket["latest_full_run_duration_seconds"] = float(duration)
 
     fitness = episode.get("fitness")
     if isinstance(fitness, int | float) and not isinstance(fitness, bool):
         best = bucket.get("best_fitness")
         if best is None or float(fitness) > float(best):
             bucket["best_fitness"] = float(fitness)
+        if full_run:
+            full_run_best = bucket.get("full_run_best_fitness")
+            if full_run_best is None or float(fitness) > float(full_run_best):
+                bucket["full_run_best_fitness"] = float(fitness)
 
     index = episode.get("index")
     if isinstance(index, int):
@@ -109,15 +130,30 @@ def _coerce_summary(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     summary = _empty_summary()
-    for key in ("episodes", "wins", "timed_episodes"):
+    for key in (
+        "episodes",
+        "wins",
+        "full_run_episodes",
+        "full_run_wins",
+        "timed_episodes",
+        "full_run_timed_episodes",
+    ):
         if isinstance(value.get(key), int) and not isinstance(value.get(key), bool) and value[key] >= 0:
             summary[key] = value[key]
     if isinstance(value.get("duration_seconds_total"), int | float) and not isinstance(
         value.get("duration_seconds_total"), bool
     ):
         summary["duration_seconds_total"] = float(value["duration_seconds_total"])
+    if isinstance(value.get("full_run_duration_seconds_total"), int | float) and not isinstance(
+        value.get("full_run_duration_seconds_total"), bool
+    ):
+        summary["full_run_duration_seconds_total"] = float(value["full_run_duration_seconds_total"])
     if isinstance(value.get("best_fitness"), int | float) and not isinstance(value.get("best_fitness"), bool):
         summary["best_fitness"] = float(value["best_fitness"])
+    if isinstance(value.get("full_run_best_fitness"), int | float) and not isinstance(
+        value.get("full_run_best_fitness"), bool
+    ):
+        summary["full_run_best_fitness"] = float(value["full_run_best_fitness"])
     if isinstance(value.get("latest_index"), int):
         summary["latest_index"] = value["latest_index"]
     if isinstance(value.get("latest_timestamp"), str):
@@ -128,6 +164,10 @@ def _coerce_summary(value: Any) -> dict[str, Any] | None:
         value.get("latest_duration_seconds"), bool
     ):
         summary["latest_duration_seconds"] = float(value["latest_duration_seconds"])
+    if isinstance(value.get("latest_full_run_duration_seconds"), int | float) and not isinstance(
+        value.get("latest_full_run_duration_seconds"), bool
+    ):
+        summary["latest_full_run_duration_seconds"] = float(value["latest_full_run_duration_seconds"])
     if isinstance(value.get("latest_final_state"), str):
         summary["latest_final_state"] = value["latest_final_state"]
 

@@ -59,7 +59,8 @@ class BestEpisodeCallback(BaseCallback):
             self.episode_counts.append(0)
 
     def _finish_episode(self, env_index: int, episode: EpisodeRecord) -> None:
-        episode.bk2_path = self._bk2_path(env_index, episode.episode_index)
+        if not episode.bk2_path:
+            episode.bk2_path = self._bk2_path(env_index, episode.episode_index)
 
         finished_episode = episode.clone()
         # A mastered state will no longer contribute transitions, so its

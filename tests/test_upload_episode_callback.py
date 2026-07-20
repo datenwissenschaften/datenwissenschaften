@@ -5,6 +5,7 @@ from unittest.mock import Mock
 from datenwissenschaften.callbacks.episode_record import EpisodeRecord
 from datenwissenschaften.callbacks.upload_episode_callback import UploadEpisodeCallback
 from datenwissenschaften.settings import UploadSettings
+from loguru import logger
 
 
 def test_uploads_every_won_episode_started_from_initial_savestate(monkeypatch):
@@ -44,3 +45,32 @@ def test_episode_path_resolves_nested_runner_recording_layout(tmp_path: Path):
     resolved = UploadEpisodeCallback._resolve_episode_path(str(tmp_path / "2" / filename), runtime)
 
     assert resolved == str(nested)
+
+
+def test_finish_episode_preserves_environment_reported_movie_path():
+    callback = UploadEpisodeCallback(UploadSettings(url="https://example.test", api_key="key"))
+    callback._ensure_episode_slots(1)
+    episode = EpisodeRecord(0, 0)
+    episode.bk2_path = "actual-0042.bk2"
+
+    callback._finish_episode(0, episode)
+
+    assert callback.completed_episodes[0].bk2_path == "actual-0042.bk2"
+
+
+def test_checkpoint_win_explains_why_it_is_not_uploaded(monkeypatch):
+    callback = UploadEpisodeCallback(UploadSettings(url="https://example.test", api_key="key"))
+    checkpoint_won = EpisodeRecord(0, 0)
+    checkpoint_won.won = True
+    checkpoint_won.started_from_initial_savestate = False
+    callback.completed_episodes = [checkpoint_won]
+    messages = []
+    sink = logger.add(lambda message: messages.append(str(message)), format="{message}")
+    monkeypatch.setattr(callback, "_flush_successful_episodes", lambda: None)
+
+    try:
+        callback._on_rollout_end()
+    finally:
+        logger.remove(sink)
+
+    assert any("only accepts complete runs" in message for message in messages)

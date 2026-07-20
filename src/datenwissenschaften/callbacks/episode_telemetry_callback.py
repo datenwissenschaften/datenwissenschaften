@@ -52,6 +52,7 @@ class EpisodeTelemetryCallback(BaseCallback):
                 total_steps=total_steps,
                 duration_seconds=time.monotonic() - self.started_at[index],
                 won=None if info.get("won") is None else bool(info.get("won")),
+                started_from_initial_savestate=info.get("started_from_initial_savestate"),
                 final_state=info.get("state"),
             )
             self.started_at[index] = time.monotonic()

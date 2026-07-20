@@ -12,6 +12,7 @@ def test_episode_history_is_grouped_by_savestate():
             "training_state": "Run",
             "fitness": 12.0,
             "won": True,
+            "started_from_initial_savestate": True,
             "duration_seconds": 3.0,
         },
     )
@@ -30,6 +31,10 @@ def test_episode_history_is_grouped_by_savestate():
     assert summary["episodes"] == 2
     assert summary["by_savestate"]["Level1"]["episodes"] == 1
     assert summary["by_savestate"]["Level1"]["wins"] == 1
+    assert summary["by_savestate"]["Level1"]["full_run_episodes"] == 1
+    assert summary["by_savestate"]["Level1"]["full_run_wins"] == 1
+    assert summary["by_savestate"]["Level1"]["full_run_best_fitness"] == 12.0
+    assert summary["by_savestate"]["Level1"]["full_run_duration_seconds_total"] == 3.0
     assert summary["by_savestate"]["Level2"]["wins"] == 0
 
 
@@ -47,3 +52,22 @@ def test_persisted_savestate_history_is_loaded():
     assert coerced is not None
     assert coerced["by_savestate"]["Level1"]["episodes"] == 2
     assert coerced["by_savestate"]["Level2"]["episodes"] == 1
+    assert coerced["by_savestate"]["Level1"]["full_run_wins"] == 0
+
+
+def test_checkpoint_win_is_not_counted_as_a_full_run_win():
+    summary = _empty_summary()
+
+    _summarize_episode(
+        summary,
+        {
+            "savestate": "Level1",
+            "won": True,
+            "started_from_initial_savestate": False,
+        },
+    )
+
+    assert summary["wins"] == 1
+    assert summary["full_run_episodes"] == 0
+    assert summary["full_run_wins"] == 0
+    assert summary["by_savestate"]["Level1"]["full_run_wins"] == 0

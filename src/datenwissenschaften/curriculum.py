@@ -17,8 +17,8 @@ class ReverseCurriculum:
     mastered checkpoint so the environment can rebuild the bad savestate.
     """
 
-    WIN_TARGET = 8
-    BAD_CHECKPOINT_EVIDENCE_TARGET = 32
+    WIN_TARGET = 64
+    BAD_CHECKPOINT_EVIDENCE_TARGET = 128
 
     def __init__(self, root: Path, state_names: Sequence[str]) -> None:
         self.root = root

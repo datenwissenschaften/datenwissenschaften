@@ -19,6 +19,7 @@ class EpisodeRecord:
     started_from_initial_savestate: bool | None = field(init=False)
     score: float = field(init=False)
     curriculum_state: str | None = field(init=False)
+    episode_start_state: str | None = field(init=False)
     curriculum_succeeded: bool = field(init=False)
     curriculum_mastered: bool = field(init=False)
 
@@ -29,17 +30,24 @@ class EpisodeRecord:
         self.started_from_initial_savestate = None
         self.score = 0.0
         self.curriculum_state = None
+        self.episode_start_state = None
         self.curriculum_succeeded = False
         self.curriculum_mastered = False
 
     def add_step(self, info: dict, reward: float | None = None) -> None:
         if self.step_count == 0:
+            bk2_path = info.get("episode_bk2_path")
+            if isinstance(bk2_path, str) and bk2_path:
+                self.bk2_path = bk2_path
             started_from_initial = info.get("started_from_initial_savestate")
             if isinstance(started_from_initial, bool):
                 self.started_from_initial_savestate = started_from_initial
             curriculum_state = info.get("curriculum_state")
             if curriculum_state:
                 self.curriculum_state = str(curriculum_state)
+            episode_start_state = info.get("episode_start_state")
+            if episode_start_state:
+                self.episode_start_state = str(episode_start_state)
         self.step_count += 1
         self.score += float(info.get("extrinsic_reward", reward or 0.0))
         monitor_episode = info.get("episode")
@@ -60,6 +68,7 @@ class EpisodeRecord:
         episode.started_from_initial_savestate = self.started_from_initial_savestate
         episode.score = self.score
         episode.curriculum_state = self.curriculum_state
+        episode.episode_start_state = self.episode_start_state
         episode.curriculum_succeeded = self.curriculum_succeeded
         episode.curriculum_mastered = self.curriculum_mastered
         return episode

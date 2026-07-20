@@ -9,7 +9,7 @@ def test_curriculum_masters_states_in_order_even_with_deeper_checkpoints(tmp_pat
     curriculum.save_checkpoint("Finish", b"finish")
 
     assert curriculum.active_state() == "Start"
-    for _ in range(7):
+    for _ in range(63):
         assert curriculum.record_success("Start", 4) is False
     assert curriculum.record_success("Start", 4) is True
     assert curriculum.active_state() == "Middle"
@@ -18,7 +18,7 @@ def test_curriculum_masters_states_in_order_even_with_deeper_checkpoints(tmp_pat
 
 def test_mastered_state_is_never_selected_again_when_checkpoint_is_missing(tmp_path: Path):
     curriculum = ReverseCurriculum(tmp_path, ("Start", "Middle"))
-    for _ in range(8):
+    for _ in range(64):
         curriculum.record_success("Start", 4)
 
     assert curriculum.active_state() == "Middle"
@@ -29,7 +29,7 @@ def test_bad_checkpoint_recovers_from_nearest_mastered_checkpoint(tmp_path: Path
     curriculum = ReverseCurriculum(tmp_path, ("Start", "Middle", "Finish"))
     curriculum.save_checkpoint("Middle", b"middle")
     for state_name in ("Start", "Middle"):
-        for _ in range(8):
+        for _ in range(64):
             curriculum.record_success(state_name, 4)
     curriculum.save_checkpoint("Finish", b"bad-finish")
 
@@ -45,7 +45,7 @@ def test_mastered_checkpoint_is_not_used_when_target_checkpoint_is_healthy(tmp_p
     curriculum.save_checkpoint("Middle", b"middle")
     curriculum.save_checkpoint("Finish", b"finish")
     for state_name in ("Start", "Middle"):
-        for _ in range(8):
+        for _ in range(64):
             curriculum.record_success(state_name, 4)
 
     assert curriculum.active_state() == "Finish"
@@ -67,7 +67,7 @@ def test_curriculum_counts_wins_across_failures(tmp_path: Path):
 def test_initial_state_only_completes_after_success_threshold(tmp_path: Path):
     curriculum = ReverseCurriculum(tmp_path, ("Start", "Finish"))
 
-    for _ in range(7):
+    for _ in range(63):
         assert curriculum.record_success("Start", 1) is False
     assert curriculum.record_success("Start", 1) is True
     assert curriculum.progress()["Start"]["mastered"] is True
@@ -78,7 +78,7 @@ def test_bad_checkpoint_is_deleted_after_persistent_score_stagnation(tmp_path: P
     curriculum.save_checkpoint("Finish", b"unrecoverable")
 
     assert curriculum.record_failure("Finish", 100, 10.0) is False
-    for _ in range(31):
+    for _ in range(127):
         assert curriculum.record_failure("Finish", 100, 10.0) is False
     assert curriculum.record_failure("Finish", 100, 10.0) is True
     assert curriculum.active_state() == "Start"
@@ -89,7 +89,7 @@ def test_bad_checkpoint_is_deleted_after_persistent_score_stagnation(tmp_path: P
 def test_completed_curriculum_has_no_active_checkpoint_stage(tmp_path: Path):
     curriculum = ReverseCurriculum(tmp_path, ("Start", "Finish"))
     for state_name in ("Start", "Finish"):
-        for _ in range(8):
+        for _ in range(64):
             curriculum.record_success(state_name, 4)
 
     assert curriculum.is_complete() is True
@@ -113,8 +113,8 @@ def test_score_improvement_resets_stagnation_evidence(tmp_path: Path):
 def test_bad_checkpoint_evidence_target_allows_extended_stagnation(tmp_path: Path):
     curriculum = ReverseCurriculum(tmp_path, ("Start", "Finish"))
 
-    assert curriculum.bad_checkpoint_evidence_target("Finish") == 32
-    assert curriculum.progress()["Finish"]["bad_checkpoint_evidence_target"] == 32
+    assert curriculum.bad_checkpoint_evidence_target("Finish") == 128
+    assert curriculum.progress()["Finish"]["bad_checkpoint_evidence_target"] == 128
 
 
 def test_declining_scores_accumulate_evidence_twice_as_fast(tmp_path: Path):
@@ -135,11 +135,11 @@ def test_bad_checkpoint_detector_never_deletes_initial_state(tmp_path: Path):
     assert curriculum.stagnation_evidence("Start") == 0
 
 
-def test_success_target_is_always_eight(tmp_path: Path):
+def test_success_target_is_always_sixty_four(tmp_path: Path):
     curriculum = ReverseCurriculum(tmp_path, ("Start", "Finish"))
 
-    assert curriculum.win_target("Finish") == 8
+    assert curriculum.win_target("Finish") == 64
     curriculum.record_success("Finish", 256)
-    assert curriculum.win_target("Finish") == 8
+    assert curriculum.win_target("Finish") == 64
     assert curriculum.progress()["Finish"]["wins"] == 1
-    assert curriculum.progress()["Finish"]["win_target"] == 8
+    assert curriculum.progress()["Finish"]["win_target"] == 64

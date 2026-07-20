@@ -58,6 +58,7 @@ def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[P
                 "game": runtime.game,
                 "savestate": runtime.savestate,
                 "curriculum": curriculum,
+                "episode_start_state": episode.episode_start_state,
                 "rollout": rollout,
                 "score": episode.score,
                 "steps": episode.step_count,

@@ -162,6 +162,16 @@ class UploadEpisodeCallback(BaseCallback):
 
     def _on_rollout_end(self):
         if self.completed_episodes:
+            checkpoint_wins = [
+                episode
+                for episode in self.completed_episodes
+                if episode.won and episode.started_from_initial_savestate is not True
+            ]
+            if checkpoint_wins:
+                logger.info(
+                    f"Not uploading {len(checkpoint_wins)} curriculum-checkpoint win(s); "
+                    "the upload API only accepts complete runs from the configured savestate."
+                )
             self.successful_episodes.extend(
                 episode.clone()
                 for episode in self.completed_episodes
@@ -217,15 +227,16 @@ class UploadEpisodeCallback(BaseCallback):
             self.episode_counts.append(0)
 
     def _finish_episode(self, env_index: int, episode: EpisodeRecord) -> None:
-        runtime = get_runtime()
-        filename = f"{runtime.game}-{runtime.savestate}-{episode.episode_index:06d}.bk2"
-        episode.bk2_path = os.path.join(
-            runtime.record_dir,
-            runtime.game,
-            runtime.savestate,
-            str(env_index),
-            filename,
-        )
+        if not episode.bk2_path:
+            runtime = get_runtime()
+            filename = f"{runtime.game}-{runtime.savestate}-{episode.episode_index:06d}.bk2"
+            episode.bk2_path = os.path.join(
+                runtime.record_dir,
+                runtime.game,
+                runtime.savestate,
+                str(env_index),
+                filename,
+            )
 
         self.completed_episodes.append(episode.clone())
 

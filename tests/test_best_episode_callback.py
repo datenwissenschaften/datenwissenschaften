@@ -44,3 +44,17 @@ def test_failed_immediate_recording_is_retried_at_rollout_end(monkeypatch):
 
     assert [rollout for _, rollout in calls] == [1, 1]
     assert callback.episodes == []
+
+
+def test_finish_episode_preserves_environment_reported_movie_path(monkeypatch):
+    callback = BestEpisodeCallback()
+    callback._ensure_episode_slots(1)
+    episode = EpisodeRecord(0, 0)
+    episode.bk2_path = "actual-0042.bk2"
+    inferred = []
+    monkeypatch.setattr(callback, "_bk2_path", lambda *args: inferred.append(args) or "wrong.bk2")
+
+    callback._finish_episode(0, episode)
+
+    assert callback.episodes[0].bk2_path == "actual-0042.bk2"
+    assert inferred == []

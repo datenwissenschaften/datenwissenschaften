@@ -101,15 +101,7 @@ onMounted(() => {
 onBeforeUnmount(() => { window.clearInterval(timer); window.clearInterval(mediaTimer) })
 
 const summary = computed(() => snapshot.value.summary || {})
-const stateSummaries = computed(() => summary.value.by_state || {})
 const savestateSummaries = computed(() => summary.value.by_savestate || {})
-const stateTraining = computed(() => snapshot.value.metadata?.state_training || {})
-const savestateCurriculum = computed(() => snapshot.value.metadata?.savestate_curriculum || {})
-const configuredStates = computed(() => Object.keys(stateTraining.value))
-const curriculumStates = computed(() => Object.keys(savestateCurriculum.value))
-const states = computed(() => curriculumStates.value.length
-  ? curriculumStates.value
-  : configuredStates.value.length ? configuredStates.value : Object.keys(stateSummaries.value))
 const availableSavestates = computed(() => [...new Set([
   ...(run.value.savestates || []),
   ...Object.keys(savestateSummaries.value),
@@ -118,45 +110,20 @@ const activeSummary = computed(() => selectedSavestate.value
   ? savestateSummaries.value[selectedSavestate.value] || {}
   : summary.value)
 const activeSavestateLabel = computed(() => selectedSavestate.value || 'All savestates')
-const visibleRolloutVideos = computed(() => rolloutVideos.value.filter(video =>
-  !video.savestate || !selectedSavestate.value || video.savestate === selectedSavestate.value))
-const latestVideoByState = computed(() => {
-  const videos = new Map()
-  for (const video of visibleRolloutVideos.value) {
-    if (!videos.has(video.curriculum)) videos.set(video.curriculum, video)
-  }
-  return videos
-})
-const normalizedCurriculum = state => {
-  const curriculum = savestateCurriculum.value[state] || {}
-  return {
-    ...curriculum,
-    has_checkpoint: Boolean(curriculum.has_checkpoint),
-    wins: Number(curriculum.wins ?? curriculum.consecutive_successes ?? 0),
-    win_target: Number(curriculum.win_target ?? curriculum.success_threshold ?? 8),
-    typical_episode_steps: Number(curriculum.typical_episode_steps ?? 1),
-    bad_checkpoint_evidence: Number(curriculum.bad_checkpoint_evidence ?? 0),
-    bad_checkpoint_evidence_target: Number(curriculum.bad_checkpoint_evidence_target ?? curriculum.failure_threshold ?? 32),
-    mastered: Boolean(curriculum.mastered),
-    active: Boolean(curriculum.active),
-  }
-}
-const stateRows = computed(() => states.value.map(state => ({
-  state,
-  ...(stateTraining.value[state] || {}),
-  curriculum: normalizedCurriculum(state),
-  video: latestVideoByState.value.get(state),
-})))
-const summarizedEpisodes = computed(() => Number(activeSummary.value.episodes) || 0)
-const best = computed(() => activeSummary.value.best_fitness ?? null)
-const wins = computed(() => Number(activeSummary.value.wins) || 0)
+const initialSavestate = computed(() => selectedSavestate.value || run.value.savestate || '')
+const latestFullRunVideo = computed(() => rolloutVideos.value.find(video =>
+  video.episode_start_state === initialSavestate.value
+  && (!selectedSavestate.value || !video.savestate || video.savestate === selectedSavestate.value)))
+const summarizedEpisodes = computed(() => Number(activeSummary.value.full_run_episodes) || 0)
+const best = computed(() => activeSummary.value.full_run_best_fitness ?? null)
+const wins = computed(() => Number(activeSummary.value.full_run_wins) || 0)
 const winRate = computed(() => summarizedEpisodes.value ? wins.value / summarizedEpisodes.value * 100 : 0)
 const summarizedAvgDuration = computed(() => {
-  const timed = Number(activeSummary.value.timed_episodes) || 0
-  return timed ? Number(activeSummary.value.duration_seconds_total) / timed : null
+  const timed = Number(activeSummary.value.full_run_timed_episodes) || 0
+  return timed ? Number(activeSummary.value.full_run_duration_seconds_total) / timed : null
 })
 const latestTrainingState = computed(() => activeSummary.value.latest_training_state || summary.value.latest_training_state)
-const latestDuration = computed(() => activeSummary.value.latest_duration_seconds ?? null)
+const latestDuration = computed(() => activeSummary.value.latest_full_run_duration_seconds ?? null)
 const model = computed(() => snapshot.value.metadata?.model || {})
 const ppo = computed(() => model.value.ppo || {})
 const rnd = computed(() => model.value.rnd || {})
@@ -241,45 +208,24 @@ const label = key => key.replaceAll('_', ' ')
     </section>
 
     <section class="kpis">
-      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>{{ activeSavestateLabel }} episode history</small></article>
+      <article class="panel metric"><p>Best fitness</p><strong class="mint">{{ fmt(best, 2) }}</strong><small>Runs from {{ activeSavestateLabel }}</small></article>
       <article class="panel metric"><p>Win rate</p><strong>{{ fmt(winRate, 1) }}<em>%</em></strong><small>{{ wins }} successful / {{ summarizedEpisodes }} episodes</small></article>
       <article class="panel metric"><p>Avg training time</p><strong>{{ duration(summarizedAvgDuration) }}</strong><small>{{ duration(latestDuration) }} latest episode</small></article>
-      <article class="panel metric"><p>Episodes</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>{{ activeSavestateLabel }} observed</small></article>
+      <article class="panel metric"><p>Full runs</p><strong>{{ fmt(summarizedEpisodes) }}</strong><small>Started from {{ activeSavestateLabel }}</small></article>
     </section>
 
-    <section class="observatory-section">
+    <section v-if="latestFullRunVideo" class="observatory-section">
       <div class="section-heading">
-        <div><p class="eyebrow">STATE CURRICULUM</p><h2>Training state models</h2><p>One learned policy per game state, ordered by the generated workflow.</p></div>
-        <span>{{ stateRows.length }} models</span>
+        <div><p class="eyebrow">INITIAL SAVESTATE</p><h2>Latest full-run rollout</h2><p>A run recorded from {{ activeSavestateLabel }}, without an automatic checkpoint.</p></div>
+        <span>Rollout {{ fmt(latestFullRunVideo.rollout) }}</span>
       </div>
-      <div class="details-grid state-model-grid">
-      <article v-for="(row, index) in stateRows" :key="row.state" class="panel detail-card state-model-card">
-        <div class="card-heading">
-          <div class="state-title"><span class="state-index">{{ index + 1 }}</span><div><p class="eyebrow">LEARNED STATE POLICY</p><h2>{{ row.state }}</h2></div></div>
-          <span class="chip" :class="{ muted: !row.active_environments }">{{ row.active_environments ? `${row.active_environments} active` : 'Waiting' }}</span>
+      <article class="panel full-run-video">
+        <div class="state-video-heading">
+          <strong>Score {{ fmt(latestFullRunVideo.score, 2) }}</strong>
+          <span>{{ latestFullRunVideo.won ? 'Won' : 'Not completed' }}</span>
         </div>
-        <dl>
-          <dt>Collected training steps</dt><dd>{{ fmt(row.collected_steps) }}</dd>
-          <dt>Rollout buffer</dt><dd>{{ fmt(row.rollout_steps) }} / {{ fmt(row.rollout_capacity) }}</dd>
-          <dt>Model updates</dt><dd>{{ fmt(row.model_updates) }}</dd>
-          <dt>Completed segments</dt><dd>{{ fmt(row.completed_segments) }}</dd>
-          <dt>Best state fitness</dt><dd>{{ fmt(row.best_fitness, 2) }}</dd>
-          <dt>Curriculum checkpoint</dt><dd>{{ row.curriculum.has_checkpoint ? 'Saved' : '—' }}</dd>
-          <dt>Times beaten</dt><dd>{{ fmt(row.curriculum.wins) }} / {{ fmt(row.curriculum.win_target) }}</dd>
-          <dt>Typical attempt</dt><dd>{{ fmt(row.curriculum.typical_episode_steps) }} steps</dd>
-          <dt>Score-stagnation evidence</dt><dd>{{ fmt(row.curriculum.bad_checkpoint_evidence) }} / {{ fmt(row.curriculum.bad_checkpoint_evidence_target) }}</dd>
-          <dt>Curriculum status</dt><dd>{{ row.curriculum.mastered ? 'Mastered' : row.curriculum.active ? 'Training now' : 'Waiting' }}</dd>
-        </dl>
-        <div v-if="row.video" class="state-video">
-          <div class="state-video-heading">
-            <div><p class="eyebrow">ROLLOUT BEST EPISODE</p><strong>Score {{ fmt(row.video.score, 2) }}</strong></div>
-            <span>Rollout {{ fmt(row.video.rollout) }} · {{ row.video.curriculum_succeeded ? 'Stage completed' : row.video.won ? 'Won' : 'Not completed' }}</span>
-          </div>
-          <video controls preload="metadata" :src="`/api/rollout-video?path=${encodeURIComponent(row.video.path)}`"></video>
-        </div>
-        <div v-else class="state-video-empty">A playable best-score video appears after this curriculum completes an episode in a rollout.</div>
+        <video controls preload="metadata" :src="`/api/rollout-video?path=${encodeURIComponent(latestFullRunVideo.path)}`"></video>
       </article>
-      </div>
     </section>
 
     <section class="observatory-section">
@@ -333,7 +279,7 @@ const label = key => key.replaceAll('_', ' ')
       <p v-else class="placeholder">No generated runner files were found.</p>
     </section>
 
-    <footer>Local telemetry · refreshes every 1.5 seconds · {{ summarizedEpisodes }} complete episodes for {{ activeSavestateLabel }}</footer>
+    <footer>Local telemetry · refreshes every 1.5 seconds · {{ summarizedEpisodes }} full runs from {{ activeSavestateLabel }}</footer>
 
     <div v-if="showResetDialog" class="modal-backdrop" @click.self="showResetDialog = false">
       <section class="reset-dialog panel" role="dialog" aria-modal="true" aria-labelledby="reset-title">

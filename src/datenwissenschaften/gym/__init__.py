@@ -64,6 +64,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.last_observation: np.ndarray | None = None
         self._started_from_initial_savestate = True
         self._episode_start_state = self.initial_savestate or self.start_state_cls.__name__
+        self._episode_bk2_path: str | None = None
         self._state_return = 0.0
         self._state_steps = 0
         self._curriculum_start_state = self.start_state_cls.__name__
@@ -95,6 +96,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
     def reset(self, **kwargs):
         frame, _ = self.env.reset(**kwargs)
+        self._episode_bk2_path = self._active_movie_path()
 
         active_state = self.curriculum.active_state()
         episode_start_state = self.curriculum.episode_start_state()
@@ -211,6 +213,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "state_segment_end": state_segment_end,
                 "ram": ram.to_dict(),
                 "started_from_initial_savestate": self._started_from_initial_savestate,
+                "episode_start_state": self._episode_start_state,
+                "episode_bk2_path": self._episode_bk2_path,
                 "curriculum_state": self._curriculum_start_state,
                 "curriculum_succeeded": curriculum_succeeded,
                 "curriculum_mastered": curriculum_mastered,
@@ -336,6 +340,18 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         emulator.data.reset()
         emulator.data.update_ram()
         return emulator.get_screen(apply_rotation=True)
+
+    def _active_movie_path(self) -> str | None:
+        """Return the exact BK2 opened by Stable Retro during the latest reset."""
+        emulator = self.env.unwrapped
+        movie_path = getattr(emulator, "movie_path", None)
+        movie_id = getattr(emulator, "movie_id", None)
+        game = getattr(emulator, "gamename", None)
+        state = getattr(emulator, "statename", None)
+        if not movie_path or not game or not state or not isinstance(movie_id, int) or movie_id < 1:
+            return None
+        state_name = Path(str(state)).stem
+        return str(Path(movie_path) / f"{game}-{state_name}-{movie_id - 1:06d}.bk2")
 
     def _publish_curriculum_progress(self) -> None:
         publish_metadata("savestate_curriculum", self.curriculum.progress(), replace=True)
