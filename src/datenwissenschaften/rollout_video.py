@@ -75,6 +75,8 @@ def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[P
                 "savestate": runtime.savestate,
                 "curriculum": curriculum,
                 "episode_start_state": episode.episode_start_state,
+                "started_from_initial_savestate": episode.started_from_initial_savestate is True,
+                "full_run": episode.started_from_initial_savestate is True,
                 "environment": episode.env_index,
                 "episode": episode.episode_index,
                 "recording": source.name,

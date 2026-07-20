@@ -133,8 +133,15 @@ const activeSummary = computed(() => selectedSavestate.value
   : summary.value)
 const activeSavestateLabel = computed(() => selectedSavestate.value || 'All savestates')
 const initialSavestate = computed(() => selectedSavestate.value || run.value.savestate || '')
+const videosForSelectedSavestate = computed(() => rolloutVideos.value.filter(video =>
+  !selectedSavestate.value || !video.savestate || video.savestate === selectedSavestate.value))
+const latestCurriculumVideos = computed(() => curriculumRows.value.map(row => ({
+  ...row,
+  video: videosForSelectedSavestate.value.find(video => video.curriculum === row.state) || null,
+})))
 const latestFullRunVideo = computed(() => rolloutVideos.value.find(video =>
-  video.episode_start_state === initialSavestate.value
+  video.started_from_initial_savestate === true
+  && video.episode_start_state === initialSavestate.value
   && (!selectedSavestate.value || !video.savestate || video.savestate === selectedSavestate.value)))
 const summarizedEpisodes = computed(() => Number(activeSummary.value.full_run_episodes) || 0)
 const best = computed(() => activeSummary.value.full_run_best_fitness ?? null)
@@ -259,7 +266,27 @@ const label = key => key.replaceAll('_', ' ')
       </article>
     </section>
 
-    <section v-if="latestFullRunVideo" class="observatory-section">
+    <section v-if="curriculumRows.length && !curriculumComplete" class="observatory-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">SAVESTATE DEBUG VIDEOS</p><h2>Latest rollout from every training state</h2><p>Checkpoint rollouts remain visible while the state curriculum is being learned.</p></div>
+        <span>{{ latestCurriculumVideos.filter(row => row.video).length }} / {{ curriculumRows.length }} recorded</span>
+      </div>
+      <div class="state-video-grid">
+        <article v-for="row in latestCurriculumVideos" :key="row.state" class="panel state-video-card">
+          <div class="state-video-heading">
+            <div><p class="eyebrow">{{ row.mastered ? 'MASTERED' : row.active ? 'TRAINING NOW' : 'WAITING' }}</p><strong>{{ row.state }}</strong></div>
+            <span v-if="row.video">Rollout {{ fmt(row.video.rollout) }}</span>
+          </div>
+          <template v-if="row.video">
+            <video controls preload="metadata" :src="`/api/rollout-video?path=${encodeURIComponent(row.video.path)}`"></video>
+            <div class="state-video-meta"><span>Score {{ fmt(row.video.score, 2) }}</span><span>{{ row.video.curriculum_succeeded ? 'Beaten' : 'Not completed' }}</span></div>
+          </template>
+          <p v-else class="state-video-empty">No completed episode has been recorded from this state yet.</p>
+        </article>
+      </div>
+    </section>
+
+    <section v-if="curriculumComplete && latestFullRunVideo" class="observatory-section">
       <div class="section-heading">
         <div><p class="eyebrow">INITIAL SAVESTATE</p><h2>Latest full-run rollout</h2><p>A run recorded from {{ activeSavestateLabel }}, without an automatic checkpoint.</p></div>
         <span>Rollout {{ fmt(latestFullRunVideo.rollout) }}</span>

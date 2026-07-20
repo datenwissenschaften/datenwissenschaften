@@ -69,6 +69,36 @@ def test_records_highest_scoring_episode_per_curriculum(monkeypatch, tmp_path: P
     assert metadata["score"] == 9.0
     assert metadata["environment"] == 0
     assert metadata["recording"] == "high.bk2"
+    assert metadata["started_from_initial_savestate"] is False
+    assert metadata["full_run"] is False
+
+
+def test_metadata_explicitly_identifies_full_runs(monkeypatch, tmp_path: Path):
+    worker_dir = tmp_path / "Game" / "Level1" / "0"
+    worker_dir.mkdir(parents=True)
+    source = worker_dir / "full-run.bk2"
+    source.write_bytes(b"movie")
+    runtime = SimpleNamespace(
+        record_dir=tmp_path,
+        savestate="Level1",
+        game="Game",
+        paths=SimpleNamespace(roms_path=tmp_path / "roms"),
+    )
+    monkeypatch.setattr(rollout_video, "get_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        rollout_video.subprocess,
+        "run",
+        lambda command, **_kwargs: Path(command[-1]).with_suffix(".mp4").write_bytes(b"video"),
+    )
+    episode = _episode(source, "Explore", 4.0)
+    episode.episode_start_state = "Level1"
+    episode.started_from_initial_savestate = True
+
+    rollout_video.record_rollout_videos([episode], rollout=2)
+
+    metadata = json.loads(source.with_suffix(".rollout.json").read_text())
+    assert metadata["started_from_initial_savestate"] is True
+    assert metadata["full_run"] is True
 
 
 def test_stage_completing_episode_is_preferred_over_higher_failed_score(monkeypatch, tmp_path: Path):
