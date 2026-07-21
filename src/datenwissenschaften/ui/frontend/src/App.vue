@@ -135,14 +135,16 @@ const activeSavestateLabel = computed(() => selectedSavestate.value || 'All save
 const initialSavestate = computed(() => selectedSavestate.value || run.value.savestate || '')
 const videosForSelectedSavestate = computed(() => rolloutVideos.value.filter(video =>
   !selectedSavestate.value || !video.savestate || video.savestate === selectedSavestate.value))
-const latestCurriculumVideos = computed(() => curriculumRows.value.map(row => ({
+const bestVideo = videos => videos.reduce((best, candidate) =>
+  best == null || Number(candidate.score) > Number(best.score) ? candidate : best, null)
+const bestCurriculumVideos = computed(() => curriculumRows.value.map(row => ({
   ...row,
-  video: videosForSelectedSavestate.value.find(video => video.curriculum === row.state) || null,
+  video: bestVideo(videosForSelectedSavestate.value.filter(video => video.curriculum === row.state)),
 })))
-const latestFullRunVideo = computed(() => rolloutVideos.value.find(video =>
+const bestFullRunVideo = computed(() => bestVideo(rolloutVideos.value.filter(video =>
   video.started_from_initial_savestate === true
   && video.episode_start_state === initialSavestate.value
-  && (!selectedSavestate.value || !video.savestate || video.savestate === selectedSavestate.value)))
+  && (!selectedSavestate.value || !video.savestate || video.savestate === selectedSavestate.value))))
 const summarizedEpisodes = computed(() => Number(activeSummary.value.full_run_episodes) || 0)
 const best = computed(() => activeSummary.value.full_run_best_fitness ?? null)
 const wins = computed(() => Number(activeSummary.value.full_run_wins) || 0)
@@ -268,11 +270,11 @@ const label = key => key.replaceAll('_', ' ')
 
     <section v-if="curriculumRows.length && !curriculumComplete" class="observatory-section">
       <div class="section-heading">
-        <div><p class="eyebrow">SAVESTATE DEBUG VIDEOS</p><h2>Latest rollout from every training state</h2><p>Checkpoint rollouts remain visible while the state curriculum is being learned.</p></div>
-        <span>{{ latestCurriculumVideos.filter(row => row.video).length }} / {{ curriculumRows.length }} recorded</span>
+        <div><p class="eyebrow">SAVESTATE DEBUG VIDEOS</p><h2>Best rollout from every training state</h2><p>Only the highest-fitness checkpoint rollout remains selected while the state curriculum is being learned.</p></div>
+        <span>{{ bestCurriculumVideos.filter(row => row.video).length }} / {{ curriculumRows.length }} recorded</span>
       </div>
       <div class="state-video-grid">
-        <article v-for="row in latestCurriculumVideos" :key="row.state" class="panel state-video-card">
+        <article v-for="row in bestCurriculumVideos" :key="row.state" class="panel state-video-card">
           <div class="state-video-heading">
             <div><p class="eyebrow">{{ row.mastered ? 'MASTERED' : row.active ? 'TRAINING NOW' : 'WAITING' }}</p><strong>{{ row.state }}</strong></div>
             <span v-if="row.video">Rollout {{ fmt(row.video.rollout) }}</span>
@@ -286,17 +288,17 @@ const label = key => key.replaceAll('_', ' ')
       </div>
     </section>
 
-    <section v-if="curriculumComplete && latestFullRunVideo" class="observatory-section">
+    <section v-if="curriculumComplete && bestFullRunVideo" class="observatory-section">
       <div class="section-heading">
-        <div><p class="eyebrow">INITIAL SAVESTATE</p><h2>Latest full-run rollout</h2><p>A run recorded from {{ activeSavestateLabel }}, without an automatic checkpoint.</p></div>
-        <span>Rollout {{ fmt(latestFullRunVideo.rollout) }}</span>
+        <div><p class="eyebrow">INITIAL SAVESTATE</p><h2>Best full-run rollout</h2><p>The highest-fitness run recorded from {{ activeSavestateLabel }}, without an automatic checkpoint.</p></div>
+        <span>Rollout {{ fmt(bestFullRunVideo.rollout) }}</span>
       </div>
       <article class="panel full-run-video">
         <div class="state-video-heading">
-          <strong>Score {{ fmt(latestFullRunVideo.score, 2) }}</strong>
-          <span>{{ latestFullRunVideo.won ? 'Won' : 'Not completed' }}</span>
+          <strong>Score {{ fmt(bestFullRunVideo.score, 2) }}</strong>
+          <span>{{ bestFullRunVideo.won ? 'Won' : 'Not completed' }}</span>
         </div>
-        <video controls preload="metadata" :src="`/api/rollout-video?path=${encodeURIComponent(latestFullRunVideo.path)}`"></video>
+        <video controls preload="metadata" :src="`/api/rollout-video?path=${encodeURIComponent(bestFullRunVideo.path)}`"></video>
       </article>
     </section>
 

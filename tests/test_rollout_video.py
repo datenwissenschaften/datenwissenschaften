@@ -101,7 +101,7 @@ def test_metadata_explicitly_identifies_full_runs(monkeypatch, tmp_path: Path):
     assert metadata["full_run"] is True
 
 
-def test_stage_completing_episode_is_preferred_over_higher_failed_score(monkeypatch, tmp_path: Path):
+def test_higher_fitness_is_preferred_over_lower_successful_episode(monkeypatch, tmp_path: Path):
     worker_dir = tmp_path / "Game" / "Level1" / "0"
     worker_dir.mkdir(parents=True)
     failed_path = worker_dir / "failed.bk2"
@@ -129,9 +129,44 @@ def test_stage_completing_episode_is_preferred_over_higher_failed_score(monkeypa
         rollout=4,
     )
 
-    assert videos == [completed_path.with_suffix(".mp4")]
-    metadata = json.loads(completed_path.with_suffix(".rollout.json").read_text())
-    assert metadata["curriculum_succeeded"] is True
+    assert videos == [failed_path.with_suffix(".mp4")]
+    metadata = json.loads(failed_path.with_suffix(".rollout.json").read_text())
+    assert metadata["score"] == 10_000.0
+
+
+def test_only_strictly_higher_fitness_generates_another_video(monkeypatch, tmp_path: Path):
+    worker_dir = tmp_path / "Game" / "Level1" / "0"
+    worker_dir.mkdir(parents=True)
+    first = worker_dir / "first.bk2"
+    lower = worker_dir / "lower.bk2"
+    equal = worker_dir / "equal.bk2"
+    higher = worker_dir / "higher.bk2"
+    for path in (first, lower, equal, higher):
+        path.write_bytes(b"movie")
+    runtime = SimpleNamespace(
+        record_dir=tmp_path,
+        savestate="Level1",
+        game="Game",
+        paths=SimpleNamespace(roms_path=tmp_path / "roms"),
+    )
+    monkeypatch.setattr(rollout_video, "get_runtime", lambda: runtime)
+    rendered = []
+
+    def render(command, **_kwargs):
+        source = Path(command[-1])
+        rendered.append(source.name)
+        source.with_suffix(".mp4").write_bytes(b"video")
+
+    monkeypatch.setattr(rollout_video.subprocess, "run", render)
+
+    assert rollout_video.record_rollout_videos([_episode(first, "Explore", 10.0)], rollout=1)
+    assert rollout_video.record_rollout_videos([_episode(lower, "Explore", 9.0)], rollout=2) == []
+    assert rollout_video.record_rollout_videos([_episode(equal, "Explore", 10.0)], rollout=3) == []
+    assert rollout_video.record_rollout_videos([_episode(higher, "Explore", 11.0)], rollout=4)
+
+    assert rendered == ["first.bk2", "higher.bk2"]
+    assert not lower.with_suffix(".mp4").exists()
+    assert not equal.with_suffix(".mp4").exists()
 
 
 def test_playback_imports_configured_roms_first(monkeypatch):

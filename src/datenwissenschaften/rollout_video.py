@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -16,21 +17,31 @@ if TYPE_CHECKING:
 
 
 def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[Path]:
-    """Render the highest-scoring completed episode for each curriculum in a rollout."""
+    """Render only a new all-time best fitness for each curriculum."""
     best_by_curriculum: dict[str, EpisodeRecord] = {}
     runtime = get_runtime()
     for episode in episodes:
         curriculum = episode.curriculum_state or runtime.savestate or "default"
         incumbent = best_by_curriculum.get(curriculum)
-        candidate_rank = (episode.curriculum_succeeded, episode.score, -episode.step_count)
-        incumbent_rank = (
-            (incumbent.curriculum_succeeded, incumbent.score, -incumbent.step_count) if incumbent is not None else None
-        )
+        candidate_rank = (episode.score, -episode.step_count)
+        incumbent_rank = (incumbent.score, -incumbent.step_count) if incumbent is not None else None
         if incumbent_rank is None or candidate_rank > incumbent_rank:
             best_by_curriculum[curriculum] = episode
 
     videos = []
     for curriculum, episode in best_by_curriculum.items():
+        previous_best = _best_recorded_score(
+            runtime.record_dir,
+            game=runtime.game,
+            savestate=runtime.savestate,
+            curriculum=curriculum,
+        )
+        if previous_best is not None and episode.score <= previous_best:
+            logger.debug(
+                f"Skipping rollout {rollout} video for {curriculum}: "
+                f"score={episode.score:g} does not beat best={previous_best:g}"
+            )
+            continue
         source = _resolve_recording(
             episode.bk2_path,
             runtime.record_dir,
@@ -106,6 +117,31 @@ def record_rollout_videos(episodes: list[EpisodeRecord], rollout: int) -> list[P
             )
             logger.warning(f"Could not render rollout video from {source.name}: {details}")
     return videos
+
+
+def _best_recorded_score(
+    record_root: Path,
+    *,
+    game: str,
+    savestate: str,
+    curriculum: str,
+) -> float | None:
+    """Read the persistent video high-water mark for one curriculum."""
+    root = Path(record_root) / game / savestate
+    best: float | None = None
+    for metadata_path in root.glob("**/*.rollout.json"):
+        video_path = metadata_path.with_name(metadata_path.name.removesuffix(".rollout.json") + ".mp4")
+        if not video_path.is_file():
+            continue
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            score = float(metadata["score"])
+        except (json.JSONDecodeError, KeyError, OSError, TypeError, ValueError):
+            continue
+        if metadata.get("curriculum") != curriculum or not math.isfinite(score):
+            continue
+        best = score if best is None else max(best, score)
+    return best
 
 
 def _resolve_recording(
