@@ -5,7 +5,11 @@ import numpy as np
 import pytest
 import torch
 from datenwissenschaften import state_trainer
-from datenwissenschaften.state_trainer import SavestateScheduler, StateTrainer
+from datenwissenschaften.state_trainer import (
+    SavestateScheduler,
+    StateTrainer,
+    _has_won_initial_savestate_episode,
+)
 
 
 class Clock:
@@ -16,11 +20,33 @@ class Clock:
         return self.now
 
 
-def test_savestate_scheduler_does_not_rotate_after_win():
+def test_savestate_scheduler_rotates_after_win():
     clock = Clock()
     scheduler = SavestateScheduler(("Level1", "Level2"), clock=clock)
 
-    assert scheduler.rotation_reason(won=True) is None
+    assert scheduler.rotation_reason(won=True) == "completed run"
+    assert scheduler.rotate() == "Level2"
+
+
+def test_initial_savestate_win_requests_rotation_before_curriculum_is_complete():
+    assert (
+        _has_won_initial_savestate_episode(
+            [
+                {"won": False, "started_from_initial_savestate": True},
+                {
+                    "won": True,
+                    "started_from_initial_savestate": True,
+                    "curriculum_complete": False,
+                },
+            ]
+        )
+        is True
+    )
+
+
+def test_checkpoint_win_does_not_request_savestate_rotation():
+    assert _has_won_initial_savestate_episode([{"won": True, "started_from_initial_savestate": False}]) is False
+    assert _has_won_initial_savestate_episode([{"won": True}]) is False
 
 
 def test_savestate_scheduler_rotates_once_after_local_midnight():
@@ -33,7 +59,7 @@ def test_savestate_scheduler_rotates_once_after_local_midnight():
     assert scheduler.rotation_reason(won=False) == "local midnight"
     assert scheduler.rotate() == "Level2"
     clock.now = datetime(2026, 7, 18, 12, 0)
-    assert scheduler.rotation_reason(won=True) is None
+    assert scheduler.rotation_reason(won=False) is None
 
 
 def test_savestate_scheduler_does_not_rotate_single_savestate():

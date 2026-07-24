@@ -149,9 +149,7 @@ class StateTrainer:
                 enabled_states,
             )
 
-            rotation_reason = savestate_scheduler.rotation_reason(
-                won=any(bool(info.get("won")) and bool(info.get("curriculum_complete")) for info in infos),
-            )
+            rotation_reason = savestate_scheduler.rotation_reason(won=_has_won_initial_savestate_episode(infos))
 
             for state_name in state_names:
                 if state_name in enabled_states:
@@ -238,7 +236,9 @@ class StateTrainer:
                 "training_state": "state-routed",
                 "savestate": savestate,
                 "savestates": list(config.training.savestates),
-                "savestate_rotation": "daily at local midnight",
+                "savestate_rotation": (
+                    "after a completed run from the initial savestate " "or daily at local midnight"
+                ),
                 "configured_envs": config.training.num_envs,
                 "state_models": list(models),
             },
@@ -360,7 +360,9 @@ class StateTrainer:
                 "training_state": "state-routed",
                 "savestate": config.training.active_savestate,
                 "savestates": list(config.training.savestates),
-                "savestate_rotation": "daily at local midnight",
+                "savestate_rotation": (
+                    "after a completed run from the initial savestate " "or daily at local midnight"
+                ),
                 "configured_envs": config.training.num_envs,
                 "state_models": list(models),
             },
@@ -398,6 +400,8 @@ class SavestateScheduler:
     def rotation_reason(self, *, won: bool) -> str | None:
         if len(self.savestates) < 2:
             return None
+        if won:
+            return "completed run"
         if self.clock().date() > self.rotation_day:
             return "local midnight"
         return None
@@ -408,3 +412,7 @@ class SavestateScheduler:
         self.index = (self.index + 1) % len(self.savestates)
         self.rotation_day = self.clock().date()
         return self.savestates[self.index]
+
+
+def _has_won_initial_savestate_episode(infos: Sequence[dict[str, Any]]) -> bool:
+    return any(info.get("won") is True and info.get("started_from_initial_savestate") is True for info in infos)

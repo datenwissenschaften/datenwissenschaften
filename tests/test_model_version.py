@@ -92,6 +92,33 @@ def test_matching_version_keeps_existing_training_data(monkeypatch):
     assert FakeRedisStore.deleted == []
 
 
+def test_patch_version_change_keeps_existing_training_data_and_records_version(monkeypatch):
+    FakeRedisStore.values = {
+        ("datenwissenschaften", "engine-version", "Game"): "2.10.3",
+        ("datenwissenschaften", "database-fingerprint", "Game"): "fingerprint-a",
+    }
+    FakeRedisStore.deleted = []
+    monkeypatch.setattr(model, "RedisStore", FakeRedisStore)
+
+    changed = model.reset_for_training_change(
+        _config(),
+        SimpleNamespace(),
+        current_version="2.10.4",
+    )
+
+    assert changed is False
+    assert FakeRedisStore.deleted == []
+    assert FakeRedisStore.values[("datenwissenschaften", "engine-version", "Game")] == "2.10.4"
+
+
+def test_only_major_or_minor_version_changes_require_a_reset():
+    assert model._major_or_minor_version_changed("2.10.3", "2.10.4") is False
+    assert model._major_or_minor_version_changed("2.10.4", "2.11.0") is True
+    assert model._major_or_minor_version_changed("2.10.4", "3.0.0") is True
+    assert model._major_or_minor_version_changed(None, "2.10.4") is False
+    assert model._major_or_minor_version_changed("DEVELOPMENT", "2.10.4") is False
+
+
 def test_database_fingerprint_change_resets_on_the_same_engine_version(monkeypatch, tmp_path: Path):
     FakeRedisStore.values = {
         ("datenwissenschaften", "engine-version", "Game"): "2.10.0",

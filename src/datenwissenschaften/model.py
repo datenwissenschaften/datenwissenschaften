@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -18,6 +19,7 @@ from datenwissenschaften.settings import DEFAULT_CONFIG_PATH, RetroSpeedlabConfi
 from datenwissenschaften.ui.control import ModelResetRequest, perform_model_reset
 
 ModelLoader = Callable[..., TrainableModel]
+VERSION_PREFIX = re.compile(r"^v?(\d+)\.(\d+)(?:[.\-+]|$)")
 
 
 def datenwissenschaften_version() -> str:
@@ -34,20 +36,24 @@ def reset_for_training_change(
     config_path: str | Path = DEFAULT_CONFIG_PATH,
     current_version: str | None = None,
 ) -> bool:
-    """Clear incompatible data after an engine version or database fingerprint change."""
+    """Clear incompatible data after a major/minor engine or database change."""
     current_version = current_version or datenwissenschaften_version()
     game_identity = config.training.game_identity
     current_fingerprint = config.training.fingerprint
     state_store = RedisStore(config.ui.redis_url)
     previous_version = state_store.get("engine-version", game_identity)
     previous_fingerprint = state_store.get("database-fingerprint", game_identity)
-    if previous_version == current_version and previous_fingerprint == current_fingerprint:
+    version_requires_reset = _major_or_minor_version_changed(previous_version, current_version)
+    fingerprint_requires_reset = previous_fingerprint != current_fingerprint
+    if not version_requires_reset and not fingerprint_requires_reset:
+        if previous_version != current_version:
+            state_store.set("engine-version", game_identity, value=current_version)
         return False
 
     changes = []
-    if previous_version != current_version:
+    if version_requires_reset:
         changes.append(f"datenwissenschaften {previous_version or 'unrecorded'} -> {current_version}")
-    if previous_fingerprint != current_fingerprint:
+    if fingerprint_requires_reset:
         changes.append(
             f"database fingerprint {previous_fingerprint or 'unrecorded'} -> {current_fingerprint or 'unset'}"
         )
@@ -78,6 +84,16 @@ def reset_for_training_change(
     state_store.set("engine-version", game_identity, value=current_version)
     state_store.set("database-fingerprint", game_identity, value=current_fingerprint)
     return True
+
+
+def _major_or_minor_version_changed(previous_version: str | None, current_version: str) -> bool:
+    if previous_version is None or previous_version == current_version:
+        return False
+    previous = VERSION_PREFIX.match(previous_version)
+    current = VERSION_PREFIX.match(current_version)
+    if previous is None or current is None:
+        return False
+    return previous.groups() != current.groups()
 
 
 def model_parameters_are_finite(model: Any) -> bool:
