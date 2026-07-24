@@ -28,6 +28,25 @@ def test_savestate_scheduler_rotates_after_win():
     assert scheduler.rotate() == "Level2"
 
 
+def test_savestate_scheduler_restores_persisted_active_savestate():
+    scheduler = SavestateScheduler(
+        ("Level1", "Level2", "Level3"),
+        initial_savestate="Level2",
+    )
+
+    assert scheduler.current == "Level2"
+    assert scheduler.rotate() == "Level3"
+
+
+def test_savestate_scheduler_ignores_persisted_state_outside_current_config():
+    scheduler = SavestateScheduler(
+        ("Level2", "Level3"),
+        initial_savestate="Level1",
+    )
+
+    assert scheduler.current == "Level2"
+
+
 def test_initial_savestate_win_requests_rotation_before_curriculum_is_complete():
     assert (
         _has_won_initial_savestate_episode(
@@ -128,8 +147,12 @@ def test_publish_curriculum_progress_uses_environment_values(monkeypatch):
 
 def test_reset_for_restart_deletes_all_game_states(monkeypatch):
     deleted = []
+    deleted_values = []
     environment_calls = []
-    store = SimpleNamespace(delete_prefix=lambda *scope: deleted.append(scope))
+    store = SimpleNamespace(
+        delete_prefix=lambda *scope: deleted.append(scope),
+        delete=lambda *scope: deleted_values.append(scope),
+    )
     monkeypatch.setattr(state_trainer, "RedisStore", lambda redis_url: store)
     config = SimpleNamespace(
         ui=SimpleNamespace(redis_url="redis://example"),
@@ -140,6 +163,7 @@ def test_reset_for_restart_deletes_all_game_states(monkeypatch):
     StateTrainer._reset_for_restart(venv, config)
 
     assert deleted == [("state", "Game"), ("target-memory", "Game")]
+    assert deleted_values == [("active-savestate", "Game")]
     assert environment_calls == ["reset_training_memory"]
 
 

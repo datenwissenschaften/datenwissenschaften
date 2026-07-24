@@ -62,6 +62,7 @@ def reset_for_training_change(
     def reset_runtime_state() -> None:
         state_store.delete_prefix("state", game_identity)
         state_store.delete_prefix("target-memory", game_identity)
+        state_store.delete("active-savestate", game_identity)
         # The dashboard reset deletes this through its configured telemetry
         # store. During startup that store is not configured yet, so remove the
         # same persisted history explicitly.

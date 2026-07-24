@@ -88,18 +88,35 @@ class StateTrainer:
             )
             lifecycle_callbacks[state_name].on_training_start(locals(), globals())
 
-        observations = venv.reset()
-        savestate_scheduler = SavestateScheduler(
-            config.training.savestates,
+        configured_savestates = config.training.savestates or (
+            (config.training.active_savestate,) if config.training.active_savestate else ()
         )
+        savestate_store = RedisStore(config.ui.redis_url)
+        persisted_savestate = savestate_store.get(
+            "active-savestate",
+            config.training.game_identity,
+        )
+        savestate_scheduler = SavestateScheduler(
+            configured_savestates,
+            initial_savestate=persisted_savestate,
+        )
+        active_savestate = savestate_scheduler.current
+        if active_savestate:
+            savestate_store.set(
+                "active-savestate",
+                config.training.game_identity,
+                value=active_savestate,
+            )
+            venv.env_method("set_initial_savestate", active_savestate)
+        observations = venv.reset()
         rollouts = SegmentedRecurrentRollouts(models, venv.num_envs)
         updates = 0
         global_steps = 0
         segment_counts = dict.fromkeys(models, 0)
         update_counts = dict.fromkeys(models, 0)
         best_state_fitness: dict[str, float | None] = dict.fromkeys(models)
-        self._start_segmented_ui(venv, models, config)
-        episode_callbacks = self._start_episode_callbacks(models, config)
+        self._start_segmented_ui(venv, models, config, active_savestate)
+        episode_callbacks = self._start_episode_callbacks(models, config, active_savestate)
         self._publish_state_training(
             models,
             rollouts,
@@ -192,6 +209,11 @@ class StateTrainer:
             if rotation_reason is not None:
                 next_savestate = savestate_scheduler.rotate()
                 logger.info(f"Rotating savestate to {next_savestate} after {rotation_reason}.")
+                savestate_store.set(
+                    "active-savestate",
+                    config.training.game_identity,
+                    value=next_savestate,
+                )
                 get_runtime().set_savestate(next_savestate)
                 venv.env_method("set_initial_savestate", next_savestate)
                 observations = venv.reset()
@@ -199,7 +221,7 @@ class StateTrainer:
                     rollouts.reset_environment(env_index)
                 for callback in episode_callbacks:
                     callback.on_training_end()
-                episode_callbacks = self._start_episode_callbacks(models, config)
+                episode_callbacks = self._start_episode_callbacks(models, config, next_savestate)
                 self._publish_run_savestate(config, models, next_savestate)
                 self._publish_curriculum_progress(venv, config)
                 continue
@@ -313,11 +335,18 @@ class StateTrainer:
             replace=True,
         )
 
-    def _start_episode_callbacks(self, models: dict[str, TrainableModel], config: Any) -> list[BaseCallback]:
+    def _start_episode_callbacks(
+        self,
+        models: dict[str, TrainableModel],
+        config: Any,
+        savestate: str | None,
+    ) -> list[BaseCallback]:
         runtime_trainer = Trainer(
             config_path=self.config_path,
-            state_name=config.training.active_savestate or "episode",
+            state_name=savestate or "episode",
         )
+        if savestate:
+            runtime_trainer._set_savestate(savestate)
         runtime_trainer._configure_runtime()
         callbacks: list[BaseCallback] = [
             BestEpisodeCallback(),
@@ -331,7 +360,12 @@ class StateTrainer:
         return callbacks
 
     @staticmethod
-    def _start_segmented_ui(venv: Any, models: dict[str, TrainableModel], config: Any) -> None:
+    def _start_segmented_ui(
+        venv: Any,
+        models: dict[str, TrainableModel],
+        config: Any,
+        savestate: str | None,
+    ) -> None:
         if not config.ui.enabled:
             return
         configure_history(
@@ -358,7 +392,7 @@ class StateTrainer:
                 "game": config.training.game,
                 "game_identity": config.training.game_identity,
                 "training_state": "state-routed",
-                "savestate": config.training.active_savestate,
+                "savestate": savestate,
                 "savestates": list(config.training.savestates),
                 "savestate_rotation": (
                     "after a completed run from the initial savestate " "or daily at local midnight"
@@ -382,6 +416,7 @@ class StateTrainer:
         store = RedisStore(config.ui.redis_url)
         store.delete_prefix("state", config.training.game_identity)
         store.delete_prefix("target-memory", config.training.game_identity)
+        store.delete("active-savestate", config.training.game_identity)
         venv.env_method("reset_training_memory")
 
 
@@ -390,12 +425,17 @@ class SavestateScheduler:
         self,
         savestates: Sequence[str],
         *,
+        initial_savestate: str | None = None,
         clock=datetime.now,
     ) -> None:
         self.savestates = tuple(savestates)
         self.clock = clock
-        self.index = 0
+        self.index = self.savestates.index(initial_savestate) if initial_savestate in self.savestates else 0
         self.rotation_day = self.clock().date()
+
+    @property
+    def current(self) -> str | None:
+        return self.savestates[self.index] if self.savestates else None
 
     def rotation_reason(self, *, won: bool) -> str | None:
         if len(self.savestates) < 2:

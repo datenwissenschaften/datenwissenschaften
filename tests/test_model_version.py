@@ -67,6 +67,7 @@ def test_version_change_clears_artifacts_states_history_and_live_memory(monkeypa
     assert FakeRedisStore.deleted == [
         ("datenwissenschaften", "state", "Game", "*"),
         ("datenwissenschaften", "target-memory", "Game", "*"),
+        ("datenwissenschaften", "active-savestate", "Game"),
         ("datenwissenschaften:history", "Game"),
     ]
     assert environment_calls == ["reset_training_memory"]
