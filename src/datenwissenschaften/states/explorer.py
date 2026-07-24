@@ -17,8 +17,12 @@ class Explorer(TargetState[T], ABC):
     # absent frame makes short, failed episodes preferable to searching.
     target_missing_penalty = 0.0
     area_discovery_reward = 100.0
+    region_discovery_reward = 8.0
     position_discovery_reward = 1.0
+    region_grid_size = 32
     position_grid_size = 8
+    revisit_penalty_scale = 0.05
+    maximum_revisit_penalty = 1.0
     horizontal_frontier_reward_scale = 1.0
     vertical_frontier_reward_scale = 0.10
     maximum_frontier_reward = 16.0
@@ -29,7 +33,9 @@ class Explorer(TargetState[T], ABC):
     target_found_reward = 10000.0
 
     visited_areas: set[tuple[int, int]]
+    visited_regions: set[tuple[int, int]]
     visited_positions: set[tuple[int, int]]
+    position_visit_counts: dict[tuple[int, int], int]
     frontier_min_x: int
     frontier_max_x: int
     frontier_min_y: int
@@ -38,8 +44,11 @@ class Explorer(TargetState[T], ABC):
 
     def _on_reset(self) -> None:
         position = self._actor_position(self.ram)
+        position_bucket = self._position_bucket(position.coordinates)
         self.visited_areas = {position.screen}
-        self.visited_positions = {self._position_bucket(position.coordinates)}
+        self.visited_regions = {self._region_bucket(position.coordinates)}
+        self.visited_positions = {position_bucket}
+        self.position_visit_counts = {position_bucket: 1}
         self.frontier_min_x = self.frontier_max_x = position.x
         self.frontier_min_y = self.frontier_max_y = position.y
         self.steps_since_frontier = 0
@@ -47,23 +56,53 @@ class Explorer(TargetState[T], ABC):
 
     def _target_reward(self, distance: float | None) -> float:
         position = self._actor_position(self.ram)
-        current_area = position.screen
-        area_is_unseen = current_area not in self.visited_areas
-        self.visited_areas.add(current_area)
-
-        current_position = self._position_bucket(position.coordinates)
-        position_is_unseen = current_position not in self.visited_positions
-        self.visited_positions.add(current_position)
-
         reward = super()._target_reward(distance)
-        reward += self._frontier_reward(position.coordinates)
-        if area_is_unseen:
-            reward += self.area_discovery_reward
-        if position_is_unseen:
-            reward += self.position_discovery_reward
+        reward += self._exploration_reward(position.screen, position.coordinates)
         if distance is not None:
             self.remember_detected_target()
             reward += self.target_found_reward
+        return reward
+
+    def _exploration_reward(
+        self,
+        screen: tuple[int, int],
+        coordinates: tuple[int, int],
+    ) -> float:
+        """Score meaningful coverage while making loops progressively costly."""
+        current_area = screen
+        area_is_unseen = current_area not in self.visited_areas
+        self.visited_areas.add(current_area)
+
+        current_region = self._region_bucket(coordinates)
+        region_is_unseen = current_region not in self.visited_regions
+        self.visited_regions.add(current_region)
+
+        current_position = self._position_bucket(coordinates)
+        position_is_unseen = current_position not in self.visited_positions
+        self.visited_positions.add(current_position)
+        previous_visits = self.position_visit_counts.get(current_position, 0)
+        self.position_visit_counts[current_position] = previous_visits + 1
+
+        frontier_reward = self._frontier_reward(coordinates)
+        discovered = area_is_unseen or region_is_unseen or position_is_unseen
+        if discovered:
+            # Exploring a new branch inside the existing outer bounds is real
+            # progress and must not be treated as frontier stalling.
+            self.steps_since_frontier = 0
+            frontier_reward = max(0.0, frontier_reward)
+
+        reward = frontier_reward
+        if area_is_unseen:
+            reward += self.area_discovery_reward
+        if region_is_unseen:
+            reward += self.region_discovery_reward
+        if position_is_unseen:
+            reward += self.position_discovery_reward
+        else:
+            reward -= min(
+                self.maximum_revisit_penalty,
+                self.revisit_penalty_scale * previous_visits,
+            )
         return reward
 
     def auxiliary_features(self, ram: T | None = None) -> list[float]:
@@ -109,6 +148,10 @@ class Explorer(TargetState[T], ABC):
 
     def _position_bucket(self, coordinates: tuple[int, int]) -> tuple[int, int]:
         grid_size = max(1, self.position_grid_size)
+        return coordinates[0] // grid_size, coordinates[1] // grid_size
+
+    def _region_bucket(self, coordinates: tuple[int, int]) -> tuple[int, int]:
+        grid_size = max(1, self.region_grid_size)
         return coordinates[0] // grid_size, coordinates[1] // grid_size
 
     def _truncated(self) -> bool:

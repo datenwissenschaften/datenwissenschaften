@@ -12,6 +12,11 @@ class _ConcreteExplorer(Explorer[RamInfo]):
 
 def _explorer(x: int = 100, y: int = 50) -> _ConcreteExplorer:
     explorer = object.__new__(_ConcreteExplorer)
+    position_bucket = explorer._position_bucket((x, y))
+    explorer.visited_areas = {(0, 0)}
+    explorer.visited_regions = {explorer._region_bucket((x, y))}
+    explorer.visited_positions = {position_bucket}
+    explorer.position_visit_counts = {position_bucket: 1}
     explorer.frontier_min_x = explorer.frontier_max_x = x
     explorer.frontier_min_y = explorer.frontier_max_y = y
     explorer.steps_since_frontier = 0
@@ -35,6 +40,40 @@ def test_position_novelty_ignores_subtile_jitter():
 
     assert explorer._position_bucket((100, 50)) == explorer._position_bucket((103, 55))
     assert explorer._position_bucket((100, 50)) != explorer._position_bucket((108, 50))
+
+
+def test_new_position_inside_existing_frontier_scores_and_resets_staleness():
+    explorer = _explorer()
+    explorer.frontier_min_x = 80
+    explorer.frontier_max_x = 140
+    explorer.steps_since_frontier = explorer.frontier_stall_grace_steps + 10
+
+    reward = explorer._exploration_reward((0, 0), (108, 50))
+
+    assert reward == explorer.position_discovery_reward
+    assert explorer.steps_since_frontier == 0
+
+
+def test_coarse_region_discovery_adds_a_meaningful_coverage_bonus():
+    explorer = _explorer()
+    explorer.frontier_min_x = 0
+    explorer.frontier_max_x = 200
+
+    reward = explorer._exploration_reward((0, 0), (132, 50))
+
+    assert reward == explorer.region_discovery_reward + explorer.position_discovery_reward
+
+
+def test_revisits_receive_an_increasing_bounded_penalty():
+    explorer = _explorer()
+    explorer.frontier_stall_grace_steps = 10_000
+
+    first_revisit = explorer._exploration_reward((0, 0), (100, 50))
+    for _ in range(30):
+        final_revisit = explorer._exploration_reward((0, 0), (100, 50))
+
+    assert first_revisit == -explorer.revisit_penalty_scale
+    assert final_revisit == -explorer.maximum_revisit_penalty
 
 
 def test_frontier_stall_penalty_waits_for_grace_period_and_is_bounded():
