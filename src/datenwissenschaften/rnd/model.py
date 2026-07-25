@@ -652,6 +652,12 @@ class AdaptiveRecurrentRNDPPO(RecurrentPPO):
         self.clip_range = clip_range if callable(clip_range) else lambda _: clip_range
 
     def _attach_rnd_to_env(self) -> None:
+        if self.rnd is not None:
+            # ``adaptation_multiplier`` is regular Python state on the RND
+            # module, so it is not included in its torch state_dict. Restore
+            # it from the model whenever a checkpoint rebuilds or reattaches
+            # RND; otherwise a stale model silently resumes at 1x curiosity.
+            self.rnd.set_adaptation_multiplier(self.adaptation_multiplier)
         if isinstance(self.env, _RNDRewardWrapper):
             self.env.rnd = self.rnd
 
