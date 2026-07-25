@@ -269,6 +269,23 @@ def test_existing_recording_from_another_worker_is_rejected(tmp_path: Path):
     )
 
 
+def test_exact_recording_from_previous_savestate_directory_is_accepted(tmp_path: Path):
+    source = tmp_path / "Game" / "Level1" / "6" / "Game-Level3-000329.bk2"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"worker 6")
+
+    assert (
+        rollout_video._resolve_recording(
+            str(source),
+            tmp_path,
+            game="Game",
+            savestate="Level3",
+            env_index=6,
+        )
+        == source.resolve()
+    )
+
+
 def test_parallel_workers_with_same_filename_render_the_selected_worker(monkeypatch, tmp_path: Path):
     filename = "Game-Level1-000007.bk2"
     worker_2 = tmp_path / "Game" / "Level1" / "2" / filename

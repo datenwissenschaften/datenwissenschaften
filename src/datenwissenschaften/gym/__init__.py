@@ -262,7 +262,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
     def set_initial_savestate(self, savestate: str) -> str:
         """Use ``savestate`` for this and subsequent environment resets."""
+        previous_savestate = self.initial_savestate or "default"
         self.env.unwrapped.load_state(savestate)
+        self._set_recording_savestate(previous_savestate, savestate)
         self.initial_savestate = savestate
         self.curriculum = self._create_curriculum()
         self._publish_curriculum_progress()
@@ -363,6 +365,19 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         movie_path = getattr(self.env.unwrapped, "movie_path", None)
         if movie_path:
             Path(movie_path).mkdir(parents=True, exist_ok=True)
+
+    def _set_recording_savestate(self, previous_savestate: str, savestate: str) -> None:
+        """Keep Stable Retro's recording directory aligned after ``load_state``."""
+        emulator = self.env.unwrapped
+        movie_path = getattr(emulator, "movie_path", None)
+        if not movie_path:
+            return
+        current = Path(movie_path)
+        if current.parent.name != previous_savestate:
+            return
+        updated = current.parent.parent / savestate / current.name
+        updated.mkdir(parents=True, exist_ok=True)
+        emulator.movie_path = str(updated)
 
     def _publish_curriculum_progress(self) -> None:
         publish_metadata("savestate_curriculum", self.curriculum.progress(), replace=True)

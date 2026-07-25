@@ -157,10 +157,12 @@ def _resolve_recording(
         return None
 
     requested = Path(requested_path)
+    game_dir = (Path(record_root) / game).resolve()
     worker_dir = (Path(record_root) / game / savestate / str(env_index)).resolve()
     candidates = (requested, worker_dir / requested.name)
     for candidate in candidates:
         resolved = candidate.resolve()
-        if resolved.parent == worker_dir and resolved.is_file():
+        owned_by_worker = resolved.parent.name == str(env_index) and resolved.parent.parent.parent == game_dir
+        if owned_by_worker and resolved.is_file():
             return resolved
     return None

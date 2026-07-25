@@ -85,3 +85,30 @@ def test_movie_directory_repair_allows_disabled_recording(tmp_path: Path):
     StateMachineGymWrapper._ensure_movie_directory(wrapper)
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_savestate_rotation_moves_recording_directory_to_active_savestate(tmp_path: Path):
+    old_path = tmp_path / "recordings" / "Game" / "Level1" / "6"
+    emulator = SimpleNamespace(
+        movie_path=str(old_path),
+        load_state=lambda savestate: None,
+    )
+    wrapper = SimpleNamespace(
+        env=SimpleNamespace(unwrapped=emulator),
+        initial_savestate="Level1",
+        curriculum=SimpleNamespace(),
+        _create_curriculum=lambda: SimpleNamespace(),
+        _publish_curriculum_progress=lambda: None,
+    )
+    wrapper._set_recording_savestate = lambda previous, current: StateMachineGymWrapper._set_recording_savestate(
+        wrapper,
+        previous,
+        current,
+    )
+
+    StateMachineGymWrapper.set_initial_savestate(wrapper, "Level3")
+
+    expected = tmp_path / "recordings" / "Game" / "Level3" / "6"
+    assert emulator.movie_path == str(expected)
+    assert expected.is_dir()
+    assert wrapper.initial_savestate == "Level3"
