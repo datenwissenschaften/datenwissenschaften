@@ -20,6 +20,8 @@ def _explorer(x: int = 100, y: int = 50) -> _ConcreteExplorer:
     explorer.frontier_min_x = explorer.frontier_max_x = x
     explorer.frontier_min_y = explorer.frontier_max_y = y
     explorer.steps_since_frontier = 0
+    explorer.previous_coordinates = (x, y)
+    explorer.invalid_position_steps = 0
     return explorer
 
 
@@ -46,7 +48,7 @@ def test_new_position_inside_existing_frontier_scores_and_resets_staleness():
     explorer = _explorer()
     explorer.frontier_min_x = 80
     explorer.frontier_max_x = 140
-    explorer.steps_since_frontier = explorer.frontier_stall_grace_steps + 10
+    explorer.steps_since_frontier = 30
 
     reward = explorer._exploration_reward((0, 0), (108, 50))
 
@@ -64,29 +66,39 @@ def test_coarse_region_discovery_adds_a_meaningful_coverage_bonus():
     assert reward == explorer.region_discovery_reward + explorer.position_discovery_reward
 
 
-def test_revisits_receive_an_increasing_bounded_penalty():
+def test_revisit_penalty_adapts_to_staleness_and_is_bounded():
     explorer = _explorer()
-    explorer.frontier_stall_grace_steps = 10_000
+    explorer.steps_since_frontier = explorer.revisit_penalty_grace_steps
+    assert explorer._adaptive_revisit_penalty(100) == 0.0
 
-    first_revisit = explorer._exploration_reward((0, 0), (100, 50))
-    for _ in range(30):
-        final_revisit = explorer._exploration_reward((0, 0), (100, 50))
+    explorer.steps_since_frontier = explorer.frontier_staleness_limit // 2
+    mid_attempt = explorer._adaptive_revisit_penalty(100)
+    explorer.steps_since_frontier = explorer.frontier_staleness_limit
+    timed_out = explorer._adaptive_revisit_penalty(100)
 
-    assert first_revisit == -explorer.revisit_penalty_scale
-    assert final_revisit == -explorer.maximum_revisit_penalty
+    assert 0.0 < mid_attempt < timed_out
+    assert timed_out <= explorer.maximum_revisit_penalty
+    assert explorer._adaptive_revisit_penalty(10_000) == explorer.maximum_revisit_penalty
 
 
-def test_frontier_stall_penalty_waits_for_grace_period_and_is_bounded():
+def test_revisits_never_accumulate_the_previous_large_failure_incentive():
+    explorer = _explorer()
+    rewards = [explorer._exploration_reward((0, 0), (100, 50)) for _ in range(600)]
+
+    assert min(rewards) >= -explorer.maximum_revisit_penalty
+    assert sum(rewards) > -100.0
+
+
+def test_implausible_coordinate_jump_does_not_poison_frontier_or_coverage():
     explorer = _explorer()
 
-    grace_rewards = [explorer._frontier_reward((100, 50)) for _ in range(explorer.frontier_stall_grace_steps)]
-    first_penalty = explorer._frontier_reward((100, 50))
-    for _ in range(100):
-        final_penalty = explorer._frontier_reward((100, 50))
+    reward = explorer._exploration_reward((8, 8), (2200, 2200), screen_size=256)
 
-    assert grace_rewards == [0.0] * explorer.frontier_stall_grace_steps
-    assert first_penalty == -explorer.frontier_stall_penalty_scale
-    assert final_penalty == -explorer.maximum_frontier_stall_penalty
+    assert reward <= 0.0
+    assert explorer.frontier_max_x == 100
+    assert explorer.frontier_max_y == 50
+    assert (8, 8) not in explorer.visited_areas
+    assert explorer.invalid_position_steps == 1
 
 
 def test_vertical_frontier_has_smaller_reward_than_horizontal_frontier():
@@ -129,3 +141,15 @@ def test_detected_target_takes_precedence_over_staleness_timeout():
     explorer.steps_since_frontier = explorer.frontier_staleness_limit
 
     assert explorer._truncated() is False
+
+
+def test_staleness_feature_tracks_the_full_timeout():
+    explorer = _explorer()
+    explorer.steps_since_frontier = explorer.frontier_staleness_limit // 2
+    ram = RamInfo()
+    object.__setattr__(ram, "position_x", 100)
+    object.__setattr__(ram, "position_y", 50)
+
+    features = explorer._exploration_features(ram)
+
+    assert features[-1] == 0.5
