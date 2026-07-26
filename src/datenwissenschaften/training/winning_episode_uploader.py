@@ -24,7 +24,7 @@ class WinningEpisodeUploader(BaseCallback):
                 info["state"],
                 info["won"],
             )
-            if not info["won"]:
+            if not info["won"] or not info["started_from_initial_state"]:
                 path.unlink()
                 continue
             logger.info("Uploading winning episode {}", path.name)

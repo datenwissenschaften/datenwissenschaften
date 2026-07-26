@@ -98,7 +98,14 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         if (terminated or truncated) and not self.curriculum.recorded:
             attempts, deleted = self.curriculum.record_attempt(self.episode_score)
             _log_stagnation(self.curriculum.episode_state, attempts, deleted)
-        info.update({"state": self.machine.name, "won": won, "ram": ram.to_dict()})
+        info.update(
+            {
+                "state": self.machine.name,
+                "won": won,
+                "started_from_initial_state": self.curriculum.episode_state == self.state_types[0].__name__,
+                "ram": ram.to_dict(),
+            }
+        )
         if terminated or truncated:
             retro = self.env.unwrapped
             recording = Path(retro.movie_path) / (
