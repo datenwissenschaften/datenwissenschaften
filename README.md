@@ -1,17 +1,16 @@
 # datenwissenschaften library
 
-A small recurrent reinforcement-learning engine for `stable-retro`.
+A small feature-based reinforcement-learning engine for `stable-retro`.
 
-The engine has four responsibilities:
+The engine:
 
-1. turn emulator frames, RAM, and the active game state into one Gymnasium observation;
-2. let game code define state transitions and reward;
-3. train one `sb3-contrib` recurrent PPO policy across all states;
-4. save the policy after every rollout.
+1. combines normalized RAM, the active state, and template detection into one observation;
+2. lets game code define state transitions and reward;
+3. trains one Stable Baselines3 PPO policy across all states;
+4. saves the policy after every rollout.
 
-Each state must be beaten 16 times before its emulator savestate becomes the next curriculum starting point.
-An automatic savestate is discarded after 128 attempts without a better episode score.
-PPO owns its optimization parameters. The engine does not tune learning rates or use separate per-state models.
+One successful transition completes a curriculum state and saves the next starting point. After every state is complete,
+training restarts from the initial state to produce full winning runs. PPO owns its optimization parameters.
 
 ## Installation
 
@@ -39,7 +38,8 @@ train(environment, config_path)
 ```
 
 Game states subclass `datenwissenschaften.states.state.State` and implement reward, termination, and transition
-methods. A single recurrent policy receives the visual frame, normalized RAM, and a one-hot active-state signal.
+methods. A feed-forward policy receives normalized RAM, a one-hot active state, and the active template detector's
+visibility and position. Frames remain available to state logic for custom goal detection.
 
 ## State classes
 

@@ -23,21 +23,20 @@ class StateMachine(Generic[T]):
         self,
         ram: T,
         frame: np.ndarray,
-        observation: np.ndarray,
         state_type: type[State[T]],
     ) -> None:
         if state_type not in self._states:
             self._states[state_type] = state_type(self.start.model_dir)
         self.current = self._states[state_type]
-        self.current.reset(ram, frame, observation)
+        self.current.reset(ram, frame)
 
-    def step(self, ram: T, frame: np.ndarray, observation: np.ndarray) -> tuple[float, bool, bool]:
-        reward, terminated, truncated, next_type = self.current.step(ram, frame, observation)
+    def step(self, ram: T, frame: np.ndarray) -> tuple[float, bool, bool]:
+        reward, terminated, truncated, next_type = self.current.step(ram, frame)
         if next_type is not None:
             previous = type(self.current).__name__
             if next_type not in self._states:
                 self._states[next_type] = next_type(self.start.model_dir)
             self.current = self._states[next_type]
-            self.current.reset(ram, frame, observation)
+            self.current.reset(ram, frame)
             logger.info("State transition: {} -> {}", previous, self.name)
         return reward, terminated, truncated

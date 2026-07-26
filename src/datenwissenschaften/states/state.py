@@ -14,29 +14,31 @@ class State(Generic[T]):
     target_detector: TemplateDetector | None
     ram: T
     frame: np.ndarray
-    observation: np.ndarray
     model_dir: Path
 
     def __init__(self, model_dir: Path) -> None:
         self.model_dir = model_dir
         self.target_detector = TemplateDetector(self.template_file) if hasattr(self, "template_file") else None
 
-    def reset(self, ram: T, frame: np.ndarray, observation: np.ndarray) -> None:
+    def reset(self, ram: T, frame: np.ndarray) -> None:
         self.ram = ram
         self.frame = frame
-        self.observation = observation
+        self._detect()
         self._on_reset()
 
     def step(
         self,
         ram: T,
         frame: np.ndarray,
-        observation: np.ndarray,
     ) -> tuple[float, bool, bool, type["State[T]"] | None]:
         self.ram = ram
         self.frame = frame
-        self.observation = observation
+        self._detect()
         return self._reward(), self._terminated(), self._truncated(), self._next()
+
+    def _detect(self) -> None:
+        if self.target_detector is not None:
+            self.target_detector.detect(self.frame)
 
     def _on_reset(self) -> None:
         pass

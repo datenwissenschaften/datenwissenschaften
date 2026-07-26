@@ -14,7 +14,7 @@ def train(environment: Any, config_path: str | Path) -> None:
     config = load_config(config_path)
     logger.remove()
     logger.add(sys.stderr, level=config.log_level)
-    checkpoint = config.paths.models / config.training.game / config.training.savestate / "model"
+    checkpoint = config.paths.models / config.training.game / config.training.savestate / "ppo-v4"
     model = load_agent(environment, checkpoint)
     uploader = WinningEpisodeUploader(config)
     logger.info(
@@ -24,7 +24,7 @@ def train(environment: Any, config_path: str | Path) -> None:
         model.n_envs,
     )
     while True:
-        logger.info("Starting rollout at {:,} environment steps", model.num_timesteps)
+        logger.debug("Starting rollout at {:,} environment steps", model.num_timesteps)
         model.learn(total_timesteps=model.n_steps * model.n_envs, reset_num_timesteps=False, callback=uploader)
         atomic_save(model, checkpoint)
-        logger.success("Saved agent after {:,} environment steps", model.num_timesteps)
+        logger.debug("Saved agent after {:,} environment steps", model.num_timesteps)

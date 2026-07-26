@@ -2,13 +2,13 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-from sb3_contrib import RecurrentPPO
+from stable_baselines3 import PPO
 
 
-def load_agent(environment: Any, path: Path) -> RecurrentPPO:
+def load_agent(environment: Any, path: Path) -> PPO:
     checkpoint = path.with_suffix(".zip")
     if checkpoint.is_file():
         logger.info(f"Loading agent from {checkpoint}")
-        return RecurrentPPO.load(checkpoint, env=environment)
-    logger.info("Creating recurrent multi-input agent")
-    return RecurrentPPO("MultiInputLstmPolicy", environment)
+        return PPO.load(checkpoint, env=environment, device="cpu")
+    logger.info("Creating feature-based PPO agent")
+    return PPO("MlpPolicy", environment, device="cpu")

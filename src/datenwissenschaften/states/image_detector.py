@@ -12,7 +12,3 @@ class ImageDetector(State[T]):
         super().__init__(model_dir)
         if self.target_detector is None:
             raise TypeError(f"{type(self).__name__} must define template_file")
-
-    def _reward(self) -> float:
-        self.target_detector.detect(self.frame)
-        return super()._reward()
