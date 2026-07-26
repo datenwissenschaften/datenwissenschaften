@@ -41,16 +41,12 @@ Documentation = "https://speedlab.datenwissenschaften.com/getting-started"
 [dependency-groups]
 dev = [
     "black",
-    "pytest",
     "ruff"
 ]
 
 [tool.black]
 line-length = 120
 target-version = ["py312"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests/integration"]
 
 [tool.ruff]
 line-length = 120

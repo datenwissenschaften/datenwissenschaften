@@ -19,8 +19,16 @@ class StateMachine(Generic[T]):
     def name(self) -> str:
         return type(self.current).__name__
 
-    def reset(self, ram: T, frame: np.ndarray, observation: np.ndarray) -> None:
-        self.current = self.start
+    def reset(
+        self,
+        ram: T,
+        frame: np.ndarray,
+        observation: np.ndarray,
+        state_type: type[State[T]],
+    ) -> None:
+        if state_type not in self._states:
+            self._states[state_type] = state_type(self.start.model_dir)
+        self.current = self._states[state_type]
         self.current.reset(ram, frame, observation)
 
     def step(self, ram: T, frame: np.ndarray, observation: np.ndarray) -> tuple[float, bool, bool]:

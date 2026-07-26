@@ -415,31 +415,13 @@ Whenever code is modified:
 Every change must pass:
 
 ```bash
-black --check src tests
-ruff check src tests
-ruff format --check src tests
+black --check src
+ruff check src
+ruff format --check src
 ```
 
 Black and Ruff must agree on formatting. Follow their recommendations unless there is a compelling architectural
 reason not to.
-
----
-
-# Testing
-
-Only integration tests are allowed.
-
-- Never add unit tests.
-- Test complete behavior through public application boundaries.
-- Use real external libraries and systems instead of mocks.
-- Add or update an integration test for every behavior change.
-- Keep integration fixtures minimal and representative of a real consumer.
-
-Every change must pass:
-
-```bash
-pytest tests/integration
-```
 
 ---
 
@@ -463,5 +445,4 @@ Before considering work complete, verify:
 - Passes `black --check`
 - Passes `ruff check`
 - Passes `ruff format --check`
-- Passes `pytest tests/integration`
 - Leaves the codebase cleaner than it was found

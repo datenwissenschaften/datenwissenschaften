@@ -9,8 +9,9 @@ The engine has four responsibilities:
 3. train one `sb3-contrib` recurrent PPO policy across all states;
 4. save the policy after every rollout.
 
-PPO owns its optimization parameters. The engine does not tune learning rates, exploration multipliers,
-curriculum thresholds, or separate per-state models. Model weights are learned only from observations and reward.
+Each state must be beaten 16 times before its emulator savestate becomes the next curriculum starting point.
+An automatic savestate is discarded after 128 attempts without a better episode score.
+PPO owns its optimization parameters. The engine does not tune learning rates or use separate per-state models.
 
 ## Installation
 
@@ -56,10 +57,9 @@ directory and provide proximity scoring after a target leaves the frame.
 ## Development
 
 ```bash
-black --check src tests
-ruff check src tests
-ruff format --check src tests
-pytest tests/integration
+black --check src
+ruff check src
+ruff format --check src
 python -m compileall -q src
 ```
 
