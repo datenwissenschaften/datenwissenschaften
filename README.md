@@ -4,7 +4,7 @@ A small feature-based reinforcement-learning engine for `stable-retro`.
 
 The engine:
 
-1. combines normalized RAM, the active state, and template detection into one observation;
+1. combines normalized RAM, active state, template detection, and learned level geometry into one observation;
 2. lets game code define state transitions and reward;
 3. trains one Stable Baselines3 PPO policy across all states;
 4. saves the policy after every rollout.
@@ -38,8 +38,10 @@ train(environment, config_path)
 ```
 
 Game states subclass `datenwissenschaften.states.state.State` and implement reward, termination, and transition
-methods. A feed-forward policy receives normalized RAM, a one-hot active state, and the active template detector's
-visibility and position. Frames remain available to state logic for custom goal detection.
+methods. A feed-forward policy receives normalized RAM, a one-hot active state, template visibility and position, and
+local collision probes. Games implement `RamInfo.player_geometry()` and set the wrapper's `tile_size`. The library
+learns traversed, supporting, and hazardous tiles while playing and persists them in the model directory. Stable
+world-aligned image patches prevent transient sprites from being remembered as terrain.
 
 ## State classes
 

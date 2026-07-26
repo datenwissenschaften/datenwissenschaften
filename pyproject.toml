@@ -4,8 +4,8 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "datenwissenschaften"
-version = "4.0.0"
-description = "Feature-based reinforcement learning for classic games."
+version = "5.0.0"
+description = "Feature-based reinforcement learning with learned level geometry."
 readme = "README.md"
 authors = [
     { name = "datenwissenschaften", email = "martin.franke@datenwissenschaften.com" }
