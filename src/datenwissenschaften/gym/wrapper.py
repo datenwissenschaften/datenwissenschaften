@@ -34,9 +34,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         if self.action_repeat < 1:
             raise ValueError("action_repeat must be positive")
         self.machine = StateMachine(self.start_state_cls(model_dir))
-        self.state_types: tuple[type[State[T]], ...] = _state_types(
-            self.start_state_cls, self.training_state_classes
-        )
+        self.state_types: tuple[type[State[T]], ...] = _state_types(self.start_state_cls, self.training_state_classes)
         self.curriculum: SavestateCurriculum = SavestateCurriculum(
             model_dir / "curriculum", tuple(state.__name__ for state in self.state_types)
         )
@@ -109,6 +107,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             info["episode_bk2_path"] = str(recording)
         agent_observation = _observation(observation, ram, self.state_types, type(self.machine.current))
         return agent_observation, reward, terminated, truncated, info
+
 
 def _restore(emulator: Any, savestate: bytes) -> np.ndarray:
     emulator.em.set_state(savestate)
