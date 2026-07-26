@@ -1,0 +1,64 @@
+[build-system]
+requires = ["poetry-core==2.4.1"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "datenwissenschaften"
+version = "3.0.0"
+description = "Core library for Retro Speedlab: A high-performance RL toolkit for classic games."
+readme = "README.md"
+authors = [
+    { name = "datenwissenschaften", email = "martin.franke@datenwissenschaften.com" }
+]
+license = "GPL-3.0-only"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "gymnasium==1.3.0",
+    "httpx==0.28.1",
+    "numpy==2.5.1",
+    "opencv-python==4.13.0.92",
+    "python-box==7.3.2",
+    "pyyaml==6.0.3",
+    "stable-baselines3==2.9.0",
+    "sb3-contrib==2.9.0",
+    "stable-retro==1.0.1",
+    "loguru==0.7.3",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+keywords = ["reinforcement-learning", "retro-gaming", "stable-baselines3", "stable-retro", "ai", "gymnasium"]
+
+[project.urls]
+Homepage = "https://speedlab.datenwissenschaften.com"
+Repository = "https://git.datenwissenschaften.com/datenwissenschaften/datenwissenschaften"
+Documentation = "https://speedlab.datenwissenschaften.com/getting-started"
+
+[dependency-groups]
+dev = [
+    "black",
+    "pytest",
+    "ruff"
+]
+
+[tool.black]
+line-length = 120
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/integration"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.poetry]
+package-mode = true
+packages = [{ include = "datenwissenschaften", from = "src" }]

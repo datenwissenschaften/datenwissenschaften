@@ -1,0 +1,35 @@
+from typing import Generic, TypeVar
+
+import numpy as np
+from loguru import logger
+
+from datenwissenschaften.ram.model import RamInfo
+from datenwissenschaften.states.state import State
+
+T = TypeVar("T", bound=RamInfo)
+
+
+class StateMachine(Generic[T]):
+    def __init__(self, start: State[T]) -> None:
+        self.start = start
+        self.current = start
+        self._states: dict[type[State[T]], State[T]] = {type(start): start}
+
+    @property
+    def name(self) -> str:
+        return type(self.current).__name__
+
+    def reset(self, ram: T, frame: np.ndarray, observation: np.ndarray) -> None:
+        self.current = self.start
+        self.current.reset(ram, frame, observation)
+
+    def step(self, ram: T, frame: np.ndarray, observation: np.ndarray) -> tuple[float, bool, bool]:
+        reward, terminated, truncated, next_type = self.current.step(ram, frame, observation)
+        if next_type is not None:
+            previous = type(self.current).__name__
+            if next_type not in self._states:
+                self._states[next_type] = next_type(self.start.model_dir)
+            self.current = self._states[next_type]
+            self.current.reset(ram, frame, observation)
+            logger.info("State transition: {} -> {}", previous, self.name)
+        return reward, terminated, truncated
