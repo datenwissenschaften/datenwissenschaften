@@ -10,5 +10,5 @@ def load_agent(environment: Any, path: Path) -> PPO:
     if checkpoint.is_file():
         logger.info(f"Loading agent from {checkpoint}")
         return PPO.load(checkpoint, env=environment, device="cpu")
-    logger.info("Creating feature-based PPO agent")
-    return PPO("MlpPolicy", environment, device="cpu")
+    logger.info("Creating visual and RAM PPO agent")
+    return PPO("MultiInputPolicy", environment, device="cpu")

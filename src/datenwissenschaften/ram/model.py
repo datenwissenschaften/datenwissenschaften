@@ -1,8 +1,6 @@
 from dataclasses import field, fields
 from typing import Any, Self, final
 
-from datenwissenschaften.geometry.player import PlayerGeometry
-
 
 def ram(address: int) -> Any:
     return field(default=0, metadata={"address": address, "length": 1})
@@ -19,9 +17,6 @@ def ram_array(address: int, length: int) -> Any:
 
 
 class RamInfo:
-    def player_geometry(self) -> PlayerGeometry:
-        raise NotImplementedError(f"{type(self).__name__} must implement player_geometry")
-
     @classmethod
     @final
     def ram_map(cls) -> dict[str, tuple[int, int]]:

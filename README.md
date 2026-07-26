@@ -1,16 +1,13 @@
 # datenwissenschaften library
 
-A small feature-based reinforcement-learning engine for `stable-retro`.
+A small visual and RAM reinforcement-learning engine for `stable-retro`.
 
 The engine:
 
-1. combines normalized RAM, active state, template detection, and learned level geometry into one observation;
+1. combines the game frame with normalized RAM, active state, and template detection;
 2. lets game code define state transitions and reward;
 3. trains one Stable Baselines3 PPO policy across all states;
 4. saves the policy after every rollout.
-
-One successful transition completes a curriculum state and saves the next starting point. After every state is complete,
-training restarts from the initial state to produce full winning runs. PPO owns its optimization parameters.
 
 ## Installation
 
@@ -38,10 +35,8 @@ train(environment, config_path)
 ```
 
 Game states subclass `datenwissenschaften.states.state.State` and implement reward, termination, and transition
-methods. A feed-forward policy receives normalized RAM, a one-hot active state, template visibility and position, and
-local collision probes. Games implement `RamInfo.player_geometry()` and set the wrapper's `tile_size`. The library
-learns traversed, supporting, and hazardous tiles while playing and persists them in the model directory. Stable
-world-aligned image patches prevent transient sprites from being remembered as terrain.
+methods. Stable Baselines3 receives the frame and numeric features as a dictionary observation and learns from both
+through its `MultiInputPolicy`.
 
 ## State classes
 
