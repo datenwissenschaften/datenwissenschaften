@@ -4,7 +4,9 @@ from typing import Any, Generic, TypeVar
 import gymnasium as gym
 import numpy as np
 from gymnasium.core import WrapperActType
+from loguru import logger
 
+from datenwissenschaften.curriculum.progress import SavestateCurriculum
 from datenwissenschaften.ram.model import RamInfo
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
@@ -30,6 +32,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             raise ValueError("action_repeat must be positive")
         self.machine = StateMachine(self.start_state_cls(model_dir))
         self.state_types: tuple[type[State[T]], ...] = _state_types(self.start_state_cls, self.training_state_classes)
+        self.curriculum = SavestateCurriculum(
+            model_dir / "curriculum",
+            tuple(state.__name__ for state in self.state_types),
+        )
         self.action_table = action_table
         self.action_space = gym.spaces.Discrete(len(action_table)) if action_table is not None else env.action_space
         ram_size = sum(length for _, length in self.ram_info_cls.ram_map().values())
@@ -49,8 +55,12 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
     def reset(self, **kwargs: Any) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
         frame, info = self.env.reset(**kwargs)
+        state_name, savestate = self.curriculum.start()
+        if savestate is not None:
+            frame = _restore(self.env.unwrapped, savestate)
         ram = _ram(self.ram_info_cls, self.env.unwrapped)
-        self.machine.reset(ram, frame, self.start_state_cls)
+        state_type = next(state for state in self.state_types if state.__name__ == state_name)
+        self.machine.reset(ram, frame, state_type)
         return _observation(frame, ram, self.state_types, self.machine.current), info
 
     def step(self, action: WrapperActType) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
@@ -58,13 +68,24 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         for _ in range(self.action_repeat):
             frame, _, terminated, truncated, info = self.env.step(_action(action, self.action_table, self.action_space))
             ram = _ram(self.ram_info_cls, self.env.unwrapped)
+            previous_state = self.machine.name
             state_reward, state_terminated, state_truncated = self.machine.step(ram, frame)
+            if self.machine.name != previous_state:
+                saved = self.curriculum.transition(
+                    previous_state,
+                    self.machine.name,
+                    bytes(self.env.unwrapped.em.get_state()),
+                )
+                if saved:
+                    logger.success("Saved curriculum transition {} -> {}", previous_state, self.machine.name)
             reward += state_reward
             terminated = terminated or state_terminated
             truncated = truncated or state_truncated
             if terminated or truncated:
                 break
         won = self.machine.current._won()
+        if won and self.curriculum.victory(self.machine.name):
+            logger.success("Completed curriculum state {}", self.machine.name)
         terminated = terminated or won
         info.update(
             {
@@ -123,3 +144,10 @@ def _action(
     if not action_space.contains(index):
         raise ValueError(f"Action {index} is outside {action_space}")
     return action_table[index]
+
+
+def _restore(emulator: Any, savestate: bytes) -> np.ndarray:
+    emulator.em.set_state(savestate)
+    emulator.data.reset()
+    emulator.data.update_ram()
+    return emulator.get_screen(apply_rotation=True)

@@ -14,7 +14,7 @@ def train(environment: Any, config_path: str | Path) -> None:
     config = load_config(config_path)
     logger.remove()
     logger.add(sys.stderr, level=config.log_level)
-    checkpoint = config.paths.models / config.training.game / config.training.savestate / "ppo-v6"
+    checkpoint = config.paths.models / config.training.game / config.training.savestate / "model"
     model = load_agent(environment, checkpoint)
     uploader = WinningEpisodeUploader(config)
     logger.info(
