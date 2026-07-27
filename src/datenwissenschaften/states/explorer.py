@@ -18,8 +18,8 @@ class Explorer(TargetState[T]):
         location = (
             int(self.ram.screen_x),
             int(self.ram.screen_y),
-            int(self.ram.position_x),
-            int(self.ram.position_y),
+            int(self.ram.player_x),
+            int(self.ram.player_y),
         )
         visits = self.visits.get(location, 0) + 1
         self.visits[location] = visits

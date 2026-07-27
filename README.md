@@ -49,9 +49,9 @@ complete, training mixes full runs with intermediate-state practice.
 | Target | `datenwissenschaften.states.target.TargetState` | Rewards distance progress and persists the first target location |
 | Explorer | `datenwissenschaften.states.explorer.Explorer` | Rewards new positions and advances when the template is visible |
 
-`ImageDetector`, `TargetState`, and `Explorer` require `template_file`. Explorer additionally requires
-`position_x`, `position_y`, `screen_x`, and `screen_y` RAM fields. Target locations are stored under the game's model
-directory and provide progress scoring after a target leaves the frame.
+Every project requires `screen_x`, `screen_y`, `player_x`, and `player_y` RAM fields. Player velocity is calculated
+from consecutive positions. `ImageDetector`, `TargetState`, and `Explorer` require `template_file`. Target locations
+are stored under the game's model directory and provide progress scoring after a target leaves the frame.
 
 ## Development
 

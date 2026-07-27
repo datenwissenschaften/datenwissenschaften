@@ -1,6 +1,13 @@
 from dataclasses import field, fields
 from typing import Any, Self, final
 
+REQUIRED_DQN_RAM_FIELDS = (
+    "screen_x",
+    "screen_y",
+    "player_x",
+    "player_y",
+)
+
 
 def ram(address: int) -> Any:
     return field(default=0, metadata={"address": address, "length": 1})

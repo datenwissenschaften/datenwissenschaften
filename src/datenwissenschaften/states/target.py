@@ -31,8 +31,8 @@ class TargetState(ImageDetector[T]):
 
     def _target_distance(self) -> float | None:
         height, width = self.frame.shape[:2]
-        actor_x = float(self.ram.screen_x * width + self.ram.position_x)
-        actor_y = float(self.ram.screen_y * height + self.ram.position_y)
+        actor_x = float(self.ram.screen_x * width + self.ram.player_x)
+        actor_y = float(self.ram.screen_y * height + self.ram.player_y)
         if self.target_detector is None or self.target_detector.position is None:
             if self.target_memory.coordinates is None:
                 return None
