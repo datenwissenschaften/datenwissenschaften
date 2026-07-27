@@ -36,6 +36,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             model_dir / "curriculum",
             tuple(state.__name__ for state in self.state_types),
         )
+        self.episode_score: float = 0.0
         self.action_table = action_table
         self.action_space = gym.spaces.Discrete(len(action_table)) if action_table is not None else env.action_space
         ram_size = sum(length for _, length in self.ram_info_cls.ram_map().values())
@@ -55,6 +56,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
     def reset(self, **kwargs: Any) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
         frame, info = self.env.reset(**kwargs)
+        self.episode_score = 0.0
         state_name, savestate = self.curriculum.start()
         if savestate is not None:
             frame = _restore(self.env.unwrapped, savestate)
@@ -79,6 +81,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 if saved:
                     logger.success("Saved curriculum transition {} -> {}", previous_state, self.machine.name)
             reward += state_reward
+            self.episode_score += state_reward
             terminated = terminated or state_terminated
             truncated = truncated or state_truncated
             if terminated or truncated:
@@ -87,6 +90,14 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         if won and self.curriculum.victory(self.machine.name):
             logger.success("Completed curriculum state {}", self.machine.name)
         terminated = terminated or won
+        if (terminated or truncated) and not self.curriculum.recorded:
+            episodes, deleted = self.curriculum.record_attempt(self.episode_score)
+            if deleted:
+                logger.warning(
+                    "Deleted bad curriculum savestate {} after {} episodes without an increasing score",
+                    self.curriculum.episode_state,
+                    episodes,
+                )
         info.update(
             {
                 "state": self.machine.name,
