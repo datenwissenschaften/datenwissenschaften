@@ -1,4 +1,3 @@
-import math
 from typing import Any
 
 import gymnasium as gym
@@ -29,8 +28,6 @@ class RandomNetworkDistillation(nn.Module):
         self.register_buffer("reward_mean", torch.zeros(()))
         self.register_buffer("reward_variance", torch.ones(()))
         self.register_buffer("observations_seen", torch.zeros((), dtype=torch.long))
-        self.register_buffer("best_episode_return", torch.tensor(float("-inf")))
-        self.register_buffer("stale_episode_count", torch.zeros((), dtype=torch.long))
         self.to(device)
 
     @property
@@ -39,8 +36,7 @@ class RandomNetworkDistillation(nn.Module):
         base = self.config.initial_coefficient + progress * (
             self.config.final_coefficient - self.config.initial_coefficient
         )
-        stale = int(self.stale_episode_count.item()) >= self.config.stale_episodes
-        return base * (self.config.stale_multiplier if stale else 1.0)
+        return base
 
     def intrinsic_rewards(self, images: np.ndarray) -> np.ndarray:
         inputs = torch.as_tensor(images, dtype=torch.float32, device=self.reward_mean.device) / 255.0
@@ -55,15 +51,6 @@ class RandomNetworkDistillation(nn.Module):
         rewards = normalized.clamp(0.0, self.config.reward_clip)
         self.observations_seen.add_(len(inputs))
         return rewards.cpu().numpy().astype(np.float32)
-
-    def record_episode(self, episode_return: float) -> None:
-        if not math.isfinite(episode_return):
-            raise ValueError(f"Episode return must be finite, got {episode_return}")
-        if episode_return > float(self.best_episode_return.item()):
-            self.best_episode_return.fill_(episode_return)
-            self.stale_episode_count.zero_()
-            return
-        self.stale_episode_count.add_(1)
 
     def _train_predictor(self, errors: torch.Tensor) -> None:
         mask = torch.rand_like(errors) < self.config.update_proportion

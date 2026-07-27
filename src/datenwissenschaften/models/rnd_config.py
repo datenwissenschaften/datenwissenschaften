@@ -10,8 +10,6 @@ class RNDConfig:
     final_coefficient: float
     anneal_steps: int
     reward_clip: float
-    stale_episodes: int
-    stale_multiplier: float
 
     def __post_init__(self) -> None:
         if self.output_size < 1 or self.anneal_steps < 1 or self.stale_episodes < 1:
@@ -20,5 +18,5 @@ class RNDConfig:
             raise ValueError("RND learning rate and update proportion must be positive")
         if self.initial_coefficient < 0.0 or self.final_coefficient < 0.0:
             raise ValueError("RND coefficients must be non-negative")
-        if self.reward_clip <= 0.0 or self.stale_multiplier < 1.0:
-            raise ValueError("RND reward clip must be positive and stale multiplier must be at least one")
+        if self.reward_clip <= 0.0:
+            raise ValueError("RND reward clip must be positive")

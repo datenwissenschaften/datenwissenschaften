@@ -10,10 +10,8 @@ class RNDRewardWrapper(VecEnvWrapper):
     def __init__(self, environment: VecEnv, rnd: RandomNetworkDistillation) -> None:
         super().__init__(environment)
         self.rnd = rnd
-        self.episode_returns = np.zeros(environment.num_envs, dtype=np.float32)
 
     def reset(self) -> Any:
-        self.episode_returns.fill(0.0)
         return self.venv.reset()
 
     def step_wait(self) -> tuple[Any, np.ndarray, np.ndarray, list[dict[str, Any]]]:
@@ -27,11 +25,7 @@ class RNDRewardWrapper(VecEnvWrapper):
                 reward_images[index] = terminal["image"]
         intrinsic = self.rnd.intrinsic_rewards(reward_images)
         coefficient = self.rnd.coefficient
-        self.episode_returns += rewards
-        for index, done in enumerate(dones):
+        for index in range(len(dones)):
             infos[index]["extrinsic_reward"] = float(rewards[index])
             infos[index]["intrinsic_reward"] = float(intrinsic[index])
-            if done:
-                self.rnd.record_episode(float(self.episode_returns[index]))
-                self.episode_returns[index] = 0.0
         return observations, rewards + coefficient * intrinsic, dones, infos

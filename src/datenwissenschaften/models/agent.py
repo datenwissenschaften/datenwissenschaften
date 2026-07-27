@@ -14,8 +14,6 @@ RND_CONFIG = RNDConfig(
     final_coefficient=0.01,
     anneal_steps=5_000_000,
     reward_clip=1.0,
-    stale_episodes=32,
-    stale_multiplier=2.0,
 )
 
 

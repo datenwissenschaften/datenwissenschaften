@@ -19,6 +19,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     training_state_classes: tuple[type[State[T]], ...]
     ram_info_cls: type[T]
     action_repeat: int
+    transition_reward: float
+    victory_reward: float
+    failure_penalty: float
+    curriculum_successes: int
+    full_run_probability: float
 
     def __init__(
         self,
@@ -35,24 +40,13 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.curriculum = SavestateCurriculum(
             model_dir / "curriculum",
             tuple(state.__name__ for state in self.state_types),
+            self.curriculum_successes,
+            self.full_run_probability,
         )
         self.episode_score: float = 0.0
         self.action_table = action_table
         self.action_space = gym.spaces.Discrete(len(action_table)) if action_table is not None else env.action_space
-        ram_size = sum(length for _, length in self.ram_info_cls.ram_map().values())
-        if ram_size < 1:
-            raise ValueError("Training requires at least one declared RAM field")
-        self.observation_space = gym.spaces.Dict(
-            {
-                "image": env.observation_space,
-                "features": gym.spaces.Box(
-                    0.0,
-                    1.0,
-                    shape=(ram_size + len(self.state_types) + 3,),
-                    dtype=np.float32,
-                ),
-            }
-        )
+        self.observation_space = _observation_space(self.ram_info_cls, self.state_types, env.observation_space)
 
     def reset(self, **kwargs: Any) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
         frame, info = self.env.reset(**kwargs)
@@ -73,13 +67,13 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             previous_state = self.machine.name
             state_reward, state_terminated, state_truncated = self.machine.step(ram, frame)
             if self.machine.name != previous_state:
-                saved = self.curriculum.transition(
+                state_reward += self.transition_reward
+                _record_transition(
+                    self.curriculum,
                     previous_state,
                     self.machine.name,
                     bytes(self.env.unwrapped.em.get_state()),
                 )
-                if saved:
-                    logger.success("Saved curriculum transition {} -> {}", previous_state, self.machine.name)
             reward += state_reward
             self.episode_score += state_reward
             terminated = terminated or state_terminated
@@ -87,8 +81,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             if terminated or truncated:
                 break
         won = self.machine.current._won()
-        if won and self.curriculum.victory(self.machine.name):
-            logger.success("Completed curriculum state {}", self.machine.name)
+        outcome_reward = self.victory_reward if won else self.failure_penalty if terminated else 0.0
+        reward += outcome_reward
+        self.episode_score += outcome_reward
+        if won:
+            _record_victory(self.curriculum, self.machine.name)
         terminated = terminated or won
         if (terminated or truncated) and not self.curriculum.recorded:
             episodes, deleted = self.curriculum.record_attempt(self.episode_score)
@@ -101,18 +98,58 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         info.update(
             {
                 "state": self.machine.name,
+                "episode_state": self.curriculum.episode_state,
+                "full_run": self.curriculum.full_run,
                 "won": won,
                 "ram": ram.to_dict(),
             }
         )
         if terminated or truncated:
-            retro = self.env.unwrapped
-            recording = Path(retro.movie_path) / (
-                f"{retro.gamename}-{Path(retro.statename).stem}-{retro.movie_id - 1:06d}.bk2"
-            )
-            info["episode_bk2_path"] = str(recording)
+            info["episode_bk2_path"] = _recording_path(self.env.unwrapped)
         observation = _observation(frame, ram, self.state_types, self.machine.current)
         return observation, reward, terminated, truncated, info
+
+
+def _record_transition(
+    curriculum: SavestateCurriculum,
+    previous: str,
+    current: str,
+    savestate: bytes,
+) -> None:
+    successes, completed = curriculum.transition(previous, current, savestate)
+    _log_mastery(curriculum, previous, successes, completed)
+
+
+def _record_victory(curriculum: SavestateCurriculum, state: str) -> None:
+    if curriculum.full_run:
+        logger.success("Completed full run")
+        return
+    successes, completed = curriculum.victory(state)
+    _log_mastery(curriculum, state, successes, completed)
+
+
+def _log_mastery(curriculum: SavestateCurriculum, state: str, successes: int, completed: bool) -> None:
+    if completed:
+        logger.success("Mastered curriculum state {} after {} successes", state, successes)
+    elif successes:
+        logger.info("Curriculum state {} success {}/{}", state, successes, curriculum.required_successes)
+
+
+def _recording_path(retro: Any) -> str:
+    recording = Path(retro.movie_path) / f"{retro.gamename}-{Path(retro.statename).stem}-{retro.movie_id - 1:06d}.bk2"
+    return str(recording)
+
+
+def _observation_space(
+    ram_info: type[RamInfo],
+    states: tuple[type[State[Any]], ...],
+    image_space: gym.Space,
+) -> gym.spaces.Dict:
+    ram_size = sum(length for _, length in ram_info.ram_map().values())
+    if ram_size < 1:
+        raise ValueError("Training requires at least one declared RAM field")
+    features = gym.spaces.Box(0.0, 1.0, shape=(ram_size + len(states) + 3,), dtype=np.float32)
+    return gym.spaces.Dict({"image": image_space, "features": features})
 
 
 def _ram(model: type[T], emulator: Any) -> T:

@@ -18,13 +18,15 @@ class WinningEpisodeUploader(BaseCallback):
             path = Path(info["episode_bk2_path"])
             episode = info["episode"]
             logger.info(
-                "Episode finished: reward={:.3f}, steps={}, state={}, won={}",
+                "Episode finished: reward={:.3f}, steps={}, start={}, end={}, full_run={}, won={}",
                 episode["r"],
                 episode["l"],
+                info["episode_state"],
                 info["state"],
+                info["full_run"],
                 info["won"],
             )
-            if not info["won"]:
+            if not info["won"] or not info["full_run"]:
                 path.unlink()
                 continue
             logger.info("Uploading winning episode {}", path.name)

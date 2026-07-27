@@ -1,4 +1,3 @@
-from math import sqrt
 from typing import TypeVar
 
 from datenwissenschaften.ram.model import RamInfo
@@ -24,7 +23,7 @@ class Explorer(TargetState[T]):
         )
         visits = self.visits.get(location, 0) + 1
         self.visits[location] = visits
-        return super()._reward() + 1.0 / sqrt(visits)
+        return super()._reward() + float(visits == 1)
 
     def _next(self) -> type[State[T]] | None:
         if self.target_detector is not None and self.target_detector.seen:
