@@ -2,44 +2,30 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-
-from datenwissenschaften.models.adaptive_recurrent import AdaptiveRecurrentPPO
-from datenwissenschaften.models.rnd_config import RNDConfig
-
-RND_CONFIG = RNDConfig(
-    output_size=128,
-    learning_rate=0.0001,
-    update_proportion=0.25,
-    initial_coefficient=0.25,
-    final_coefficient=0.01,
-    anneal_steps=5_000_000,
-    reward_clip=1.0,
-)
+from stable_baselines3 import DQN
 
 
-def load_agent(environment: Any, path: Path) -> AdaptiveRecurrentPPO:
+def load_agent(environment: Any, path: Path) -> DQN:
     checkpoint = path.with_suffix(".zip")
     if checkpoint.is_file():
         logger.info(f"Loading agent from {checkpoint}")
-        return AdaptiveRecurrentPPO.load(checkpoint, env=environment, device="cpu")
-    logger.info("Creating adaptive recurrent PPO agent with RND")
-    model = AdaptiveRecurrentPPO(
-        "MultiInputLstmPolicy",
+        return DQN.load(checkpoint, env=environment, device="cpu")
+    logger.info("Creating feature-based DQN agent")
+    return DQN(
+        "MlpPolicy",
         environment,
         device="cpu",
-        learning_rate=0.0002,
-        n_steps=512,
-        batch_size=256,
-        n_epochs=4,
+        learning_rate=0.0001,
+        buffer_size=100_000,
+        learning_starts=5_000,
+        batch_size=128,
+        train_freq=(1, "step"),
+        gradient_steps=1,
+        n_steps=3,
+        target_update_interval=10_000,
         gamma=0.999,
-        gae_lambda=0.98,
-        ent_coef=0.01,
-        policy_kwargs={
-            "lstm_hidden_size": 256,
-            "n_lstm_layers": 1,
-            "shared_lstm": False,
-            "enable_critic_lstm": True,
-        },
+        exploration_fraction=1.0,
+        exploration_initial_eps=1.0,
+        exploration_final_eps=0.05,
+        policy_kwargs={"net_arch": [128, 128]},
     )
-    model.configure_rnd(RND_CONFIG)
-    return model

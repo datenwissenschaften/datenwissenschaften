@@ -1,13 +1,13 @@
 # datenwissenschaften library
 
-A small adaptive recurrent reinforcement-learning engine for `stable-retro`.
+A small state-driven reinforcement-learning engine for `stable-retro`.
 
 The engine:
 
-1. combines the game frame with normalized RAM, active state, and template detection;
+1. combines normalized RAM, active state, and template detection features;
 2. lets game code define state transitions and reward;
-3. trains one recurrent PPO policy across all states with RND curiosity;
-4. saves the policy after every rollout;
+3. trains one compact DQN policy across all states;
+4. saves the policy after every training chunk;
 5. saves state transitions and resumes from the first incomplete curriculum state.
 
 ## Installation
@@ -36,10 +36,9 @@ train(environment, config_path)
 ```
 
 Game states subclass `datenwissenschaften.states.state.State` and implement reward, termination, and transition
-methods. Stable Baselines3 receives the frame and numeric features as a dictionary observation and learns from both
-through its `MultiInputLstmPolicy`. RND adds normalized curiosity reward and doubles its coefficient after 32 episodes
-without a better extrinsic return. A successful state transition atomically saves the emulator state for the next
-curriculum stage. After all stages are complete, training restarts from the configured initial savestate.
+methods. Stable Baselines3 receives four stacked numeric feature observations and learns through a small DQN MLP.
+A successful state transition atomically saves the emulator state for the next curriculum stage. After all stages are
+complete, training mixes full runs with intermediate-state practice.
 
 ## State classes
 
@@ -47,12 +46,12 @@ curriculum stage. After all stages are complete, training restarts from the conf
 | --- | --- | --- |
 | Default | `datenwissenschaften.states.state.State` | Updates frame and RAM, runs explicit scoring and outcomes |
 | Image Detector | `datenwissenschaften.states.image_detector.ImageDetector` | Detects an exact uploaded template without adding reward |
-| Target | `datenwissenschaften.states.target.TargetState` | Adds proximity reward and persists the first target location |
-| Explorer | `datenwissenschaften.states.explorer.Explorer` | Adds count-based position novelty and advances when the template is visible |
+| Target | `datenwissenschaften.states.target.TargetState` | Rewards distance progress and persists the first target location |
+| Explorer | `datenwissenschaften.states.explorer.Explorer` | Rewards new positions and advances when the template is visible |
 
 `ImageDetector`, `TargetState`, and `Explorer` require `template_file`. Explorer additionally requires
 `position_x`, `position_y`, `screen_x`, and `screen_y` RAM fields. Target locations are stored under the game's model
-directory and provide proximity scoring after a target leaves the frame.
+directory and provide progress scoring after a target leaves the frame.
 
 ## Development
 

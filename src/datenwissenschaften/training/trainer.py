@@ -9,6 +9,8 @@ from datenwissenschaften.configuration.loader import load_config
 from datenwissenschaften.models.agent import load_agent
 from datenwissenschaften.training.winning_episode_uploader import WinningEpisodeUploader
 
+TRAINING_CHUNK_STEPS = 10_000
+
 
 def train(environment: Any, config_path: str | Path) -> None:
     config = load_config(config_path)
@@ -24,7 +26,7 @@ def train(environment: Any, config_path: str | Path) -> None:
         model.n_envs,
     )
     while True:
-        logger.debug("Starting rollout at {:,} environment steps", model.num_timesteps)
-        model.learn(total_timesteps=model.n_steps * model.n_envs, reset_num_timesteps=False, callback=uploader)
+        logger.debug("Starting training chunk at {:,} environment steps", model.num_timesteps)
+        model.learn(total_timesteps=TRAINING_CHUNK_STEPS, reset_num_timesteps=False, callback=uploader)
         atomic_save(model, checkpoint)
         logger.debug("Saved agent after {:,} environment steps", model.num_timesteps)
