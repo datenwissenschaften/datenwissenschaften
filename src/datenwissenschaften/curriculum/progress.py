@@ -1,4 +1,7 @@
+import fcntl
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from datenwissenschaften.curriculum.stagnation import ScoreStagnation
@@ -48,7 +51,8 @@ class SavestateCurriculum:
     def record_attempt(self, score: float) -> tuple[int, bool]:
         if self.recorded or self.episode_state == self.states[0]:
             return 0, False
-        return self.stagnation.record(self.episode_state, score)
+        with self._lock(self.episode_state):
+            return self.stagnation.record(self.episode_state, score)
 
     def _require_state(self, state: str) -> None:
         if state not in self.states:
@@ -59,6 +63,16 @@ class SavestateCurriculum:
 
     def _completed_path(self, state: str) -> Path:
         return self.root / f"{state}.complete"
+
+    @contextmanager
+    def _lock(self, state: str) -> Iterator[None]:
+        self.root.mkdir(parents=True, exist_ok=True)
+        with (self.root / f".{state}.lock").open("a+b") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
     def _write(path: Path, content: bytes) -> None:
