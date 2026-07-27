@@ -26,6 +26,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     curriculum_successes: int
     curriculum_stagnation_episodes: int
     full_run_probability: float
+
     def __init__(
         self,
         env: gym.Env,
@@ -40,13 +41,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             raise ValueError("Feature-based DQN requires a discrete action table")
         self.machine = StateMachine(self.start_state_cls(model_dir))
         self.state_types: tuple[type[State[T]], ...] = _state_types(self.start_state_cls, self.training_state_classes)
-        self.curriculum = SavestateCurriculum(
-            model_dir / "curriculum",
-            tuple(state.__name__ for state in self.state_types),
-            self.curriculum_successes,
-            self.curriculum_stagnation_episodes,
-            self.full_run_probability,
-        )
+        self.curriculum = _curriculum(self, model_dir)
         self.episode_score: float = 0.0
         self.player_motion = PlayerMotion()
         self.action_table = action_table
@@ -115,6 +110,17 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         velocity = self.player_motion.measure(ram, frame)
         observation = _observation(ram, self.state_types, self.machine.current, velocity)
         return observation, reward, terminated, truncated, info
+
+
+def _curriculum(wrapper: "StateMachineGymWrapper[Any]", model_dir: Path) -> SavestateCurriculum:
+    states = tuple(state.__name__ for state in wrapper.state_types)
+    return SavestateCurriculum(
+        model_dir / "curriculum",
+        states,
+        wrapper.curriculum_successes,
+        wrapper.curriculum_stagnation_episodes,
+        wrapper.full_run_probability,
+    )
 
 
 def _record_transition(
