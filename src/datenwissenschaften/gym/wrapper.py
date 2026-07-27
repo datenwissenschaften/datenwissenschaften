@@ -35,38 +35,108 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         model_dir: Path,
     ) -> None:
         super().__init__(env)
+
         if self.action_repeat < 1:
             raise ValueError("action_repeat must be positive")
+
         if action_table is None:
-            raise ValueError("Feature-based DQN requires a discrete action table")
-        self.machine = StateMachine(self.start_state_cls(model_dir))
-        self.state_types: tuple[type[State[T]], ...] = _state_types(self.start_state_cls, self.training_state_classes)
+            raise ValueError(
+                "Feature-based DQN requires a discrete action table"
+            )
+
+        self.machine = StateMachine(
+            self.start_state_cls(model_dir)
+        )
+        self.state_types: tuple[type[State[T]], ...] = _state_types(
+            self.start_state_cls,
+            self.training_state_classes,
+        )
         self.curriculum = _curriculum(self, model_dir)
-        self.episode_score: float = 0.0
+
+        self.episode_score = 0.0
+        self.initial_episode_state = self.state_types[0].__name__
+
         self.player_motion = PlayerMotion()
         self.action_table = action_table
         self.action_space = gym.spaces.Discrete(len(action_table))
-        self.observation_space = _observation_space(self.ram_info_cls, self.state_types)
+        self.observation_space = _observation_space(
+            self.ram_info_cls,
+            self.state_types,
+        )
 
-    def reset(self, **kwargs: Any) -> tuple[np.ndarray, dict[str, Any]]:
+    def reset(
+        self,
+        **kwargs: Any,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         frame, info = self.env.reset(**kwargs)
         self.episode_score = 0.0
-        state_name, savestate = self.curriculum.start()
-        if savestate is not None:
-            frame = _restore(self.env.unwrapped, savestate)
-        ram = _ram(self.ram_info_cls, self.env.unwrapped)
-        state_type = next(state for state in self.state_types if state.__name__ == state_name)
-        self.machine.reset(ram, frame, state_type)
-        velocity = self.player_motion.reset(ram, frame)
-        return _observation(ram, self.state_types, self.machine.current, velocity), info
 
-    def step(self, action: WrapperActType) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        state_name, savestate = self.curriculum.start()
+        self.initial_episode_state = state_name
+
+        if savestate is not None:
+            frame = _restore(
+                self.env.unwrapped,
+                savestate,
+            )
+
+        ram = _ram(
+            self.ram_info_cls,
+            self.env.unwrapped,
+        )
+        state_type = next(
+            state
+            for state in self.state_types
+            if state.__name__ == state_name
+        )
+
+        self.machine.reset(
+            ram,
+            frame,
+            state_type,
+        )
+        velocity = self.player_motion.reset(
+            ram,
+            frame,
+        )
+
+        observation = _observation(
+            ram,
+            self.state_types,
+            self.machine.current,
+            velocity,
+        )
+
+        return observation, info
+
+    def step(
+        self,
+        action: WrapperActType,
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         reward = 0.0
+
         for _ in range(self.action_repeat):
-            frame, _, terminated, truncated, info = self.env.step(_action(action, self.action_table, self.action_space))
-            ram = _ram(self.ram_info_cls, self.env.unwrapped)
+            frame, _, terminated, truncated, info = self.env.step(
+                _action(
+                    action,
+                    self.action_table,
+                    self.action_space,
+                )
+            )
+
+            ram = _ram(
+                self.ram_info_cls,
+                self.env.unwrapped,
+            )
             previous_state = self.machine.name
-            state_reward, state_terminated, state_truncated = self.machine.step(ram, frame)
+
+            state_reward, state_terminated, state_truncated = (
+                self.machine.step(
+                    ram,
+                    frame,
+                )
+            )
+
             if self.machine.name != previous_state:
                 state_reward += self.transition_reward
                 _record_transition(
@@ -75,27 +145,64 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                     self.machine.name,
                     bytes(self.env.unwrapped.em.get_state()),
                 )
+
             reward += state_reward
             self.episode_score += state_reward
+
             terminated = terminated or state_terminated
             truncated = truncated or state_truncated
+
             if terminated or truncated:
                 break
+
         won = self.machine.current._won()
-        outcome_reward = self.victory_reward if won else self.failure_penalty if terminated else 0.0
+
+        if won:
+            outcome_reward = self.victory_reward
+        elif terminated:
+            outcome_reward = self.failure_penalty
+        else:
+            outcome_reward = 0.0
+
         reward += outcome_reward
         self.episode_score += outcome_reward
+
         if won:
-            _record_victory(self.curriculum, self.machine.name)
+            _record_victory(
+                self.curriculum,
+                self.machine.name,
+            )
+
         terminated = terminated or won
-        if (terminated or truncated) and not self.curriculum.recorded:
-            episodes, deleted = self.curriculum.record_attempt(self.episode_score)
-            if deleted:
+
+        if (
+            (terminated or truncated)
+            and not self.curriculum.recorded
+        ):
+            progressed = (
+                self.machine.name != self.initial_episode_state
+                or won
+            )
+            diagnostics = self.curriculum.record_attempt(
+                score=self.episode_score,
+                progressed=progressed,
+            )
+
+            if diagnostics.deleted:
                 logger.warning(
-                    "Deleted bad curriculum savestate {} after {} episodes without an increasing score",
-                    self.curriculum.episode_state,
-                    episodes,
+                    "Deleted bad curriculum savestate {} after {} attempts: "
+                    "recent_median={:.3f}, best_median={:.3f}, "
+                    "trend={:.6f}, progress_rate={:.1%}, "
+                    "stagnant_windows={}",
+                    diagnostics.state,
+                    diagnostics.attempts,
+                    diagnostics.recent_median,
+                    diagnostics.best_median,
+                    diagnostics.trend,
+                    diagnostics.progress_rate,
+                    diagnostics.stagnant_windows,
                 )
+
         info.update(
             {
                 "state": self.machine.name,
@@ -105,11 +212,30 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 "ram": ram.to_dict(),
             }
         )
+
         if terminated or truncated:
-            info["episode_bk2_path"] = _recording_path(self.env.unwrapped)
-        velocity = self.player_motion.measure(ram, frame)
-        observation = _observation(ram, self.state_types, self.machine.current, velocity)
-        return observation, reward, terminated, truncated, info
+            info["episode_bk2_path"] = _recording_path(
+                self.env.unwrapped
+            )
+
+        velocity = self.player_motion.measure(
+            ram,
+            frame,
+        )
+        observation = _observation(
+            ram,
+            self.state_types,
+            self.machine.current,
+            velocity,
+        )
+
+        return (
+            observation,
+            reward,
+            terminated,
+            truncated,
+            info,
+        )
 
 
 def _curriculum(wrapper: "StateMachineGymWrapper[Any]", model_dir: Path) -> SavestateCurriculum:

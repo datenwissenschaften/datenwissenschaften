@@ -17,7 +17,7 @@ class WinningEpisodeUploader(BaseCallback):
                 continue
             path = Path(info["episode_bk2_path"])
             episode = info["episode"]
-            logger.info(
+            logger.debug(
                 "Episode finished: reward={:.3f}, steps={}, start={}, end={}, full_run={}, won={}",
                 episode["r"],
                 episode["l"],
