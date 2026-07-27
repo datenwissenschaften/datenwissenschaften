@@ -32,7 +32,7 @@ class WinningEpisodeUploader(BaseCallback):
                 response = httpx.post(
                     f"{self.config.upload.url}/runs",
                     headers={"X-API-Key": self.config.upload.api_key},
-                    data={"game": self.config.training.game, "category": self.config.training.savestate},
+                    data={"game": self.config.training.game, "category": self.config.training.savestate, "type": "WON"},
                     files={"bk2_file": (path.name, stream, "application/zip")},
                 )
             response.raise_for_status()
