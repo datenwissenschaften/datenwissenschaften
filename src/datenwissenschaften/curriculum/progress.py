@@ -12,6 +12,7 @@ class SavestateCurriculum:
         root: Path,
         states: tuple[str, ...],
         required_successes: int,
+        stagnation_episodes: int,
         full_run_probability: float,
     ) -> None:
         if not states:
@@ -26,7 +27,7 @@ class SavestateCurriculum:
         self.training = True
         self.full_run = False
         self.mastery = StageMastery(root, required_successes)
-        self.stagnation: ScoreStagnation = ScoreStagnation(root)
+        self.stagnation: ScoreStagnation = ScoreStagnation(root, stagnation_episodes)
         self.storage = CurriculumStorage(root)
 
     def start(self) -> tuple[str, bytes | None]:
@@ -97,9 +98,9 @@ class SavestateCurriculum:
         if self.storage.completed(state):
             return self.required_successes, True
         successes, completed = self.mastery.record(state)
+        self.stagnation.clear(state)
         if completed:
             self.storage.complete(state)
-            self.stagnation.clear(state)
         return successes, completed
 
     def _require_state(self, state: str) -> None:

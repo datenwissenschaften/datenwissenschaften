@@ -3,10 +3,11 @@ from pathlib import Path
 
 
 class ScoreStagnation:
-    episodes_allowed: int = 16
-
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, episodes_allowed: int) -> None:
+        if episodes_allowed < 1:
+            raise ValueError("episodes_allowed must be positive")
         self.root = root
+        self.episodes_allowed = episodes_allowed
 
     def record(self, state: str, score: float) -> tuple[int, bool]:
         if not math.isfinite(score):

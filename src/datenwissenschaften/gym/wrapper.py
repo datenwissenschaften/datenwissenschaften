@@ -24,8 +24,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     victory_reward: float
     failure_penalty: float
     curriculum_successes: int
+    curriculum_stagnation_episodes: int
     full_run_probability: float
-
     def __init__(
         self,
         env: gym.Env,
@@ -44,6 +44,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             model_dir / "curriculum",
             tuple(state.__name__ for state in self.state_types),
             self.curriculum_successes,
+            self.curriculum_stagnation_episodes,
             self.full_run_probability,
         )
         self.episode_score: float = 0.0
