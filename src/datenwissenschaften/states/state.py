@@ -18,7 +18,13 @@ class State(Generic[T]):
 
     def __init__(self, model_dir: Path) -> None:
         self.model_dir = model_dir
-        self.target_detector = TemplateDetector(self.template_file) if hasattr(self, "template_file") else None
+
+        template_file = getattr(type(self), "template_file", None)
+        self.target_detector = (
+            TemplateDetector(model_dir / template_file)
+            if template_file is not None
+            else None
+        )
 
     def reset(self, ram: T, frame: np.ndarray) -> None:
         self.ram = ram
