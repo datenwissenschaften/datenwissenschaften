@@ -38,5 +38,4 @@ class StateMachine(Generic[T]):
                 self._states[next_type] = next_type(self.start.model_dir)
             self.current = self._states[next_type]
             self.current.reset(ram, frame)
-            logger.debug("State transition: {} -> {}", previous, self.name)
         return reward, terminated, truncated
