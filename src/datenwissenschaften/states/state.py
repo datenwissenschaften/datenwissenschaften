@@ -22,7 +22,6 @@ class State(Generic[T]):
         try:
             self.target_detector = TemplateDetector(self.template_file) if hasattr(self, "template_file") else None
         except Exception as e:
-            logger.warning(f"Failed to initialize target detector: {e}")
             self.target_detector = None
 
     def reset(self, ram: T, frame: np.ndarray) -> None:
