@@ -59,24 +59,27 @@ class WinningEpisodeUploader(BaseCallback):
                                 "application/octet-stream",
                             )
                             response = httpx.post(
-                                f"{self.config.upload.url}/trainings",
+                                f"{self.config.upload.url}/runs",
                                 headers={"X-API-Key": self.config.upload.api_key},
                                 data={
                                     "game": self.config.training.game,
                                     "category": self.config.training.savestate,
                                     "curriculum": info["episode_state"],
+                                    "action_repeat": 4,
+                                    "type": "TRAINING"
                                 },
                                 files=files,
                             )
                     else:
                         response = httpx.post(
-                            f"{self.config.upload.url}/trainings",
+                            f"{self.config.upload.url}/runs",
                             headers={"X-API-Key": self.config.upload.api_key},
                             data={
                                 "game": self.config.training.game,
                                 "category": self.config.training.savestate,
                                 "curriculum": info["episode_state"],
-                                "action_repeat": 4
+                                "action_repeat": 4,
+                                "type": "TRAINING"
                             },
                             files=files,
                         )
