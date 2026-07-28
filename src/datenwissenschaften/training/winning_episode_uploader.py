@@ -76,6 +76,7 @@ class WinningEpisodeUploader(BaseCallback):
                                 "game": self.config.training.game,
                                 "category": self.config.training.savestate,
                                 "curriculum": info["episode_state"],
+                                "action_repeat": 4
                             },
                             files=files,
                         )
@@ -89,7 +90,8 @@ class WinningEpisodeUploader(BaseCallback):
                 response = httpx.post(
                     f"{self.config.upload.url}/runs",
                     headers={"X-API-Key": self.config.upload.api_key},
-                    data={"game": self.config.training.game, "category": self.config.training.savestate, "type": "WON"},
+                    data={"game": self.config.training.game, "category": self.config.training.savestate, "type": "WON",
+                          "action_repeat": 4},
                     files={"bk2_file": (bk2_file_path.name, stream, "application/zip")},
                 )
             response.raise_for_status()
