@@ -1,3 +1,4 @@
+import os
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -14,9 +15,12 @@ from datenwissenschaften.retro.rom_importer import import_roms
 
 def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) -> VecFrameStack:
     config = load_config(config_path)
+    environment_count = len(os.sched_getaffinity(0))
+    if environment_count < 1:
+        raise RuntimeError("The process must have at least one available CPU")
     logger.info(
         "Building {} environment(s) for {} / {}",
-        config.training.num_envs,
+        environment_count,
         config.training.game,
         config.training.savestate,
     )
@@ -31,7 +35,7 @@ def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) ->
             models_path,
             index,
         )
-        for index in range(config.training.num_envs)
+        for index in range(environment_count)
     ]
     environments = SubprocVecEnv(factories) if len(factories) > 1 else DummyVecEnv(factories)
     logger.success("Environments ready")

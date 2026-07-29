@@ -5,7 +5,6 @@ paths:
 training:
   game: Airstriker-Genesis-v0
   savestate: Level1
-  num_envs: auto
   fingerprint: replace-me
 
 upload:

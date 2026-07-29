@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import Any
 
@@ -26,17 +25,17 @@ def load_config(config_path: str | Path) -> Box:
         "paths.models",
         "training.game",
         "training.savestate",
-        "training.num_envs",
         "training.fingerprint",
         "upload.url",
         "upload.api_key",
         "log_level",
     )
+    if "num_envs" in config.training:
+        raise RuntimeError("Unsupported configuration value: training.num_envs")
     config.paths.roms = _path(config.paths.roms, path.parent)
     config.paths.models = _path(config.paths.models, path.parent)
     config.training.game = _string(config.training.game, "training.game")
     config.training.savestate = _string(config.training.savestate, "training.savestate")
-    config.training.num_envs = _environment_count(config.training.num_envs)
     config.training.fingerprint = _string(config.training.fingerprint, "training.fingerprint")
     config.upload.url = _string(config.upload.url, "upload.url").rstrip("/")
     config.upload.api_key = _string(config.upload.api_key, "upload.api_key")
@@ -66,11 +65,3 @@ def _string(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise RuntimeError(f"Configuration value '{name}' must be a non-empty string")
     return value.strip()
-
-
-def _environment_count(value: Any) -> int:
-    if value == "auto":
-        return len(os.sched_getaffinity(0))
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise RuntimeError("training.num_envs must be a positive integer or 'auto'")
-    return value
