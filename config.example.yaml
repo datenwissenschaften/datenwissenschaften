@@ -6,6 +6,7 @@ training:
   game: Airstriker-Genesis-v0
   savestate: Level1
   num_envs: auto
+  fingerprint: replace-me
 
 upload:
   url: https://speedlab.datenwissenschaften.com/api

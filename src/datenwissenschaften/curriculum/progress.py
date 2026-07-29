@@ -243,9 +243,7 @@ class SavestateCurriculum:
         if not states:
             raise ValueError("Curriculum requires at least one state")
         if not 0.0 <= full_run_probability <= 1.0:
-            raise ValueError(
-                "full_run_probability must be between zero and one"
-            )
+            raise ValueError("full_run_probability must be between zero and one")
 
         self.root = root
         self.states = states
@@ -267,11 +265,7 @@ class SavestateCurriculum:
         self.full_run = False
 
         target_index = next(
-            (
-                index
-                for index, state in enumerate(self.states)
-                if not self.storage.completed(state)
-            ),
+            (index for index, state in enumerate(self.states) if not self.storage.completed(state)),
             None,
         )
 
@@ -300,11 +294,7 @@ class SavestateCurriculum:
         self._require_state(previous)
         self._require_state(current)
 
-        if (
-            not self.training
-            or self.recorded
-            or previous != self.episode_state
-        ):
+        if not self.training or self.recorded or previous != self.episode_state:
             return 0, False
 
         with self.storage.lock(previous):
@@ -317,11 +307,7 @@ class SavestateCurriculum:
     def victory(self, state: str) -> tuple[int, bool]:
         self._require_state(state)
 
-        if (
-            not self.training
-            or self.recorded
-            or state != self.episode_state
-        ):
+        if not self.training or self.recorded or state != self.episode_state:
             return 0, False
 
         with self.storage.lock(state):
@@ -335,11 +321,7 @@ class SavestateCurriculum:
         score: float,
         progressed: bool,
     ) -> SavestateDiagnostics:
-        if (
-            not self.training
-            or self.recorded
-            or self.episode_state == self.states[0]
-        ):
+        if not self.training or self.recorded or self.episode_state == self.states[0]:
             return SavestateDiagnostics(
                 state=self.episode_state,
                 attempts=0,
@@ -359,9 +341,7 @@ class SavestateCurriculum:
             )
 
             if diagnostics.deleted:
-                self.storage.savestate(self.episode_state).unlink(
-                    missing_ok=True
-                )
+                self.storage.savestate(self.episode_state).unlink(missing_ok=True)
                 self.mastery.clear(self.episode_state)
                 self.stagnation.clear(self.episode_state)
 

@@ -7,6 +7,7 @@ from loguru import logger
 from datenwissenschaften.checkpoints.model import atomic_save
 from datenwissenschaften.configuration.loader import load_config
 from datenwissenschaften.models.agent import load_agent
+from datenwissenschaften.models.path import model_directory
 from datenwissenschaften.training.winning_episode_uploader import WinningEpisodeUploader
 
 TRAINING_CHUNK_STEPS = 10_000
@@ -16,7 +17,7 @@ def train(environment: Any, config_path: str | Path) -> None:
     config = load_config(config_path)
     logger.remove()
     logger.add(sys.stderr, level=config.log_level)
-    checkpoint = config.paths.models / config.training.game / config.training.savestate / "model"
+    checkpoint = model_directory(config) / "model"
     model = load_agent(environment, checkpoint)
     uploader = WinningEpisodeUploader(config)
     logger.info(

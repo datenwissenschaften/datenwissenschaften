@@ -8,6 +8,7 @@ from loguru import logger
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecFrameStack, VecMonitor
 
 from datenwissenschaften.configuration.loader import load_config
+from datenwissenschaften.models.path import model_directory
 from datenwissenschaften.retro.rom_importer import import_roms
 
 
@@ -20,13 +21,14 @@ def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) ->
         config.training.savestate,
     )
     import_roms(config.paths.roms)
+    models_path = model_directory(config)
     factories = [
         partial(
             _create_environment,
             wrapper,
             config.training.game,
             config.training.savestate,
-            config.paths.models / config.training.game / config.training.savestate,
+            models_path,
             index,
         )
         for index in range(config.training.num_envs)

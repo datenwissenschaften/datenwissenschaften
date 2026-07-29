@@ -1,7 +1,6 @@
 from typing import Generic, TypeVar
 
 import numpy as np
-from loguru import logger
 
 from datenwissenschaften.ram.model import RamInfo
 from datenwissenschaften.states.state import State
@@ -33,7 +32,6 @@ class StateMachine(Generic[T]):
     def step(self, ram: T, frame: np.ndarray) -> tuple[float, bool, bool]:
         reward, terminated, truncated, next_type = self.current.step(ram, frame)
         if next_type is not None:
-            previous = type(self.current).__name__
             if next_type not in self._states:
                 self._states[next_type] = next_type(self.start.model_dir)
             self.current = self._states[next_type]

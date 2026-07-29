@@ -41,9 +41,9 @@ def test_success_resets_stagnation_for_current_state(tmp_path: Path) -> None:
     progress.storage.save("Finish", b"finish")
 
     assert progress.start() == ("Finish", b"finish")
-    assert progress.record_attempt(10.0) == (0, False)
+    assert progress.record_attempt(10.0, False).attempts == 1
     assert progress.start() == ("Finish", b"finish")
-    assert progress.record_attempt(9.0) == (1, False)
+    assert progress.record_attempt(9.0, False).attempts == 2
     assert progress.start() == ("Finish", b"finish")
     assert progress.victory("Finish") == (1, False)
-    assert not (tmp_path / "Finish.stagnant_episodes").exists()
+    assert not (tmp_path / "stagnation" / "Finish.json").exists()

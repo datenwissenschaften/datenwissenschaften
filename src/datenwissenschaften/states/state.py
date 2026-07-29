@@ -1,8 +1,7 @@
 from pathlib import Path
 from typing import Generic, TypeVar
-from loguru import logger
-import numpy as np
 
+import numpy as np
 
 from datenwissenschaften.ram.model import RamInfo
 from datenwissenschaften.states.detector import TemplateDetector
@@ -19,10 +18,7 @@ class State(Generic[T]):
 
     def __init__(self, model_dir: Path) -> None:
         self.model_dir = model_dir
-        try:
-            self.target_detector = TemplateDetector(self.template_file) if hasattr(self, "template_file") else None
-        except Exception as e:
-            self.target_detector = None
+        self.target_detector = TemplateDetector(self.template_file) if hasattr(self, "template_file") else None
 
     def reset(self, ram: T, frame: np.ndarray) -> None:
         self.ram = ram
@@ -31,9 +27,9 @@ class State(Generic[T]):
         self._on_reset()
 
     def step(
-            self,
-            ram: T,
-            frame: np.ndarray,
+        self,
+        ram: T,
+        frame: np.ndarray,
     ) -> tuple[float, bool, bool, type["State[T]"] | None]:
         self.ram = ram
         self.frame = frame

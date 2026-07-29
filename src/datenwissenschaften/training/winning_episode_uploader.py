@@ -5,6 +5,8 @@ from box import Box
 from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
+from datenwissenschaften.models.path import model_directory
+
 
 class WinningEpisodeUploader(BaseCallback):
     def __init__(self, config: Box) -> None:
@@ -17,21 +19,9 @@ class WinningEpisodeUploader(BaseCallback):
                 continue
             is_new_best_score = False
             bk2_file_path = Path(info["episode_bk2_path"])
-            model_path = Path(self.config.paths.models)
-            reward_path = (
-                model_path
-                / self.config.training.game
-                / self.config.training.savestate
-                / "rewards"
-                / f"{info['episode_state']}.score"
-            )
-            curriculum_path = (
-                model_path
-                / self.config.training.game
-                / self.config.training.savestate
-                / "curriculum"
-                / f"{info['episode_state']}.state"
-            )
+            model_path = model_directory(self.config)
+            reward_path = model_path / "rewards" / f"{info['episode_state']}.score"
+            curriculum_path = model_path / "curriculum" / f"{info['episode_state']}.state"
             score = int(float(info["episode"]["r"]))
             if reward_path.exists():
                 with reward_path.open("r") as f:
@@ -108,6 +98,7 @@ class WinningEpisodeUploader(BaseCallback):
                     data={
                         "game": self.config.training.game,
                         "category": self.config.training.savestate,
+                        "curriculum": info["episode_state"],
                         "type": "WON",
                         "action_repeat": 4,
                         "episode_number": info["episode_number"],
