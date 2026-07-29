@@ -98,7 +98,7 @@ class WinningEpisodeUploader(BaseCallback):
 
                 response.raise_for_status()
             if not info["won"] or not info["full_run"]:
-                bk2_file_path.unlink()
+                bk2_file_path.unlink(missing_ok=True)
                 continue
             logger.info("Uploading winning episode {}", bk2_file_path.name)
             with bk2_file_path.open("rb") as stream:
@@ -115,6 +115,6 @@ class WinningEpisodeUploader(BaseCallback):
                     files={"bk2_file": (bk2_file_path.name, stream, "application/zip")},
                 )
             response.raise_for_status()
-            bk2_file_path.unlink()
+            bk2_file_path.unlink(missing_ok=True)
             logger.success("Uploaded winning episode {}", bk2_file_path.name)
         return True
