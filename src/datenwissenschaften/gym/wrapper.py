@@ -52,6 +52,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.episode_counter: EpisodeCounter = EpisodeCounter(model_dir / "episodes.count")
         self.episode_number: int = 0
         self.episode_score = 0.0
+        self.initial_episode_state = self.state_types[0].__name__
         self.player_motion = PlayerMotion()
         self.action_table = action_table
         self.action_space = gym.spaces.Discrete(len(action_table))
@@ -69,6 +70,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.episode_score = 0.0
 
         state_name, savestate = self.curriculum.start()
+        self.initial_episode_state = state_name
 
         if savestate is not None:
             frame = _restore(
@@ -165,12 +167,32 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         terminated = terminated or won
 
+        if (terminated or truncated) and not self.curriculum.recorded:
+            diagnostics = self.curriculum.record_attempt(
+                self.episode_score,
+                self.machine.name != self.initial_episode_state or won,
+            )
+            if diagnostics.deleted:
+                logger.warning(
+                    "Deleted bad curriculum savestate {} after {} attempts: "
+                    "recent_median={:.3f}, best_median={:.3f}, "
+                    "trend={:.6f}, progress_rate={:.1%}, stagnant_windows={}",
+                    diagnostics.state,
+                    diagnostics.attempts,
+                    diagnostics.recent_median,
+                    diagnostics.best_median,
+                    diagnostics.trend,
+                    diagnostics.progress_rate,
+                    diagnostics.stagnant_windows,
+                )
+
         info.update(
             {
                 "state": self.machine.name,
                 "episode_number": self.episode_number,
                 "episode_state": self.curriculum.episode_state,
                 "full_run": self.curriculum.full_run,
+                "action_repeat": self.action_repeat,
                 "won": won,
                 "ram": ram.to_dict(),
             }

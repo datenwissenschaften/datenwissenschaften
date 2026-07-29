@@ -70,8 +70,6 @@ class AdaptiveBadSavestateDetector:
         self.history_size = history_size
         self.root.mkdir(parents=True, exist_ok=True)
 
-        self.performance: dict[str, SavestatePerformance] = {}
-
     @classmethod
     def from_stagnation_episodes(
         cls,
@@ -95,7 +93,7 @@ class AdaptiveBadSavestateDetector:
         score: float,
         progressed: bool,
     ) -> SavestateDiagnostics:
-        performance = self._performance(state)
+        performance = self._load(state)
         performance.scores.append(float(score))
         performance.progressed.append(bool(progressed))
 
@@ -171,13 +169,7 @@ class AdaptiveBadSavestateDetector:
         return diagnostics
 
     def clear(self, state: str) -> None:
-        self.performance.pop(state, None)
         self._path(state).unlink(missing_ok=True)
-
-    def _performance(self, state: str) -> SavestatePerformance:
-        if state not in self.performance:
-            self.performance[state] = self._load(state)
-        return self.performance[state]
 
     def _load(self, state: str) -> SavestatePerformance:
         path = self._path(state)

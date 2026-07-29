@@ -7,9 +7,14 @@ from stable_baselines3 import DQN
 
 def load_agent(environment: Any, path: Path) -> DQN:
     checkpoint = path.with_suffix(".zip")
+    replay_buffer = path.with_suffix(".replay.pkl")
     if checkpoint.is_file():
+        if not replay_buffer.is_file():
+            raise RuntimeError(f"Replay buffer not found: {replay_buffer}")
         logger.info(f"Loading agent from {checkpoint}")
-        return DQN.load(checkpoint, env=environment, device="cpu")
+        model = DQN.load(checkpoint, env=environment, device="cpu")
+        model.load_replay_buffer(replay_buffer, truncate_last_traj=True)
+        return model
     logger.info("Creating feature-based DQN agent")
     return DQN(
         "MlpPolicy",
@@ -20,7 +25,7 @@ def load_agent(environment: Any, path: Path) -> DQN:
         learning_starts=5_000,
         batch_size=128,
         train_freq=(1, "step"),
-        gradient_steps=1,
+        gradient_steps=-1,
         n_steps=3,
         target_update_interval=10_000,
         gamma=0.999,

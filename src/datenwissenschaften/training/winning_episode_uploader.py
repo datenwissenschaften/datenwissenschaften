@@ -31,6 +31,7 @@ class WinningEpisodeUploader(BaseCallback):
                     with reward_path.open("w") as f:
                         f.write(str(score))
             else:
+                is_new_best_score = True
                 reward_path.parent.mkdir(parents=True, exist_ok=True)
                 with reward_path.open("w") as f:
                     f.write(str(score))
@@ -65,7 +66,7 @@ class WinningEpisodeUploader(BaseCallback):
                                     "game": self.config.training.game,
                                     "category": self.config.training.savestate,
                                     "curriculum": info["episode_state"],
-                                    "action_repeat": 4,
+                                    "action_repeat": info["action_repeat"],
                                     "episode_number": info["episode_number"],
                                     "type": "TRAINING",
                                 },
@@ -79,7 +80,7 @@ class WinningEpisodeUploader(BaseCallback):
                                 "game": self.config.training.game,
                                 "category": self.config.training.savestate,
                                 "curriculum": info["episode_state"],
-                                "action_repeat": 4,
+                                "action_repeat": info["action_repeat"],
                                 "episode_number": info["episode_number"],
                                 "type": "TRAINING",
                             },
@@ -100,7 +101,7 @@ class WinningEpisodeUploader(BaseCallback):
                         "category": self.config.training.savestate,
                         "curriculum": info["episode_state"],
                         "type": "WON",
-                        "action_repeat": 4,
+                        "action_repeat": info["action_repeat"],
                         "episode_number": info["episode_number"],
                     },
                     files={"bk2_file": (bk2_file_path.name, stream, "application/zip")},
