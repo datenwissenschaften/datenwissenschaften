@@ -5,8 +5,6 @@ from box import Box
 from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
-from datenwissenschaften import curriculum
-
 
 class WinningEpisodeUploader(BaseCallback):
     def __init__(self, config: Box) -> None:
@@ -20,8 +18,20 @@ class WinningEpisodeUploader(BaseCallback):
             is_new_best_score = False
             bk2_file_path = Path(info["episode_bk2_path"])
             model_path = Path(self.config.paths.models)
-            reward_path = model_path / self.config.training.game / self.config.training.savestate / "rewards" / f"{info['episode_state']}.score"
-            curriculum_path = model_path / self.config.training.game / self.config.training.savestate / "curriculum" / f"{info['episode_state']}.state"
+            reward_path = (
+                model_path
+                / self.config.training.game
+                / self.config.training.savestate
+                / "rewards"
+                / f"{info['episode_state']}.score"
+            )
+            curriculum_path = (
+                model_path
+                / self.config.training.game
+                / self.config.training.savestate
+                / "curriculum"
+                / f"{info['episode_state']}.state"
+            )
             score = int(float(info["episode"]["r"]))
             if reward_path.exists():
                 with reward_path.open("r") as f:
@@ -66,7 +76,8 @@ class WinningEpisodeUploader(BaseCallback):
                                     "category": self.config.training.savestate,
                                     "curriculum": info["episode_state"],
                                     "action_repeat": 4,
-                                    "type": "TRAINING"
+                                    "episode_number": info["episode_number"],
+                                    "type": "TRAINING",
                                 },
                                 files=files,
                             )
@@ -79,7 +90,8 @@ class WinningEpisodeUploader(BaseCallback):
                                 "category": self.config.training.savestate,
                                 "curriculum": info["episode_state"],
                                 "action_repeat": 4,
-                                "type": "TRAINING"
+                                "episode_number": info["episode_number"],
+                                "type": "TRAINING",
                             },
                             files=files,
                         )
@@ -93,8 +105,13 @@ class WinningEpisodeUploader(BaseCallback):
                 response = httpx.post(
                     f"{self.config.upload.url}/runs",
                     headers={"X-API-Key": self.config.upload.api_key},
-                    data={"game": self.config.training.game, "category": self.config.training.savestate, "type": "WON",
-                          "action_repeat": 4},
+                    data={
+                        "game": self.config.training.game,
+                        "category": self.config.training.savestate,
+                        "type": "WON",
+                        "action_repeat": 4,
+                        "episode_number": info["episode_number"],
+                    },
                     files={"bk2_file": (bk2_file_path.name, stream, "application/zip")},
                 )
             response.raise_for_status()

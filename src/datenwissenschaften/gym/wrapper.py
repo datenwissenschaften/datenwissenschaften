@@ -11,6 +11,7 @@ from datenwissenschaften.gym.player_motion import PlayerMotion
 from datenwissenschaften.ram.model import REQUIRED_DQN_RAM_FIELDS, RamInfo
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
+from datenwissenschaften.training.episode_counter import EpisodeCounter
 
 T = TypeVar("T", bound=RamInfo)
 
@@ -28,11 +29,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     full_run_probability: float
 
     def __init__(
-            self,
-            env: gym.Env,
-            *,
-            action_table: np.ndarray | None,
-            model_dir: Path,
+        self,
+        env: gym.Env,
+        *,
+        action_table: np.ndarray | None,
+        model_dir: Path,
     ) -> None:
         super().__init__(env)
 
@@ -40,9 +41,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             raise ValueError("action_repeat must be positive")
 
         if action_table is None:
-            raise ValueError(
-                "Feature-based DQN requires a discrete action table"
-            )
+            raise ValueError("Feature-based DQN requires a discrete action table")
 
         self.machine = StateMachine(self.start_state_cls(model_dir))
         self.state_types: tuple[type[State[T]], ...] = _state_types(
@@ -50,6 +49,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self.training_state_classes,
         )
         self.curriculum = _curriculum(self, model_dir)
+        self.episode_counter: EpisodeCounter = EpisodeCounter(model_dir / "episodes.count")
+        self.episode_number: int = 0
         self.episode_score = 0.0
         self.player_motion = PlayerMotion()
         self.action_table = action_table
@@ -60,10 +61,11 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         )
 
     def reset(
-            self,
-            **kwargs: Any,
+        self,
+        **kwargs: Any,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         frame, info = self.env.reset(**kwargs)
+        self.episode_number = self.episode_counter.next_episode()
         self.episode_score = 0.0
 
         state_name, savestate = self.curriculum.start()
@@ -78,11 +80,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self.ram_info_cls,
             self.env.unwrapped,
         )
-        state_type = next(
-            state
-            for state in self.state_types
-            if state.__name__ == state_name
-        )
+        state_type = next(state for state in self.state_types if state.__name__ == state_name)
 
         self.machine.reset(
             ram,
@@ -104,8 +102,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         return observation, info
 
     def step(
-            self,
-            action: WrapperActType,
+        self,
+        action: WrapperActType,
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         reward = 0.0
 
@@ -124,11 +122,9 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             )
             previous_state = self.machine.name
 
-            state_reward, state_terminated, state_truncated = (
-                self.machine.step(
-                    ram,
-                    frame,
-                )
+            state_reward, state_terminated, state_truncated = self.machine.step(
+                ram,
+                frame,
             )
 
             if self.machine.name != previous_state:
@@ -172,6 +168,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         info.update(
             {
                 "state": self.machine.name,
+                "episode_number": self.episode_number,
                 "episode_state": self.curriculum.episode_state,
                 "full_run": self.curriculum.full_run,
                 "won": won,
@@ -180,9 +177,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         )
 
         if terminated or truncated:
-            info["episode_bk2_path"] = _recording_path(
-                self.env.unwrapped
-            )
+            info["episode_bk2_path"] = _recording_path(self.env.unwrapped)
 
         velocity = self.player_motion.measure(
             ram,
@@ -199,13 +194,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
 
 def _curriculum(
-        wrapper: "StateMachineGymWrapper[Any]",
-        model_dir: Path,
+    wrapper: "StateMachineGymWrapper[Any]",
+    model_dir: Path,
 ) -> SavestateCurriculum:
-    states = tuple(
-        state.__name__
-        for state in wrapper.state_types
-    )
+    states = tuple(state.__name__ for state in wrapper.state_types)
 
     return SavestateCurriculum(
         model_dir / "curriculum",
@@ -217,10 +209,10 @@ def _curriculum(
 
 
 def _record_transition(
-        curriculum: SavestateCurriculum,
-        previous: str,
-        current: str,
-        savestate: bytes,
+    curriculum: SavestateCurriculum,
+    previous: str,
+    current: str,
+    savestate: bytes,
 ) -> None:
     successes, completed = curriculum.transition(
         previous,
@@ -236,8 +228,8 @@ def _record_transition(
 
 
 def _record_victory(
-        curriculum: SavestateCurriculum,
-        state: str,
+    curriculum: SavestateCurriculum,
+    state: str,
 ) -> None:
     if curriculum.full_run:
         logger.success("Completed full run")
@@ -253,10 +245,10 @@ def _record_victory(
 
 
 def _log_mastery(
-        curriculum: SavestateCurriculum,
-        state: str,
-        successes: int,
-        completed: bool,
+    curriculum: SavestateCurriculum,
+    state: str,
+    successes: int,
+    completed: bool,
 ) -> None:
     if completed:
         logger.success(
@@ -274,41 +266,22 @@ def _log_mastery(
 
 
 def _recording_path(retro: Any) -> str:
-    recording = (
-            Path(retro.movie_path)
-            / (
-                f"{retro.gamename}-"
-                f"{Path(retro.statename).stem}-"
-                f"{retro.movie_id - 1:06d}.bk2"
-            )
-    )
+    recording = Path(retro.movie_path) / (f"{retro.gamename}-{Path(retro.statename).stem}-{retro.movie_id - 1:06d}.bk2")
     return str(recording)
 
 
 def _observation_space(
-        ram_info: type[RamInfo],
-        states: tuple[type[State[Any]], ...],
+    ram_info: type[RamInfo],
+    states: tuple[type[State[Any]], ...],
 ) -> gym.spaces.Box:
     ram_map = ram_info.ram_map()
-    missing = tuple(
-        field
-        for field in REQUIRED_DQN_RAM_FIELDS
-        if field not in ram_map
-    )
+    missing = tuple(field for field in REQUIRED_DQN_RAM_FIELDS if field not in ram_map)
 
     if missing:
-        fields = ", ".join(
-            f"ram.{field}"
-            for field in missing
-        )
-        raise ValueError(
-            f"Feature-based DQN requires RAM fields: {fields}"
-        )
+        fields = ", ".join(f"ram.{field}" for field in missing)
+        raise ValueError(f"Feature-based DQN requires RAM fields: {fields}")
 
-    ram_size = sum(
-        length
-        for _, length in ram_map.values()
-    )
+    ram_size = sum(length for _, length in ram_map.values())
 
     return gym.spaces.Box(
         -1.0,
@@ -319,30 +292,24 @@ def _observation_space(
 
 
 def _ram(
-        model: type[T],
-        emulator: Any,
+    model: type[T],
+    emulator: Any,
 ) -> T:
-    return model.from_ram(
-        emulator.get_ram()
-    )
+    return model.from_ram(emulator.get_ram())
 
 
 def _state_types(
-        start: type[State[T]],
-        states: tuple[type[State[T]], ...],
+    start: type[State[T]],
+    states: tuple[type[State[T]], ...],
 ) -> tuple[type[State[T]], ...]:
-    return tuple(
-        dict.fromkeys(
-            (start, *states)
-        )
-    )
+    return tuple(dict.fromkeys((start, *states)))
 
 
 def _observation(
-        ram: T,
-        states: tuple[type[State[T]], ...],
-        current: State[T],
-        velocity: np.ndarray,
+    ram: T,
+    states: tuple[type[State[T]], ...],
+    current: State[T],
+    velocity: np.ndarray,
 ) -> np.ndarray:
     state = np.zeros(
         len(states),
@@ -356,20 +323,12 @@ def _observation(
     )
 
     if current.target_detector is not None:
-        template[0] = float(
-            current.target_detector.seen
-        )
+        template[0] = float(current.target_detector.seen)
 
         if current.target_detector.position is not None:
             height, width = current.frame.shape[:2]
-            template[1] = (
-                    current.target_detector.position[0]
-                    / width
-            )
-            template[2] = (
-                    current.target_detector.position[1]
-                    / height
-            )
+            template[1] = current.target_detector.position[0] / width
+            template[2] = current.target_detector.position[1] / height
 
     return np.concatenate(
         (
@@ -385,37 +344,27 @@ def _observation(
 
 
 def _action(
-        action: WrapperActType,
-        action_table: np.ndarray,
-        action_space: gym.Space,
+    action: WrapperActType,
+    action_table: np.ndarray,
+    action_space: gym.Space,
 ) -> WrapperActType:
-    if (
-            not isinstance(action, (int, np.integer))
-            or isinstance(action, (bool, np.bool_))
-    ):
-        raise TypeError(
-            "Action must be an integer, "
-            f"got {type(action).__name__}"
-        )
+    if not isinstance(action, (int, np.integer)) or isinstance(action, (bool, np.bool_)):
+        raise TypeError(f"Action must be an integer, got {type(action).__name__}")
 
     index = int(action)
 
     if not action_space.contains(index):
-        raise ValueError(
-            f"Action {index} is outside {action_space}"
-        )
+        raise ValueError(f"Action {index} is outside {action_space}")
 
     return action_table[index]
 
 
 def _restore(
-        emulator: Any,
-        savestate: bytes,
+    emulator: Any,
+    savestate: bytes,
 ) -> np.ndarray:
     emulator.em.set_state(savestate)
     emulator.data.reset()
     emulator.data.update_ram()
 
-    return emulator.get_screen(
-        apply_rotation=True
-    )
+    return emulator.get_screen(apply_rotation=True)
