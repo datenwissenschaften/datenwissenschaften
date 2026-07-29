@@ -153,10 +153,12 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 break
 
         won = self.machine.current._won()
+        curriculum_transition = transitioned and not self.curriculum.full_run
+        failed = terminated or truncated
 
         if won:
             outcome_reward = self.victory_reward
-        elif terminated or truncated:
+        elif failed:
             outcome_reward = self.failure_penalty
         else:
             outcome_reward = 0.0
@@ -170,7 +172,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 self.machine.name,
             )
 
-        terminated = terminated or won
+        terminated = terminated or won or curriculum_transition
 
         if (terminated or truncated) and not self.curriculum.recorded:
             diagnostics = self.curriculum.record_attempt(
