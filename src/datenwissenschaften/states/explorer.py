@@ -5,6 +5,7 @@ from datenwissenschaften.states.state import State
 from datenwissenschaften.states.target import TargetState
 
 T = TypeVar("T", bound=RamInfo)
+EXPLORATION_REWARD = 0.01
 
 
 class Explorer(TargetState[T]):
@@ -23,7 +24,7 @@ class Explorer(TargetState[T]):
         )
         visits = self.visits.get(location, 0) + 1
         self.visits[location] = visits
-        return super()._reward() + float(visits == 1)
+        return super()._reward() + EXPLORATION_REWARD * float(visits == 1)
 
     def _next(self) -> type[State[T]] | None:
         if self.target_detector is not None and self.target_detector.seen:

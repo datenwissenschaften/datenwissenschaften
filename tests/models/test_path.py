@@ -17,4 +17,4 @@ def test_model_directory_includes_fingerprint_after_savestate() -> None:
         }
     )
 
-    assert model_directory(config) == Path("/mnt/fastdata/models/Example-Nes/Level1/abc123")
+    assert model_directory(config) == Path("/mnt/fastdata/models/Example-Nes/Level1/abc123/agents")

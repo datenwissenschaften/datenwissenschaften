@@ -34,5 +34,5 @@ def test_explorer_rewards_each_location_once(tmp_path: Path) -> None:
     state.frame = np.zeros((100, 100, 3), dtype=np.uint8)
     state.ram = SimpleNamespace(screen_x=0, screen_y=0, player_x=0, player_y=0)
     state._on_reset()
-    assert state._reward() == 1.0
+    assert state._reward() == 0.01
     assert state._reward() == 0.0

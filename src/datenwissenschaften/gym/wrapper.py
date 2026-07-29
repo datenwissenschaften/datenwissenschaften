@@ -56,10 +56,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.player_motion = PlayerMotion()
         self.action_table = action_table
         self.action_space = gym.spaces.Discrete(len(action_table))
-        self.observation_space = _observation_space(
-            self.ram_info_cls,
-            self.state_types,
-        )
+        self.observation_space = _observation_space(self.ram_info_cls)
 
     def reset(
         self,
@@ -96,12 +93,19 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
 
         observation = _observation(
             ram,
-            self.state_types,
             self.machine.current,
             velocity,
         )
 
         return observation, info
+
+    @property
+    def state_name(self) -> str:
+        return self.machine.name
+
+    @property
+    def state_names(self) -> tuple[str, ...]:
+        return tuple(state.__name__ for state in self.state_types)
 
     def step(
         self,
@@ -129,7 +133,8 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                 frame,
             )
 
-            if self.machine.name != previous_state:
+            transitioned = self.machine.name != previous_state
+            if transitioned:
                 state_reward += self.transition_reward
                 _record_transition(
                     self.curriculum,
@@ -144,14 +149,14 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             terminated = terminated or state_terminated
             truncated = truncated or state_truncated
 
-            if terminated or truncated:
+            if transitioned or terminated or truncated:
                 break
 
         won = self.machine.current._won()
 
         if won:
             outcome_reward = self.victory_reward
-        elif terminated:
+        elif terminated or truncated:
             outcome_reward = self.failure_penalty
         else:
             outcome_reward = 0.0
@@ -207,7 +212,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         )
         observation = _observation(
             ram,
-            self.state_types,
             self.machine.current,
             velocity,
         )
@@ -294,7 +298,6 @@ def _recording_path(retro: Any) -> str:
 
 def _observation_space(
     ram_info: type[RamInfo],
-    states: tuple[type[State[Any]], ...],
 ) -> gym.spaces.Box:
     ram_map = ram_info.ram_map()
     missing = tuple(field for field in REQUIRED_DQN_RAM_FIELDS if field not in ram_map)
@@ -308,7 +311,7 @@ def _observation_space(
     return gym.spaces.Box(
         -1.0,
         1.0,
-        shape=(ram_size + len(states) + 5,),
+        shape=(ram_size + 5,),
         dtype=np.float32,
     )
 
@@ -329,16 +332,9 @@ def _state_types(
 
 def _observation(
     ram: T,
-    states: tuple[type[State[T]], ...],
     current: State[T],
     velocity: np.ndarray,
 ) -> np.ndarray:
-    state = np.zeros(
-        len(states),
-        dtype=np.float32,
-    )
-    state[states.index(type(current))] = 1.0
-
     template = np.zeros(
         3,
         dtype=np.float32,
@@ -358,7 +354,6 @@ def _observation(
                 ram.features(),
                 dtype=np.float32,
             ),
-            state,
             template,
             velocity,
         )

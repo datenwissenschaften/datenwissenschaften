@@ -16,14 +16,14 @@ def ram_info(fields: tuple[str, ...]) -> type[RamInfo]:
 
 
 def test_accepts_all_required_dqn_ram_fields() -> None:
-    space = _observation_space(ram_info(REQUIRED_DQN_RAM_FIELDS), ())
+    space = _observation_space(ram_info(REQUIRED_DQN_RAM_FIELDS))
 
     assert space.shape == (9,)
 
 
 def test_rejects_missing_dqn_ram_fields() -> None:
     with pytest.raises(ValueError, match=r"ram\.player_y"):
-        _observation_space(ram_info(REQUIRED_DQN_RAM_FIELDS[:-1]), ())
+        _observation_space(ram_info(REQUIRED_DQN_RAM_FIELDS[:-1]))
 
 
 def test_records_failed_curriculum_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,6 +62,7 @@ def test_records_failed_curriculum_attempt(monkeypatch: pytest.MonkeyPatch) -> N
     wrapper.initial_episode_state = "Stage"
     wrapper.episode_number = 1
     wrapper.episode_score = 0.0
+    wrapper.failure_penalty = -5.0
     wrapper.player_motion = Mock()
     wrapper.player_motion.measure.return_value = np.zeros(2, dtype=np.float32)
     wrapper.state_types = ()
@@ -71,11 +72,11 @@ def test_records_failed_curriculum_attempt(monkeypatch: pytest.MonkeyPatch) -> N
     )
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._observation",
-        lambda ram, states, current, velocity: np.zeros(1, dtype=np.float32),
+        lambda ram, current, velocity: np.zeros(1, dtype=np.float32),
     )
 
     _, _, _, truncated, info = wrapper.step(0)
 
     assert truncated
     assert info["action_repeat"] == 1
-    wrapper.curriculum.record_attempt.assert_called_once_with(0.0, False)
+    wrapper.curriculum.record_attempt.assert_called_once_with(-5.0, False)

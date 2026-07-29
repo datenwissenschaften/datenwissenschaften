@@ -1,6 +1,8 @@
 from pathlib import Path
+from typing import Any
 
 import httpx
+import numpy as np
 from box import Box
 from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
@@ -14,99 +16,107 @@ class WinningEpisodeUploader(BaseCallback):
         self.config = config
 
     def _on_step(self) -> bool:
-        for done, info in zip(self.locals["dones"], self.locals["infos"], strict=True):
-            if not done:
-                continue
-            is_new_best_score = False
-            bk2_file_path = Path(info["episode_bk2_path"])
-            model_path = model_directory(self.config)
-            reward_path = model_path / "rewards" / f"{info['episode_state']}.score"
-            curriculum_path = model_path / "curriculum" / f"{info['episode_state']}.state"
-            score = int(float(info["episode"]["r"]))
-            if reward_path.exists():
-                with reward_path.open("r") as f:
-                    best_score = int(float(f.read()))
-                if score > best_score:
-                    is_new_best_score = True
-                    with reward_path.open("w") as f:
-                        f.write(str(score))
-            else:
-                is_new_best_score = True
-                reward_path.parent.mkdir(parents=True, exist_ok=True)
-                with reward_path.open("w") as f:
-                    f.write(str(score))
-            episode = info["episode"]
-            logger.debug(
-                "Episode finished: reward={:.3f}, steps={}, start={}, end={}, full_run={}, won={}",
-                episode["r"],
-                episode["l"],
-                info["episode_state"],
-                info["state"],
-                info["full_run"],
-                info["won"],
-            )
-            if is_new_best_score and not info["won"]:
-                logger.debug("New best score: {:.3f}", score)
-                files = {}
-
-                with bk2_file_path.open("rb") as bk2_stream:
-                    files["bk2_file"] = (bk2_file_path.name, bk2_stream, "application/zip")
-
-                    if curriculum_path.exists():
-                        with curriculum_path.open("rb") as curriculum_stream:
-                            files["curriculum_file"] = (
-                                curriculum_path.name,
-                                curriculum_stream,
-                                "application/octet-stream",
-                            )
-                            response = httpx.post(
-                                f"{self.config.upload.url}/runs",
-                                headers={"X-API-Key": self.config.upload.api_key},
-                                data={
-                                    "game": self.config.training.game,
-                                    "category": self.config.training.savestate,
-                                    "curriculum": info["episode_state"],
-                                    "action_repeat": info["action_repeat"],
-                                    "episode_number": info["episode_number"],
-                                    "type": "TRAINING",
-                                },
-                                files=files,
-                            )
-                    else:
-                        response = httpx.post(
-                            f"{self.config.upload.url}/runs",
-                            headers={"X-API-Key": self.config.upload.api_key},
-                            data={
-                                "game": self.config.training.game,
-                                "category": self.config.training.savestate,
-                                "curriculum": info["episode_state"],
-                                "action_repeat": info["action_repeat"],
-                                "episode_number": info["episode_number"],
-                                "type": "TRAINING",
-                            },
-                            files=files,
-                        )
-
-                response.raise_for_status()
-            if not info["won"] or not info["full_run"]:
-                bk2_file_path.unlink(missing_ok=True)
-                continue
-            logger.info("Uploading winning episode {}", bk2_file_path.name)
-            with bk2_file_path.open("rb") as stream:
-                response = httpx.post(
-                    f"{self.config.upload.url}/runs",
-                    headers={"X-API-Key": self.config.upload.api_key},
-                    data={
-                        "game": self.config.training.game,
-                        "category": self.config.training.savestate,
-                        "curriculum": info["episode_state"],
-                        "type": "WON",
-                        "action_repeat": info["action_repeat"],
-                        "episode_number": info["episode_number"],
-                    },
-                    files={"bk2_file": (bk2_file_path.name, stream, "application/zip")},
-                )
-            response.raise_for_status()
-            bk2_file_path.unlink(missing_ok=True)
-            logger.success("Uploaded winning episode {}", bk2_file_path.name)
+        self.process(self.locals["dones"], self.locals["infos"])
         return True
+
+    def process(self, dones: np.ndarray, infos: list[dict[str, Any]]) -> None:
+        for done, info in zip(dones, infos, strict=True):
+            if done:
+                _process_episode(self.config, info)
+
+
+def _process_episode(config: Box, info: dict[str, Any]) -> None:
+    recording = Path(info["episode_bk2_path"])
+    root = model_directory(config)
+    reward_path = root / "rewards" / f"{info['episode_state']}.score"
+    curriculum_path = root / "curriculum" / f"{info['episode_state']}.state"
+    episode = info["episode"]
+    score = int(float(episode["r"]))
+    new_best = _record_score(reward_path, score)
+    logger.debug(
+        "Episode finished: reward={:.3f}, steps={}, start={}, end={}, full_run={}, won={}",
+        episode["r"],
+        episode["l"],
+        info["episode_state"],
+        info["state"],
+        info["full_run"],
+        info["won"],
+    )
+    if new_best and not info["won"]:
+        logger.debug("New best score: {:.3f}", score)
+        _upload_training(config, info, recording, curriculum_path)
+    if not info["won"] or not info["full_run"]:
+        recording.unlink(missing_ok=True)
+        return
+    _upload_win(config, info, recording)
+
+
+def _record_score(path: Path, score: int) -> bool:
+    if path.is_file():
+        best = int(float(path.read_text(encoding="utf-8")))
+        if score <= best:
+            return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(str(score), encoding="utf-8")
+    return True
+
+
+def _upload_training(
+    config: Box,
+    info: dict[str, Any],
+    recording: Path,
+    curriculum: Path,
+) -> None:
+    with recording.open("rb") as recording_stream:
+        files: dict[str, Any] = {
+            "bk2_file": (recording.name, recording_stream, "application/zip"),
+        }
+        if curriculum.is_file():
+            with curriculum.open("rb") as curriculum_stream:
+                files["curriculum_file"] = (
+                    curriculum.name,
+                    curriculum_stream,
+                    "application/octet-stream",
+                )
+                _post(config, info, "TRAINING", files)
+            return
+        _post(config, info, "TRAINING", files)
+
+
+def _upload_win(
+    config: Box,
+    info: dict[str, Any],
+    recording: Path,
+) -> None:
+    logger.info("Uploading winning episode {}", recording.name)
+    with recording.open("rb") as stream:
+        _post(
+            config,
+            info,
+            "WON",
+            {"bk2_file": (recording.name, stream, "application/zip")},
+        )
+    recording.unlink(missing_ok=True)
+    logger.success("Uploaded winning episode {}", recording.name)
+
+
+def _post(
+    config: Box,
+    info: dict[str, Any],
+    run_type: str,
+    files: dict[str, Any],
+) -> None:
+    response = httpx.post(
+        f"{config.upload.url}/runs",
+        headers={"X-API-Key": config.upload.api_key},
+        data={
+            "game": config.training.game,
+            "category": config.training.savestate,
+            "curriculum": info["episode_state"],
+            "action_repeat": info["action_repeat"],
+            "episode_number": info["episode_number"],
+            "type": run_type,
+        },
+        files=files,
+    )
+    response.raise_for_status()
