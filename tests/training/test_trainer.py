@@ -4,11 +4,12 @@ from unittest.mock import Mock
 
 import gymnasium as gym
 import numpy as np
+import pytest
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from datenwissenschaften.models.agent import load_agent
 from datenwissenschaften.training.model_environment import ModelEnvironment, build_model_environments
-from datenwissenschaften.training.trainer import _actions, _exploration_rate, _learn
+from datenwissenschaften.training.trainer import _actions, _exploration_rate, _learn, _state_actions, _state_names
 
 
 def test_exploration_decays_per_state_model() -> None:
@@ -31,16 +32,27 @@ def test_builds_compact_action_space_for_each_state() -> None:
         source.observation_space,
         {
             "Explore": (0, 1, 2, 3),
+            "Navigate": (4, 5, 6, 7),
             "Hold": (0,),
         },
     )
 
     assert environments["Explore"].action_space.n == 4
+    assert environments["Navigate"].action_space.n == 4
     assert environments["Hold"].action_space.n == 1
+    assert environments["Explore"].action_space is not environments["Navigate"].action_space
 
     for environment in environments.values():
         environment.close()
     source.close()
+
+
+def test_rejects_duplicate_state_model_names() -> None:
+    environment = Mock()
+    environment.get_attr.return_value = [("Scale", "Scale")]
+
+    with pytest.raises(RuntimeError, match="Training state names must be unique"):
+        _state_names(environment)
 
 
 def test_routes_each_environment_to_its_state_model() -> None:
@@ -84,6 +96,33 @@ def test_exploration_samples_only_enabled_state_actions(monkeypatch) -> None:
 
     assert np.array_equal(actions, np.asarray([9]))
     assert np.array_equal(model_actions, np.asarray([2]))
+
+
+def test_rejects_model_action_outside_current_state_action_space() -> None:
+    model = Mock()
+    model.num_timesteps = 100_000
+    model.exploration_initial_eps = 0.0
+    model.exploration_final_eps = 0.0
+    model.predict.return_value = np.asarray([2]), None
+
+    with pytest.raises(RuntimeError, match="Scale model returned an action outside"):
+        _actions(
+            {"Scale": model},
+            ("Scale",),
+            np.zeros((1, 4), dtype=np.float32),
+            {"Scale": (4, 9)},
+        )
+
+
+def test_rejects_different_state_actions_across_environments() -> None:
+    environment = Mock()
+    environment.get_attr.return_value = [
+        {"Scale": (0, 1)},
+        {"Scale": (0, 2)},
+    ]
+
+    with pytest.raises(RuntimeError, match="State actions must match across environments"):
+        _state_actions(environment, ("Scale",))
 
 
 def test_transition_is_terminal_for_outgoing_state_model() -> None:

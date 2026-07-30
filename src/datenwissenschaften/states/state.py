@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import ClassVar, Generic, TypeVar
 
 import numpy as np
 
@@ -10,8 +10,8 @@ T = TypeVar("T", bound=RamInfo)
 
 
 class State(Generic[T]):
-    actions: tuple[int, ...]
-    template_file: str
+    actions: ClassVar[tuple[int, ...]]
+    template_file: ClassVar[str]
     target_detector: TemplateDetector | None
     ram: T
     frame: np.ndarray

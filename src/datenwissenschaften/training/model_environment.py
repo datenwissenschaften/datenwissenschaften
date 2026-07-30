@@ -27,6 +27,12 @@ def build_model_environments(
     observation_space: gym.Space,
     state_actions: Mapping[str, tuple[int, ...]],
 ) -> dict[str, DummyVecEnv]:
+    if not state_actions:
+        raise ValueError("Training requires at least one state action space")
+    empty_states = [state for state, actions in state_actions.items() if not actions]
+    if empty_states:
+        names = ", ".join(sorted(empty_states))
+        raise ValueError(f"State action spaces must not be empty: {names}")
     return {
         state: DummyVecEnv(
             [

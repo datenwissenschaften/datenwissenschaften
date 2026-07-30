@@ -33,7 +33,7 @@ def train(environment: Any, config_path: str | Path) -> None:
     models = {state: load_agent(model_environments[state], root / state / "model") for state in state_names}
     uploader = WinningEpisodeUploader(config)
     observations = environment.reset()
-    states = _current_states(environment)
+    states = _current_states(environment, state_names)
     environment_steps = sum(model.num_timesteps for model in models.values())
     next_checkpoint = (environment_steps // CHECKPOINT_INTERVAL + 1) * CHECKPOINT_INTERVAL
     logger.info("Training {} state model(s) with {} environment(s)", len(models), environment.num_envs)
@@ -41,7 +41,7 @@ def train(environment: Any, config_path: str | Path) -> None:
     while True:
         actions, model_actions = _actions(models, states, observations, state_actions)
         next_observations, rewards, dones, infos = environment.step(actions)
-        next_states = _current_states(environment)
+        next_states = _current_states(environment, state_names)
         _learn(models, states, observations, model_actions, next_observations, rewards, dones, infos)
         uploader.process(dones, infos)
         environment_steps += environment.num_envs
@@ -58,21 +58,36 @@ def _state_names(environment: Any) -> tuple[str, ...]:
     names = tuple(environment.get_attr("state_names")[0])
     if not names:
         raise RuntimeError("Training requires at least one state")
+    if len(names) != len(set(names)):
+        raise RuntimeError("Training state names must be unique")
     return names
 
 
-def _current_states(environment: Any) -> tuple[str, ...]:
-    return tuple(environment.get_attr("state_name"))
+def _current_states(
+    environment: Any,
+    state_names: tuple[str, ...],
+) -> tuple[str, ...]:
+    states = tuple(environment.get_attr("state_name"))
+    unknown_states = set(states) - set(state_names)
+    if unknown_states:
+        names = ", ".join(sorted(unknown_states))
+        raise RuntimeError(f"Environment returned unknown training states: {names}")
+    return states
 
 
 def _state_actions(
     environment: Any,
     states: tuple[str, ...],
 ) -> dict[str, tuple[int, ...]]:
-    actions = environment.get_attr("state_actions")[0]
+    action_definitions = tuple(environment.get_attr("state_actions"))
+    if not action_definitions:
+        raise RuntimeError("Training requires at least one environment")
+    actions = action_definitions[0]
+    if any(definition != actions for definition in action_definitions[1:]):
+        raise RuntimeError("State actions must match across environments")
     if set(actions) != set(states):
         raise RuntimeError("State actions must match training states")
-    return actions
+    return {state: tuple(actions[state]) for state in states}
 
 
 def _actions(
@@ -81,19 +96,41 @@ def _actions(
     observations: np.ndarray,
     state_actions: Mapping[str, tuple[int, ...]],
 ) -> tuple[np.ndarray, np.ndarray]:
+    if set(models) != set(state_actions):
+        raise RuntimeError("Models must match state actions")
+    unknown_states = set(states) - set(models)
+    if unknown_states:
+        names = ", ".join(sorted(unknown_states))
+        raise RuntimeError(f"No model exists for training states: {names}")
     actions = np.empty(len(states), dtype=np.int64)
     model_actions = np.empty(len(states), dtype=np.int64)
     for state in dict.fromkeys(states):
         indices = np.flatnonzero(np.asarray(states) == state)
         model = models[state]
         predicted, _ = model.predict(observations[indices], deterministic=True)
-        model_actions[indices] = predicted
+        predicted_actions = np.asarray(predicted)
+        _validate_model_actions(state, predicted_actions, len(indices), len(state_actions[state]))
+        model_actions[indices] = predicted_actions
         exploration_rate = _exploration_rate(model)
         random_indices = indices[np.random.random(len(indices)) < exploration_rate]
         for index in random_indices:
             model_actions[index] = np.random.randint(len(state_actions[state]))
         actions[indices] = np.asarray(state_actions[state])[model_actions[indices]]
     return actions, model_actions
+
+
+def _validate_model_actions(
+    state: str,
+    actions: np.ndarray,
+    environment_count: int,
+    action_count: int,
+) -> None:
+    if actions.shape != (environment_count,):
+        raise RuntimeError(f"{state} model returned actions with shape {actions.shape}")
+    if not np.issubdtype(actions.dtype, np.integer) or np.issubdtype(actions.dtype, np.bool_):
+        raise RuntimeError(f"{state} model returned non-integer actions")
+    if np.any(actions < 0) or np.any(actions >= action_count):
+        raise RuntimeError(f"{state} model returned an action outside its state action space")
 
 
 def _exploration_rate(model: DQN) -> float:
