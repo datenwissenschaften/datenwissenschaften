@@ -56,6 +56,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.player_motion = PlayerMotion()
         self.action_table = action_table
         self.action_space = gym.spaces.Discrete(len(action_table))
+        self._state_actions = _state_actions(
+            self.state_types,
+            self.action_space,
+        )
         self.observation_space = _observation_space(self.ram_info_cls)
 
     def reset(
@@ -107,6 +111,10 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     def state_names(self) -> tuple[str, ...]:
         return tuple(state.__name__ for state in self.state_types)
 
+    @property
+    def state_actions(self) -> dict[str, tuple[int, ...]]:
+        return self._state_actions.copy()
+
     def step(
         self,
         action: WrapperActType,
@@ -119,6 +127,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
                     action,
                     self.action_table,
                     self.action_space,
+                    self._state_actions[self.machine.name],
                 )
             )
 
@@ -332,6 +341,34 @@ def _state_types(
     return tuple(dict.fromkeys((start, *states)))
 
 
+def _state_actions(
+    states: tuple[type[State[T]], ...],
+    action_space: gym.spaces.Discrete,
+) -> dict[str, tuple[int, ...]]:
+    result: dict[str, tuple[int, ...]] = {}
+
+    for state in states:
+        if not hasattr(state, "actions"):
+            raise TypeError(f"{state.__name__} must define actions")
+
+        actions = state.actions
+        if not actions:
+            raise ValueError(f"{state.__name__}.actions must not be empty")
+        if len(actions) != len(set(actions)):
+            raise ValueError(f"{state.__name__}.actions must be unique")
+        if any(
+            not isinstance(action, (int, np.integer))
+            or isinstance(action, (bool, np.bool_))
+            or not action_space.contains(int(action))
+            for action in actions
+        ):
+            raise ValueError(f"{state.__name__}.actions contains an invalid global action")
+
+        result[state.__name__] = tuple(int(action) for action in actions)
+
+    return result
+
+
 def _observation(
     ram: T,
     current: State[T],
@@ -366,6 +403,7 @@ def _action(
     action: WrapperActType,
     action_table: np.ndarray,
     action_space: gym.Space,
+    enabled_actions: tuple[int, ...],
 ) -> WrapperActType:
     if not isinstance(action, (int, np.integer)) or isinstance(action, (bool, np.bool_)):
         raise TypeError(f"Action must be an integer, got {type(action).__name__}")
@@ -374,6 +412,8 @@ def _action(
 
     if not action_space.contains(index):
         raise ValueError(f"Action {index} is outside {action_space}")
+    if index not in enabled_actions:
+        raise ValueError(f"Action {index} is disabled for the current state")
 
     return action_table[index]
 

@@ -1,6 +1,9 @@
+from collections.abc import Mapping
+from functools import partial
 from typing import Any
 
 import gymnasium as gym
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 
 class ModelEnvironment(gym.Env):
@@ -18,3 +21,21 @@ class ModelEnvironment(gym.Env):
 
     def step(self, action: Any) -> Any:
         raise RuntimeError("ModelEnvironment cannot be stepped")
+
+
+def build_model_environments(
+    observation_space: gym.Space,
+    state_actions: Mapping[str, tuple[int, ...]],
+) -> dict[str, DummyVecEnv]:
+    return {
+        state: DummyVecEnv(
+            [
+                partial(
+                    ModelEnvironment,
+                    observation_space,
+                    gym.spaces.Discrete(len(actions)),
+                )
+            ]
+        )
+        for state, actions in state_actions.items()
+    }

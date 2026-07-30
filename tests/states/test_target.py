@@ -17,9 +17,13 @@ def target_state() -> TargetState:
     return state
 
 
-def test_target_rewards_progress_instead_of_proximity() -> None:
+def test_target_rewards_progress_and_remaining_near_target() -> None:
     state = target_state()
     state.ram.player_x = 10
+    approaching_reward = state._reward()
+    stationary_reward = state._reward()
+    assert approaching_reward > stationary_reward
+    state.ram.player_x = 100
     assert state._reward() > 0.0
     assert state._reward() == 0.0
     state.ram.player_x = 0
@@ -34,5 +38,6 @@ def test_explorer_rewards_each_location_once(tmp_path: Path) -> None:
     state.frame = np.zeros((100, 100, 3), dtype=np.uint8)
     state.ram = SimpleNamespace(screen_x=0, screen_y=0, player_x=0, player_y=0)
     state._on_reset()
-    assert state._reward() == 0.01
-    assert state._reward() == 0.0
+    first_visit_reward = state._reward()
+    repeated_visit_reward = state._reward()
+    assert np.isclose(first_visit_reward - repeated_visit_reward, 0.01)

@@ -1,6 +1,5 @@
 import sys
 from collections.abc import Mapping
-from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -8,13 +7,12 @@ import numpy as np
 from loguru import logger
 from stable_baselines3 import DQN
 from stable_baselines3.common.utils import polyak_update
-from stable_baselines3.common.vec_env import DummyVecEnv
 
 from datenwissenschaften.checkpoints.model import atomic_save, atomic_save_replay_buffer
 from datenwissenschaften.configuration.loader import load_config
 from datenwissenschaften.models.agent import load_agent
 from datenwissenschaften.models.path import model_directory
-from datenwissenschaften.training.model_environment import ModelEnvironment
+from datenwissenschaften.training.model_environment import build_model_environments
 from datenwissenschaften.training.winning_episode_uploader import WinningEpisodeUploader
 
 CHECKPOINT_INTERVAL = 10_000
@@ -26,17 +24,13 @@ def train(environment: Any, config_path: str | Path) -> None:
     logger.remove()
     logger.add(sys.stderr, level=config.log_level)
     state_names = _state_names(environment)
-    model_environment = DummyVecEnv(
-        [
-            partial(
-                ModelEnvironment,
-                environment.observation_space,
-                environment.action_space,
-            )
-        ]
+    state_actions = _state_actions(environment, state_names)
+    model_environments = build_model_environments(
+        environment.observation_space,
+        state_actions,
     )
     root = model_directory(config)
-    models = {state: load_agent(model_environment, root / state / "model") for state in state_names}
+    models = {state: load_agent(model_environments[state], root / state / "model") for state in state_names}
     uploader = WinningEpisodeUploader(config)
     observations = environment.reset()
     states = _current_states(environment)
@@ -45,10 +39,10 @@ def train(environment: Any, config_path: str | Path) -> None:
     logger.info("Training {} state model(s) with {} environment(s)", len(models), environment.num_envs)
 
     while True:
-        actions = _actions(models, states, observations, environment.action_space)
+        actions, model_actions = _actions(models, states, observations, state_actions)
         next_observations, rewards, dones, infos = environment.step(actions)
         next_states = _current_states(environment)
-        _learn(models, states, observations, actions, next_observations, rewards, dones, infos)
+        _learn(models, states, observations, model_actions, next_observations, rewards, dones, infos)
         uploader.process(dones, infos)
         environment_steps += environment.num_envs
         observations = next_observations
@@ -71,23 +65,35 @@ def _current_states(environment: Any) -> tuple[str, ...]:
     return tuple(environment.get_attr("state_name"))
 
 
+def _state_actions(
+    environment: Any,
+    states: tuple[str, ...],
+) -> dict[str, tuple[int, ...]]:
+    actions = environment.get_attr("state_actions")[0]
+    if set(actions) != set(states):
+        raise RuntimeError("State actions must match training states")
+    return actions
+
+
 def _actions(
     models: Mapping[str, DQN],
     states: tuple[str, ...],
     observations: np.ndarray,
-    action_space: Any,
-) -> np.ndarray:
+    state_actions: Mapping[str, tuple[int, ...]],
+) -> tuple[np.ndarray, np.ndarray]:
     actions = np.empty(len(states), dtype=np.int64)
+    model_actions = np.empty(len(states), dtype=np.int64)
     for state in dict.fromkeys(states):
         indices = np.flatnonzero(np.asarray(states) == state)
         model = models[state]
         predicted, _ = model.predict(observations[indices], deterministic=True)
-        actions[indices] = predicted
+        model_actions[indices] = predicted
         exploration_rate = _exploration_rate(model)
         random_indices = indices[np.random.random(len(indices)) < exploration_rate]
         for index in random_indices:
-            actions[index] = action_space.sample()
-    return actions
+            model_actions[index] = np.random.randint(len(state_actions[state]))
+        actions[indices] = np.asarray(state_actions[state])[model_actions[indices]]
+    return actions, model_actions
 
 
 def _exploration_rate(model: DQN) -> float:

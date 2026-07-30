@@ -27,7 +27,8 @@ class TargetState(ImageDetector[T]):
             return reward
         previous = self.previous_target_distance
         self.previous_target_distance = distance
-        return reward if previous is None else reward + previous - distance
+        progress = 0.0 if previous is None else previous - distance
+        return reward + progress - distance
 
     def _target_distance(self) -> float | None:
         height, width = self.frame.shape[:2]

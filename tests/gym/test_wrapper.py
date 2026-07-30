@@ -2,12 +2,14 @@ from dataclasses import make_dataclass
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import gymnasium as gym
 import numpy as np
 import pytest
 
 from datenwissenschaften.curriculum.progress import SavestateDiagnostics
-from datenwissenschaften.gym.wrapper import StateMachineGymWrapper, _observation_space
+from datenwissenschaften.gym.wrapper import StateMachineGymWrapper, _observation_space, _state_actions
 from datenwissenschaften.ram.model import REQUIRED_DQN_RAM_FIELDS, RamInfo, ram
+from datenwissenschaften.states.state import State
 
 
 def ram_info(fields: tuple[str, ...]) -> type[RamInfo]:
@@ -24,6 +26,29 @@ def test_accepts_all_required_dqn_ram_fields() -> None:
 def test_rejects_missing_dqn_ram_fields() -> None:
     with pytest.raises(ValueError, match=r"ram\.player_y"):
         _observation_space(ram_info(REQUIRED_DQN_RAM_FIELDS[:-1]))
+
+
+def test_validates_enabled_global_actions() -> None:
+    class Scale(State):
+        actions = (0, 2)
+
+    assert _state_actions((Scale,), gym.spaces.Discrete(3)) == {"Scale": (0, 2)}
+
+
+def test_rejects_state_without_actions() -> None:
+    class Scale(State):
+        pass
+
+    with pytest.raises(TypeError, match="Scale must define actions"):
+        _state_actions((Scale,), gym.spaces.Discrete(3))
+
+
+def test_rejects_invalid_state_actions() -> None:
+    class Scale(State):
+        actions = (0, 3)
+
+    with pytest.raises(ValueError, match="invalid global action"):
+        _state_actions((Scale,), gym.spaces.Discrete(3))
 
 
 def test_records_failed_curriculum_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -43,6 +68,7 @@ def test_records_failed_curriculum_attempt(monkeypatch: pytest.MonkeyPatch) -> N
     )
     wrapper.machine = Mock()
     wrapper.machine.name = "Stage"
+    wrapper._state_actions = {"Stage": (0,)}
     wrapper.machine.step.return_value = 0.0, False, False
     wrapper.machine.current._won.return_value = False
     wrapper.curriculum = Mock()
@@ -109,6 +135,7 @@ def test_transition_ends_only_curriculum_episode(
     wrapper.env.unwrapped.em.get_state.return_value = b"state"
     wrapper.machine = Mock()
     wrapper.machine.name = "First"
+    wrapper._state_actions = {"First": (0,)}
 
     def transition(ram: object, frame: np.ndarray) -> tuple[float, bool, bool]:
         wrapper.machine.name = "Second"
