@@ -125,7 +125,7 @@ def _step(
         transitioned = wrapper.machine.name != previous_state
         terminated = terminated or state_terminated
         truncated = truncated or state_truncated
-        reward += _shape_reward(state_reward) + FRAME_COST
+        reward += _limit_automatic_reward(state_reward) + FRAME_COST
         if transitioned and not terminated and not truncated:
             reward += wrapper.transition_reward
 
@@ -160,9 +160,9 @@ def _step(
     return observation, reward, terminated, truncated, info
 
 
-def _shape_reward(reward: float) -> float:
+def _limit_automatic_reward(reward: float) -> float:
     if not np.isfinite(reward):
-        raise ValueError(f"State reward must be finite, got {reward}")
+        raise ValueError(f"Automatic reward must be finite, got {reward}")
     return float(np.clip(reward, -STATE_REWARD_LIMIT, STATE_REWARD_LIMIT))
 
 

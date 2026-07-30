@@ -5,7 +5,7 @@ A small state-driven reinforcement-learning engine for `stable-retro`.
 The engine:
 
 1. combines normalized RAM, active state, and template detection features;
-2. lets game code define state transitions and reward;
+2. provides automatic exploration and target-progress rewards;
 3. trains one compact DQN policy across all states;
 4. saves the policy throughout training.
 
@@ -34,21 +34,20 @@ environment = build_environment(GameWrapper, config_path)
 train(environment, config_path)
 ```
 
-Game states subclass `datenwissenschaften.states.state.State` and implement reward, termination, and transition
-methods. Stable Baselines3 receives one numeric feature observation and learns through a small DQN MLP.
+Game states subclass `Explorer` or `TargetState` and implement outcomes and transitions. Stable Baselines3 receives
+one numeric feature observation and learns through a small DQN MLP.
 
 ## State classes
 
 | Builder type | Python base | Automatic behavior |
 | --- | --- | --- |
-| Default | `datenwissenschaften.states.state.State` | Updates frame and RAM, runs explicit scoring and outcomes |
-| Image Detector | `datenwissenschaften.states.image_detector.ImageDetector` | Detects an exact uploaded template without adding reward |
 | Target | `datenwissenschaften.states.target.TargetState` | Rewards distance progress and persists the first target location |
 | Explorer | `datenwissenschaften.states.explorer.Explorer` | Rewards new positions and advances when the template is visible |
 
 Every project requires `screen_x`, `screen_y`, `player_x`, and `player_y` RAM fields. Player velocity is calculated
-from consecutive positions. `ImageDetector`, `TargetState`, and `Explorer` require `template_file`. Target locations
-are stored under the game's model directory and provide progress scoring after a target leaves the frame.
+from consecutive positions. Every state requires `template_file`. Target locations are stored under the game's model
+directory and provide progress scoring after a target leaves the frame. A target state defines exactly one of
+`_next()` or `_won()`.
 
 ## Development
 

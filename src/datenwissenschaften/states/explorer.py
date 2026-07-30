@@ -16,7 +16,7 @@ class Explorer(TargetState[T]):
         self.visits = {}
         super()._on_reset()
 
-    def _reward(self) -> float:
+    def _automatic_reward(self) -> float:
         location = (
             int(self.ram.screen_x),
             int(self.ram.screen_y),
@@ -25,10 +25,10 @@ class Explorer(TargetState[T]):
         )
         visits = self.visits.get(location, 0) + 1
         self.visits[location] = visits
-        return super()._reward() + EXPLORATION_REWARD * float(visits == 1)
+        return super()._automatic_reward() + EXPLORATION_REWARD * float(visits == 1)
 
     def _next(self) -> type[State[T]] | None:
-        if self.target_detector is not None and self.target_detector.seen:
+        if self.target_detector.seen:
             return self._target_state()
         return None
 

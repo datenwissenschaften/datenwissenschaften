@@ -11,14 +11,17 @@ T = TypeVar("T", bound=RamInfo)
 
 class State(Generic[T]):
     template_file: ClassVar[str]
-    target_detector: TemplateDetector | None
+    target_detector: TemplateDetector
     ram: T
     frame: np.ndarray
     model_dir: Path
 
     def __init__(self, model_dir: Path) -> None:
+        self._validate_type()
+        if not hasattr(self, "template_file"):
+            raise TypeError(f"{type(self).__name__} must define template_file")
         self.model_dir = model_dir
-        self.target_detector = TemplateDetector(self.template_file) if hasattr(self, "template_file") else None
+        self.target_detector = TemplateDetector(self.template_file)
 
     def reset(self, ram: T, frame: np.ndarray) -> None:
         self.ram = ram
@@ -34,17 +37,20 @@ class State(Generic[T]):
         self.ram = ram
         self.frame = frame
         self._detect()
-        return self._reward(), self._terminated(), self._truncated(), self._next()
+        self._on_step()
+        return self._automatic_reward(), self._terminated(), self._truncated(), self._next()
 
     def _detect(self) -> None:
-        if self.target_detector is not None:
-            self.target_detector.detect(self.frame)
+        self.target_detector.detect(self.frame)
 
     def _on_reset(self) -> None:
         pass
 
-    def _reward(self) -> float:
-        return 0.0
+    def _on_step(self) -> None:
+        pass
+
+    def _automatic_reward(self) -> float:
+        raise NotImplementedError
 
     def _terminated(self) -> bool:
         return False
@@ -57,3 +63,27 @@ class State(Generic[T]):
 
     def _next(self) -> type["State[T]"] | None:
         return None
+
+    def _validate_type(self) -> None:
+        from datenwissenschaften.states.explorer import Explorer
+        from datenwissenschaften.states.target import TargetState
+
+        state_type = type(self)
+        if not isinstance(self, TargetState):
+            raise TypeError(f"{state_type.__name__} must inherit Explorer or TargetState")
+        if state_type.step is not State.step:
+            raise TypeError(f"{state_type.__name__} cannot override step")
+        if state_type._automatic_reward not in {Explorer._automatic_reward, TargetState._automatic_reward}:
+            raise TypeError(f"{state_type.__name__} cannot define custom rewards")
+        if any("_reward" in parent.__dict__ for parent in state_type.__mro__):
+            raise TypeError(f"{state_type.__name__} cannot define custom rewards")
+        if isinstance(self, Explorer):
+            if state_type._target_state is Explorer._target_state:
+                raise TypeError(f"{state_type.__name__} must define a target state")
+            if state_type._won is not Explorer._won:
+                raise TypeError(f"{state_type.__name__} cannot define won")
+            return
+        has_next = state_type._next is not State._next
+        has_won = state_type._won is not State._won
+        if has_next == has_won:
+            raise TypeError(f"{state_type.__name__} must define exactly one of next or won")

@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from datenwissenschaften.gym.wrapper import StateMachineGymWrapper, _observation_space, _shape_reward
+from datenwissenschaften.gym.wrapper import StateMachineGymWrapper, _limit_automatic_reward, _observation_space
 from datenwissenschaften.ram.model import REQUIRED_DQN_RAM_FIELDS, RamInfo, ram
 from datenwissenschaften.states.state import State
 
@@ -32,9 +32,9 @@ def test_rejects_missing_dqn_ram_fields() -> None:
         )
 
 
-def test_rejects_non_finite_state_reward() -> None:
+def test_rejects_non_finite_automatic_reward() -> None:
     with pytest.raises(ValueError, match="must be finite"):
-        _shape_reward(float("nan"))
+        _limit_automatic_reward(float("nan"))
 
 
 def test_failure_adds_penalty(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -126,7 +126,7 @@ def test_transition_continues_episode(
     wrapper.env.step.assert_called_once()
 
 
-def test_bounds_custom_reward_before_adding_transition_reward(
+def test_bounds_automatic_reward_before_adding_transition_reward(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     wrapper = object.__new__(StateMachineGymWrapper)
