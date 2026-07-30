@@ -10,7 +10,6 @@ T = TypeVar("T", bound=RamInfo)
 
 
 class State(Generic[T]):
-    actions: ClassVar[tuple[int, ...]]
     template_file: ClassVar[str]
     target_detector: TemplateDetector | None
     ram: T

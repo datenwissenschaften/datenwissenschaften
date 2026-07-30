@@ -31,7 +31,7 @@ def load_agent(environment: Any, path: Path) -> DQN:
         n_steps=1,
         target_update_interval=10_000,
         gamma=0.999,
-        exploration_fraction=0.1,
+        exploration_fraction=1.0,
         exploration_initial_eps=1.0,
         exploration_final_eps=0.05,
         replay_buffer_kwargs={"handle_timeout_termination": False},

@@ -7,7 +7,7 @@ from box import Box
 from datenwissenschaften.training.winning_episode_uploader import WinningEpisodeUploader
 
 
-def test_winning_full_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_winning_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     recording = tmp_path / "winning.bk2"
     recording.write_bytes(b"recording")
     requests: list[dict[str, object]] = []
@@ -37,8 +37,6 @@ def test_winning_full_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPa
                 "episode": {"r": 100.0, "l": 500},
                 "episode_bk2_path": str(recording),
                 "episode_number": 42,
-                "episode_state": "Start",
-                "full_run": True,
                 "action_repeat": 3,
                 "state": "Finish",
                 "won": True,
@@ -51,7 +49,6 @@ def test_winning_full_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPa
     assert requests[0]["data"] == {
         "game": "Example-Nes",
         "category": "Level1",
-        "curriculum": "Start",
         "type": "WON",
         "action_repeat": 3,
         "episode_number": 42,
@@ -89,8 +86,6 @@ def test_first_score_uploads_as_new_best(monkeypatch: pytest.MonkeyPatch, tmp_pa
                 "episode": {"r": 10.0, "l": 50},
                 "episode_bk2_path": str(recording),
                 "episode_number": 1,
-                "episode_state": "Start",
-                "full_run": False,
                 "action_repeat": 2,
                 "state": "Start",
                 "won": False,

@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "datenwissenschaften"
-version = "4.0.0"
+version = "5.0.0"
 description = "Feature-based reinforcement learning for state-driven retro games."
 readme = "README.md"
 authors = [

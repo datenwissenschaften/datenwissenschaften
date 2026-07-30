@@ -28,24 +28,21 @@ class WinningEpisodeUploader(BaseCallback):
 def _process_episode(config: Box, info: dict[str, Any]) -> None:
     recording = Path(info["episode_bk2_path"])
     root = model_directory(config)
-    reward_path = root / "rewards" / f"{info['episode_state']}.score"
-    curriculum_path = root / "curriculum" / f"{info['episode_state']}.state"
+    reward_path = root / "best.score"
     episode = info["episode"]
     score = int(float(episode["r"]))
     new_best = _record_score(reward_path, score)
     logger.debug(
-        "Episode finished: reward={:.3f}, steps={}, start={}, end={}, full_run={}, won={}",
+        "Episode finished: reward={:.3f}, steps={}, end={}, won={}",
         episode["r"],
         episode["l"],
-        info["episode_state"],
         info["state"],
-        info["full_run"],
         info["won"],
     )
     if new_best and not info["won"]:
         logger.debug("New best score: {:.3f}", score)
-        _upload_training(config, info, recording, curriculum_path)
-    if not info["won"] or not info["full_run"]:
+        _upload_training(config, info, recording)
+    if not info["won"]:
         recording.unlink(missing_ok=True)
         return
     _upload_win(config, info, recording)
@@ -65,22 +62,14 @@ def _upload_training(
     config: Box,
     info: dict[str, Any],
     recording: Path,
-    curriculum: Path,
 ) -> None:
     with recording.open("rb") as recording_stream:
-        files: dict[str, Any] = {
-            "bk2_file": (recording.name, recording_stream, "application/zip"),
-        }
-        if curriculum.is_file():
-            with curriculum.open("rb") as curriculum_stream:
-                files["curriculum_file"] = (
-                    curriculum.name,
-                    curriculum_stream,
-                    "application/octet-stream",
-                )
-                _post(config, info, "TRAINING", files)
-            return
-        _post(config, info, "TRAINING", files)
+        _post(
+            config,
+            info,
+            "TRAINING",
+            {"bk2_file": (recording.name, recording_stream, "application/zip")},
+        )
 
 
 def _upload_win(
@@ -112,7 +101,6 @@ def _post(
         data={
             "game": config.training.game,
             "category": config.training.savestate,
-            "curriculum": info["episode_state"],
             "action_repeat": info["action_repeat"],
             "episode_number": info["episode_number"],
             "type": run_type,

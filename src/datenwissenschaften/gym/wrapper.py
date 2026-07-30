@@ -4,9 +4,7 @@ from typing import Any, Generic, TypeVar
 import gymnasium as gym
 import numpy as np
 from gymnasium.core import WrapperActType
-from loguru import logger
 
-from datenwissenschaften.curriculum.progress import SavestateCurriculum
 from datenwissenschaften.gym.player_motion import PlayerMotion
 from datenwissenschaften.ram.model import REQUIRED_DQN_RAM_FIELDS, RamInfo
 from datenwissenschaften.states.machine import StateMachine
@@ -24,9 +22,6 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
     transition_reward: float
     victory_reward: float
     failure_penalty: float
-    curriculum_successes: int
-    curriculum_stagnation_episodes: int
-    full_run_probability: float
 
     def __init__(
         self,
@@ -48,258 +43,134 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self.start_state_cls,
             self.training_state_classes,
         )
-        self.curriculum = _curriculum(self, model_dir)
         self.episode_counter: EpisodeCounter = EpisodeCounter(model_dir / "episodes.count")
         self.episode_number: int = 0
-        self.episode_score = 0.0
-        self.initial_episode_state = self.state_types[0].__name__
         self.player_motion = PlayerMotion()
         self.action_table = action_table
         self.action_space = gym.spaces.Discrete(len(action_table))
-        self._state_actions = _state_actions(
+        self.observation_space = _observation_space(
+            self.ram_info_cls,
             self.state_types,
-            self.action_space,
         )
-        self.observation_space = _observation_space(self.ram_info_cls)
 
     def reset(
         self,
         **kwargs: Any,
     ) -> tuple[np.ndarray, dict[str, Any]]:
-        frame, info = self.env.reset(**kwargs)
-        self.episode_number = self.episode_counter.next_episode()
-        self.episode_score = 0.0
-
-        state_name, savestate = self.curriculum.start()
-        self.initial_episode_state = state_name
-
-        if savestate is not None:
-            frame = _restore(
-                self.env.unwrapped,
-                savestate,
-            )
-
-        ram = _ram(
-            self.ram_info_cls,
-            self.env.unwrapped,
-        )
-        state_type = next(state for state in self.state_types if state.__name__ == state_name)
-
-        self.machine.reset(
-            ram,
-            frame,
-            state_type,
-        )
-        velocity = self.player_motion.reset(
-            ram,
-            frame,
-        )
-
-        observation = _observation(
-            ram,
-            self.machine.current,
-            velocity,
-        )
-
-        return observation, info
-
-    @property
-    def state_name(self) -> str:
-        return self.machine.name
-
-    @property
-    def state_names(self) -> tuple[str, ...]:
-        return tuple(state.__name__ for state in self.state_types)
-
-    @property
-    def state_actions(self) -> dict[str, tuple[int, ...]]:
-        return self._state_actions.copy()
+        return _reset(self, kwargs)
 
     def step(
         self,
         action: WrapperActType,
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        reward = 0.0
+        return _step(self, action)
 
-        for _ in range(self.action_repeat):
-            frame, _, terminated, truncated, info = self.env.step(
-                _action(
-                    action,
-                    self.action_table,
-                    self.action_space,
-                    self._state_actions[self.machine.name],
-                )
+
+def _reset(
+    wrapper: StateMachineGymWrapper[T],
+    kwargs: dict[str, Any],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    frame, info = wrapper.env.reset(**kwargs)
+    wrapper.episode_number = wrapper.episode_counter.next_episode()
+    ram = _ram(
+        wrapper.ram_info_cls,
+        wrapper.env.unwrapped,
+    )
+    wrapper.machine.reset(
+        ram,
+        frame,
+        wrapper.state_types[0],
+    )
+    velocity = wrapper.player_motion.reset(
+        ram,
+        frame,
+    )
+    return (
+        _observation(
+            ram,
+            wrapper.state_types,
+            wrapper.machine.current,
+            velocity,
+        ),
+        info,
+    )
+
+
+def _step(
+    wrapper: StateMachineGymWrapper[T],
+    action: WrapperActType,
+) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    reward = 0.0
+
+    for _ in range(wrapper.action_repeat):
+        frame, _, terminated, truncated, info = wrapper.env.step(
+            _action(
+                action,
+                wrapper.action_table,
+                wrapper.action_space,
             )
-
-            ram = _ram(
-                self.ram_info_cls,
-                self.env.unwrapped,
-            )
-            previous_state = self.machine.name
-
-            state_reward, state_terminated, state_truncated = self.machine.step(
-                ram,
-                frame,
-            )
-
-            transitioned = self.machine.name != previous_state
-            if transitioned:
-                state_reward += self.transition_reward
-                _record_transition(
-                    self.curriculum,
-                    previous_state,
-                    self.machine.name,
-                    bytes(self.env.unwrapped.em.get_state()),
-                )
-
-            reward += state_reward
-            self.episode_score += state_reward
-
-            terminated = terminated or state_terminated
-            truncated = truncated or state_truncated
-
-            if transitioned or terminated or truncated:
-                break
-
-        won = self.machine.current._won()
-        curriculum_transition = transitioned and not self.curriculum.full_run
-        failed = terminated or truncated
-
-        if won:
-            outcome_reward = self.victory_reward
-        elif failed:
-            outcome_reward = self.failure_penalty
-        else:
-            outcome_reward = 0.0
-
-        reward += outcome_reward
-        self.episode_score += outcome_reward
-
-        if won:
-            _record_victory(
-                self.curriculum,
-                self.machine.name,
-            )
-
-        terminated = terminated or won or curriculum_transition
-
-        if (terminated or truncated) and not self.curriculum.recorded:
-            diagnostics = self.curriculum.record_attempt(
-                self.episode_score,
-                self.machine.name != self.initial_episode_state or won,
-            )
-            if diagnostics.deleted:
-                logger.warning(
-                    "Deleted bad curriculum savestate {} after {} attempts: "
-                    "recent_median={:.3f}, best_median={:.3f}, "
-                    "trend={:.6f}, progress_rate={:.1%}, stagnant_windows={}",
-                    diagnostics.state,
-                    diagnostics.attempts,
-                    diagnostics.recent_median,
-                    diagnostics.best_median,
-                    diagnostics.trend,
-                    diagnostics.progress_rate,
-                    diagnostics.stagnant_windows,
-                )
-
-        info.update(
-            {
-                "state": self.machine.name,
-                "episode_number": self.episode_number,
-                "episode_state": self.curriculum.episode_state,
-                "full_run": self.curriculum.full_run,
-                "action_repeat": self.action_repeat,
-                "won": won,
-                "ram": ram.to_dict(),
-            }
         )
-
-        if terminated or truncated:
-            info["episode_bk2_path"] = _recording_path(self.env.unwrapped)
-
-        velocity = self.player_motion.measure(
+        ram = _ram(
+            wrapper.ram_info_cls,
+            wrapper.env.unwrapped,
+        )
+        previous_state = wrapper.machine.name
+        state_reward, state_terminated, state_truncated = wrapper.machine.step(
             ram,
             frame,
         )
-        observation = _observation(
-            ram,
-            self.machine.current,
-            velocity,
-        )
 
-        return observation, reward, terminated, truncated, info
+        transitioned = wrapper.machine.name != previous_state
+        if transitioned:
+            state_reward += wrapper.transition_reward
 
+        reward += state_reward
+        terminated = terminated or state_terminated
+        truncated = truncated or state_truncated
 
-def _curriculum(
-    wrapper: "StateMachineGymWrapper[Any]",
-    model_dir: Path,
-) -> SavestateCurriculum:
-    states = tuple(state.__name__ for state in wrapper.state_types)
+        if transitioned or terminated or truncated:
+            break
 
-    return SavestateCurriculum(
-        model_dir / "curriculum",
-        states,
-        wrapper.curriculum_successes,
-        wrapper.curriculum_stagnation_episodes,
-        wrapper.full_run_probability,
+    won = wrapper.machine.current._won()
+    if won:
+        outcome_reward = wrapper.victory_reward
+    elif terminated or truncated:
+        outcome_reward = wrapper.failure_penalty
+    else:
+        outcome_reward = 0.0
+
+    reward += outcome_reward
+    terminated = terminated or won
+    info.update(_episode_info(wrapper, ram, won))
+
+    if terminated or truncated:
+        info["episode_bk2_path"] = _recording_path(wrapper.env.unwrapped)
+
+    velocity = wrapper.player_motion.measure(
+        ram,
+        frame,
     )
-
-
-def _record_transition(
-    curriculum: SavestateCurriculum,
-    previous: str,
-    current: str,
-    savestate: bytes,
-) -> None:
-    successes, completed = curriculum.transition(
-        previous,
-        current,
-        savestate,
+    observation = _observation(
+        ram,
+        wrapper.state_types,
+        wrapper.machine.current,
+        velocity,
     )
-    _log_mastery(
-        curriculum,
-        previous,
-        successes,
-        completed,
-    )
+    return observation, reward, terminated, truncated, info
 
 
-def _record_victory(
-    curriculum: SavestateCurriculum,
-    state: str,
-) -> None:
-    if curriculum.full_run:
-        logger.success("Completed full run")
-        return
-
-    successes, completed = curriculum.victory(state)
-    _log_mastery(
-        curriculum,
-        state,
-        successes,
-        completed,
-    )
-
-
-def _log_mastery(
-    curriculum: SavestateCurriculum,
-    state: str,
-    successes: int,
-    completed: bool,
-) -> None:
-    if completed:
-        logger.success(
-            "Mastered curriculum state {} after {} successes",
-            state,
-            successes,
-        )
-    elif successes:
-        logger.info(
-            "Curriculum state {} success {}/{}",
-            state,
-            successes,
-            curriculum.required_successes,
-        )
+def _episode_info(
+    wrapper: StateMachineGymWrapper[Any],
+    ram: RamInfo,
+    won: bool,
+) -> dict[str, Any]:
+    return {
+        "state": wrapper.machine.name,
+        "episode_number": wrapper.episode_number,
+        "action_repeat": wrapper.action_repeat,
+        "won": won,
+        "ram": ram.to_dict(),
+    }
 
 
 def _recording_path(retro: Any) -> str:
@@ -309,6 +180,7 @@ def _recording_path(retro: Any) -> str:
 
 def _observation_space(
     ram_info: type[RamInfo],
+    states: tuple[type[State[Any]], ...],
 ) -> gym.spaces.Box:
     ram_map = ram_info.ram_map()
     missing = tuple(field for field in REQUIRED_DQN_RAM_FIELDS if field not in ram_map)
@@ -322,7 +194,7 @@ def _observation_space(
     return gym.spaces.Box(
         -1.0,
         1.0,
-        shape=(ram_size + 5,),
+        shape=(ram_size + len(states) + 5,),
         dtype=np.float32,
     )
 
@@ -341,39 +213,18 @@ def _state_types(
     return tuple(dict.fromkeys((start, *states)))
 
 
-def _state_actions(
-    states: tuple[type[State[T]], ...],
-    action_space: gym.spaces.Discrete,
-) -> dict[str, tuple[int, ...]]:
-    result: dict[str, tuple[int, ...]] = {}
-
-    for state in states:
-        if not hasattr(state, "actions"):
-            raise TypeError(f"{state.__name__} must define actions")
-
-        actions = state.actions
-        if not actions:
-            raise ValueError(f"{state.__name__}.actions must not be empty")
-        if len(actions) != len(set(actions)):
-            raise ValueError(f"{state.__name__}.actions must be unique")
-        if any(
-            not isinstance(action, (int, np.integer))
-            or isinstance(action, (bool, np.bool_))
-            or not action_space.contains(int(action))
-            for action in actions
-        ):
-            raise ValueError(f"{state.__name__}.actions contains an invalid global action")
-
-        result[state.__name__] = tuple(int(action) for action in actions)
-
-    return result
-
-
 def _observation(
     ram: T,
+    states: tuple[type[State[T]], ...],
     current: State[T],
     velocity: np.ndarray,
 ) -> np.ndarray:
+    state = np.zeros(
+        len(states),
+        dtype=np.float32,
+    )
+    state[states.index(type(current))] = 1.0
+
     template = np.zeros(
         3,
         dtype=np.float32,
@@ -393,6 +244,7 @@ def _observation(
                 ram.features(),
                 dtype=np.float32,
             ),
+            state,
             template,
             velocity,
         )
@@ -403,7 +255,6 @@ def _action(
     action: WrapperActType,
     action_table: np.ndarray,
     action_space: gym.Space,
-    enabled_actions: tuple[int, ...],
 ) -> WrapperActType:
     if not isinstance(action, (int, np.integer)) or isinstance(action, (bool, np.bool_)):
         raise TypeError(f"Action must be an integer, got {type(action).__name__}")
@@ -412,18 +263,5 @@ def _action(
 
     if not action_space.contains(index):
         raise ValueError(f"Action {index} is outside {action_space}")
-    if index not in enabled_actions:
-        raise ValueError(f"Action {index} is disabled for the current state")
 
     return action_table[index]
-
-
-def _restore(
-    emulator: Any,
-    savestate: bytes,
-) -> np.ndarray:
-    emulator.em.set_state(savestate)
-    emulator.data.reset()
-    emulator.data.update_ram()
-
-    return emulator.get_screen(apply_rotation=True)

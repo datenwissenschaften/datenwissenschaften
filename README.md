@@ -7,8 +7,7 @@ The engine:
 1. combines normalized RAM, active state, and template detection features;
 2. lets game code define state transitions and reward;
 3. trains one compact DQN policy across all states;
-4. saves the policy after every training chunk;
-5. saves state transitions and resumes from the first incomplete curriculum state.
+4. saves the policy throughout training.
 
 ## Installation
 
@@ -36,9 +35,7 @@ train(environment, config_path)
 ```
 
 Game states subclass `datenwissenschaften.states.state.State` and implement reward, termination, and transition
-methods. Stable Baselines3 receives four stacked numeric feature observations and learns through a small DQN MLP.
-A successful state transition atomically saves the emulator state for the next curriculum stage. After all stages are
-complete, training mixes full runs with intermediate-state practice.
+methods. Stable Baselines3 receives one numeric feature observation and learns through a small DQN MLP.
 
 ## State classes
 
