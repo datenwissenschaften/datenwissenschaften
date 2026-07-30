@@ -21,7 +21,9 @@ def test_creates_compact_dqn_agent(tmp_path: Path) -> None:
 
     assert isinstance(model, DQN)
     assert model.buffer_size == 100_000
-    assert model.gradient_steps == 1
+    assert model.gradient_steps == 4
+    assert model.gamma == 0.995
+    assert model.exploration_final_eps == 0.1
     assert model.n_steps == 1
     assert sum(parameter.numel() for parameter in model.policy.parameters()) < 100_000
 

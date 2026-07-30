@@ -12,6 +12,8 @@ from datenwissenschaften.states.state import State
 from datenwissenschaften.training.episode_counter import EpisodeCounter
 
 T = TypeVar("T", bound=RamInfo)
+FRAME_COST = -0.01
+STATE_REWARD_LIMIT = 1.0
 
 
 class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
@@ -121,12 +123,11 @@ def _step(
         )
 
         transitioned = wrapper.machine.name != previous_state
-        if transitioned:
-            state_reward += wrapper.transition_reward
-
-        reward += state_reward
         terminated = terminated or state_terminated
         truncated = truncated or state_truncated
+        reward += _shape_reward(state_reward) + FRAME_COST
+        if transitioned and not terminated and not truncated:
+            reward += wrapper.transition_reward
 
         if transitioned or terminated or truncated:
             break
@@ -157,6 +158,12 @@ def _step(
         velocity,
     )
     return observation, reward, terminated, truncated, info
+
+
+def _shape_reward(reward: float) -> float:
+    if not np.isfinite(reward):
+        raise ValueError(f"State reward must be finite, got {reward}")
+    return float(np.clip(reward, -STATE_REWARD_LIMIT, STATE_REWARD_LIMIT))
 
 
 def _episode_info(

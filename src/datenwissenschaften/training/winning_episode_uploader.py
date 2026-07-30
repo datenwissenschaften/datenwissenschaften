@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,7 @@ def _process_episode(config: Box, info: dict[str, Any]) -> None:
     root = model_directory(config)
     reward_path = root / "best.score"
     episode = info["episode"]
-    score = int(float(episode["r"]))
+    score = float(episode["r"])
     new_best = _record_score(reward_path, score)
     logger.debug(
         "Episode finished: reward={:.3f}, steps={}, end={}, won={}",
@@ -41,20 +42,32 @@ def _process_episode(config: Box, info: dict[str, Any]) -> None:
     )
     if new_best and not info["won"]:
         logger.debug("New best score: {:.3f}", score)
-        _upload_training(config, info, recording)
+        _upload_episode(_upload_training, config, info, recording)
     if not info["won"]:
         recording.unlink(missing_ok=True)
         return
-    _upload_win(config, info, recording)
+    _upload_episode(_upload_win, config, info, recording)
 
 
-def _record_score(path: Path, score: int) -> bool:
+def _upload_episode(
+    upload: Callable[[Box, dict[str, Any], Path], None],
+    config: Box,
+    info: dict[str, Any],
+    recording: Path,
+) -> None:
+    try:
+        upload(config, info, recording)
+    except httpx.HTTPError as error:
+        logger.warning("Upload failed for {}: {}", recording.name, error)
+
+
+def _record_score(path: Path, score: float) -> bool:
     if path.is_file():
-        best = int(float(path.read_text(encoding="utf-8")))
+        best = float(path.read_text(encoding="utf-8"))
         if score <= best:
             return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(str(score), encoding="utf-8")
+    path.write_text(repr(score), encoding="utf-8")
     return True
 
 

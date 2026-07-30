@@ -7,6 +7,7 @@ from datenwissenschaften.states.image_detector import ImageDetector
 from datenwissenschaften.states.target_memory import TargetMemory
 
 T = TypeVar("T", bound=RamInfo)
+PROGRESS_REWARD_SCALE = 10.0
 
 
 class TargetState(ImageDetector[T]):
@@ -28,7 +29,7 @@ class TargetState(ImageDetector[T]):
         previous = self.previous_target_distance
         self.previous_target_distance = distance
         progress = 0.0 if previous is None else previous - distance
-        return reward + progress
+        return reward + progress * PROGRESS_REWARD_SCALE
 
     def _target_distance(self) -> float | None:
         height, width = self.frame.shape[:2]

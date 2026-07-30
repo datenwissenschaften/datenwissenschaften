@@ -5,7 +5,8 @@ from datenwissenschaften.states.state import State
 from datenwissenschaften.states.target import TargetState
 
 T = TypeVar("T", bound=RamInfo)
-EXPLORATION_REWARD = 0.01
+EXPLORATION_REWARD = 0.1
+EXPLORATION_TILE_SIZE = 8
 
 
 class Explorer(TargetState[T]):
@@ -19,8 +20,8 @@ class Explorer(TargetState[T]):
         location = (
             int(self.ram.screen_x),
             int(self.ram.screen_y),
-            int(self.ram.player_x),
-            int(self.ram.player_y),
+            int(self.ram.player_x) // EXPLORATION_TILE_SIZE,
+            int(self.ram.player_y) // EXPLORATION_TILE_SIZE,
         )
         visits = self.visits.get(location, 0) + 1
         self.visits[location] = visits
