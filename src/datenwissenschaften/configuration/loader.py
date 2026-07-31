@@ -26,6 +26,8 @@ def load_config(config_path: str | Path) -> Box:
         "training.game",
         "training.savestate",
         "training.fingerprint",
+        "training.runner_id",
+        "training.runner_name",
         "upload.url",
         "upload.api_key",
         "log_level",
@@ -37,6 +39,8 @@ def load_config(config_path: str | Path) -> Box:
     config.training.game = _string(config.training.game, "training.game")
     config.training.savestate = _string(config.training.savestate, "training.savestate")
     config.training.fingerprint = _string(config.training.fingerprint, "training.fingerprint")
+    config.training.runner_id = _string(config.training.runner_id, "training.runner_id")
+    config.training.runner_name = _string(config.training.runner_name, "training.runner_name")
     config.upload.url = _string(config.upload.url, "upload.url").rstrip("/")
     config.upload.api_key = _string(config.upload.api_key, "upload.api_key")
     config.log_level = _string(config.log_level, "log_level")

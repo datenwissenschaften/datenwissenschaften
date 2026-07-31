@@ -6,6 +6,8 @@ training:
   game: Airstriker-Genesis-v0
   savestate: Level1
   fingerprint: replace-me
+  runner_id: replace-me
+  runner_name: replace-me
 
 upload:
   url: https://speedlab.datenwissenschaften.com/api

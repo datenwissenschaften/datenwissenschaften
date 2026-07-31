@@ -17,6 +17,8 @@ training:
   savestate: Level1
   num_envs: 4
   fingerprint: abc123
+  runner_id: runner-1
+  runner_name: Example runner
 upload:
   url: https://example.test
   api_key: secret

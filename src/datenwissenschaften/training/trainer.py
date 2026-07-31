@@ -12,6 +12,7 @@ from datenwissenschaften.configuration.loader import load_config
 from datenwissenschaften.models.agent import load_agent
 from datenwissenschaften.models.path import model_directory
 from datenwissenschaften.rewards.normalizer import save_reward_normalizer
+from datenwissenschaften.training.runner_stats import RunnerStatsPublisher
 from datenwissenschaften.training.winning_episode_uploader import WinningEpisodeUploader
 
 CHECKPOINT_INTERVAL = 10_000
@@ -24,6 +25,7 @@ def train(environment: Any, config_path: str | Path) -> None:
     checkpoint = model_directory(config) / "model"
     model = load_agent(environment, checkpoint)
     uploader = WinningEpisodeUploader(config)
+    stats_publisher = RunnerStatsPublisher(config)
     checkpoint_callback = ConvertCallback(
         _checkpoint_callback(model, checkpoint),
     )
@@ -38,7 +40,7 @@ def train(environment: Any, config_path: str | Path) -> None:
         model.learn(
             total_timesteps=CHECKPOINT_INTERVAL,
             reset_num_timesteps=False,
-            callback=[uploader, checkpoint_callback],
+            callback=[uploader, stats_publisher, checkpoint_callback],
         )
         if uploader.completed:
             uploader.remove_model()
