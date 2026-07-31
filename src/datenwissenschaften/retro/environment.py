@@ -6,14 +6,15 @@ from typing import Any
 
 import stable_retro
 from loguru import logger
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecNormalize
 
 from datenwissenschaften.configuration.loader import load_config
 from datenwissenschaften.models.path import model_directory
 from datenwissenschaften.retro.rom_importer import import_roms
+from datenwissenschaften.rewards.normalizer import normalize_rewards
 
 
-def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) -> VecMonitor:
+def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) -> VecNormalize:
     config = load_config(config_path)
     environment_count = len(os.sched_getaffinity(0))
     if environment_count < 1:
@@ -39,7 +40,7 @@ def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) ->
     ]
     environments = SubprocVecEnv(factories) if len(factories) > 1 else DummyVecEnv(factories)
     logger.success("Environments ready")
-    return VecMonitor(environments)
+    return normalize_rewards(VecMonitor(environments), models_path)
 
 
 def _create_environment(wrapper: Callable[[Any], Any], game: str, savestate: str, model_dir: Path, index: int) -> Any:

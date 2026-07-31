@@ -11,6 +11,7 @@ from datenwissenschaften.checkpoints.model import atomic_save
 from datenwissenschaften.configuration.loader import load_config
 from datenwissenschaften.models.agent import load_agent
 from datenwissenschaften.models.path import model_directory
+from datenwissenschaften.rewards.normalizer import save_reward_normalizer
 from datenwissenschaften.training.winning_episode_uploader import WinningEpisodeUploader
 
 CHECKPOINT_INTERVAL = 10_000
@@ -69,6 +70,7 @@ def _save_checkpoint(
         return True
 
     atomic_save(model, checkpoint)
+    save_reward_normalizer(model.get_env(), checkpoint.parent)
     logger.debug("Saved shared agent after {:,} environment steps", model.num_timesteps)
     next_checkpoint[0] = (model.num_timesteps // CHECKPOINT_INTERVAL + 1) * CHECKPOINT_INTERVAL
     return True

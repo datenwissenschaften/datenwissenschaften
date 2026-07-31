@@ -9,6 +9,7 @@ from loguru import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
 from datenwissenschaften.models.path import model_directory
+from datenwissenschaften.rewards.normalizer import remove_reward_normalizer
 
 
 class WinningEpisodeUploader(BaseCallback):
@@ -31,8 +32,10 @@ class WinningEpisodeUploader(BaseCallback):
         return completed
 
     def remove_model(self) -> None:
-        checkpoint = model_directory(self.config) / "model"
+        root = model_directory(self.config)
+        checkpoint = root / "model"
         checkpoint.with_suffix(".zip").unlink(missing_ok=True)
+        remove_reward_normalizer(root)
 
 
 def _process_episode(config: Box, info: dict[str, Any]) -> bool:

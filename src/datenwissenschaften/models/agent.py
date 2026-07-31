@@ -7,6 +7,8 @@ from sb3_contrib.common.recurrent.policies import RecurrentMultiInputActorCritic
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.save_util import load_from_zip_file
 
+from datenwissenschaften.rewards.normalizer import REWARD_DISCOUNT_FACTOR
+
 
 def load_agent(environment: Any, path: Path) -> RecurrentPPO:
     checkpoint = path.with_suffix(".zip")
@@ -25,7 +27,7 @@ def load_agent(environment: Any, path: Path) -> RecurrentPPO:
         n_steps=256,
         batch_size=256,
         n_epochs=4,
-        gamma=0.995,
+        gamma=REWARD_DISCOUNT_FACTOR,
         gae_lambda=0.95,
         clip_range=0.2,
         ent_coef=0.01,
