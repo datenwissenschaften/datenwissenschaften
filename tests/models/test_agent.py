@@ -41,15 +41,18 @@ def test_restores_replay_buffer_with_agent(tmp_path: Path) -> None:
     assert restored.replay_buffer.size() == model.replay_buffer.size()
 
 
-def test_rejects_replay_buffer_with_different_environment_count(tmp_path: Path) -> None:
+def test_preserves_agent_with_different_replay_buffer_environment_count(tmp_path: Path) -> None:
     path = tmp_path / "model"
     model = load_agent(DummyVecEnv([cartpole, cartpole]), path)
     model.learn(total_timesteps=32)
     atomic_save_replay_buffer(model, path.with_suffix(".replay.pkl"))
     atomic_save(model, path)
 
-    with pytest.raises(ValueError, match="Replay buffer environment count 2 does not match model count 1"):
-        load_agent(DummyVecEnv([cartpole]), path)
+    restored = load_agent(DummyVecEnv([cartpole]), path)
+
+    assert restored.num_timesteps == model.num_timesteps
+    assert restored.replay_buffer.n_envs == 1
+    assert restored.replay_buffer.size() == 0
 
 
 def test_rejects_checkpoint_without_replay_buffer(tmp_path: Path) -> None:
