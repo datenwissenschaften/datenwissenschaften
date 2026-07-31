@@ -1,7 +1,7 @@
 from dataclasses import field, fields
 from typing import Any, Self, final
 
-REQUIRED_DQN_RAM_FIELDS = (
+REQUIRED_RAM_FIELDS = (
     "screen_x",
     "screen_y",
     "player_x",

@@ -4,9 +4,9 @@ A small state-driven reinforcement-learning engine for `stable-retro`.
 
 The engine:
 
-1. combines normalized RAM, active state, and template detection features;
+1. combines a compact grayscale scene with RAM, state, target, motion, and prior-action features;
 2. provides automatic exploration and target-progress rewards;
-3. trains one compact DQN policy across all states;
+3. trains one compact recurrent PPO policy across all states;
 4. saves the policy throughout training.
 
 ## Installation
@@ -35,7 +35,7 @@ train(environment, config_path)
 ```
 
 Game states subclass `Explorer` or `TargetState` and implement outcomes and transitions. Stable Baselines3 receives
-one numeric feature observation and learns through a small DQN MLP.
+a visual and numeric observation and learns through a compact CNN with a shared LSTM policy.
 
 ## State classes
 

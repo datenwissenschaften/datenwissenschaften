@@ -2,48 +2,53 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-from stable_baselines3 import DQN
+from sb3_contrib import RecurrentPPO
+from sb3_contrib.common.recurrent.policies import RecurrentMultiInputActorCriticPolicy
 from stable_baselines3.common.logger import configure
+from stable_baselines3.common.save_util import load_from_zip_file
 
 
-def load_agent(environment: Any, path: Path) -> DQN:
+def load_agent(environment: Any, path: Path) -> RecurrentPPO:
     checkpoint = path.with_suffix(".zip")
-    replay_buffer = path.with_suffix(".replay.pkl")
     if checkpoint.is_file():
-        if not replay_buffer.is_file():
-            raise RuntimeError(f"Replay buffer not found: {replay_buffer}")
+        _validate_checkpoint(checkpoint)
         logger.info(f"Loading agent from {checkpoint}")
-        model = DQN.load(checkpoint, env=environment, device="cpu")
-        empty_replay_buffer = model.replay_buffer
-        model.load_replay_buffer(replay_buffer, truncate_last_traj=True)
-        if model.replay_buffer.n_envs != model.n_envs:
-            logger.warning(
-                "Discarding replay buffer for {} environment(s); current model uses {}",
-                model.replay_buffer.n_envs,
-                model.n_envs,
-            )
-            model.replay_buffer = empty_replay_buffer
+        model = RecurrentPPO.load(checkpoint, env=environment, device="auto")
         model.set_logger(configure(folder=None, format_strings=[]))
         return model
-    logger.info("Creating feature-based DQN agent")
-    model = DQN(
-        "MlpPolicy",
+    logger.info("Creating recurrent visual-state PPO agent")
+    model = RecurrentPPO(
+        "MultiInputLstmPolicy",
         environment,
-        device="cpu",
-        learning_rate=0.0001,
-        buffer_size=100_000,
-        learning_starts=5_000,
-        batch_size=128,
-        train_freq=(1, "step"),
-        gradient_steps=4,
-        n_steps=1,
-        target_update_interval=10_000,
+        device="auto",
+        learning_rate=0.00025,
+        n_steps=256,
+        batch_size=256,
+        n_epochs=4,
         gamma=0.995,
-        exploration_fraction=1.0,
-        exploration_initial_eps=1.0,
-        exploration_final_eps=0.1,
-        replay_buffer_kwargs={"handle_timeout_termination": False},
-        policy_kwargs={"net_arch": [128, 128]},
+        gae_lambda=0.95,
+        clip_range=0.2,
+        ent_coef=0.01,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        target_kl=0.03,
+        policy_kwargs={
+            "lstm_hidden_size": 128,
+            "n_lstm_layers": 1,
+            "shared_lstm": True,
+            "enable_critic_lstm": False,
+            "net_arch": {"pi": [64], "vf": [64]},
+            "features_extractor_kwargs": {"cnn_output_dim": 128},
+        },
     )
     model.set_logger(configure(folder=None, format_strings=[]))
     return model
+
+
+def _validate_checkpoint(checkpoint: Path) -> None:
+    data, _, _ = load_from_zip_file(checkpoint, device="cpu")
+    if "policy_class" not in data:
+        raise RuntimeError(f"Invalid checkpoint: {checkpoint}")
+    policy_class = data["policy_class"]
+    if not isinstance(policy_class, type) or not issubclass(policy_class, RecurrentMultiInputActorCriticPolicy):
+        raise RuntimeError(f"Unsupported checkpoint algorithm: {checkpoint}")

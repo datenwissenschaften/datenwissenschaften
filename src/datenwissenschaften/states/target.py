@@ -2,6 +2,8 @@ from math import hypot
 from pathlib import Path
 from typing import TypeVar
 
+import numpy as np
+
 from datenwissenschaften.ram.model import RamInfo
 from datenwissenschaften.states.state import State
 from datenwissenschaften.states.target_memory import TargetMemory
@@ -31,15 +33,37 @@ class TargetState(State[T]):
         return progress * PROGRESS_REWARD_SCALE
 
     def _target_distance(self) -> float | None:
+        target = self._target_coordinates()
+        if target is None:
+            return None
         height, width = self.frame.shape[:2]
         actor_x = float(self.ram.screen_x * width + self.ram.player_x)
         actor_y = float(self.ram.screen_y * height + self.ram.player_y)
-        if self.target_detector.position is None:
-            if self.target_memory.coordinates is None:
-                return None
-            target_x, target_y = self.target_memory.coordinates
-        else:
-            target_x = float(self.ram.screen_x * width + self.target_detector.position[0])
-            target_y = float(self.ram.screen_y * height + self.target_detector.position[1])
-            self.target_memory.remember((target_x, target_y))
+        target_x, target_y = target
         return hypot(target_x - actor_x, target_y - actor_y) / hypot(width, height)
+
+    def target_features(self) -> np.ndarray:
+        target = self._target_coordinates()
+        if target is None:
+            return np.zeros(3, dtype=np.float32)
+        height, width = self.frame.shape[:2]
+        actor_x = float(self.ram.screen_x * width + self.ram.player_x)
+        actor_y = float(self.ram.screen_y * height + self.ram.player_y)
+        target_x, target_y = target
+        return np.asarray(
+            (
+                1.0,
+                np.clip((target_x - actor_x) / width, -1.0, 1.0),
+                np.clip((target_y - actor_y) / height, -1.0, 1.0),
+            ),
+            dtype=np.float32,
+        )
+
+    def _target_coordinates(self) -> tuple[float, float] | None:
+        _, width = self.frame.shape[:2]
+        if self.target_detector.position is None:
+            return self.target_memory.coordinates
+        target_x = float(self.ram.screen_x * width + self.target_detector.position[0])
+        target_y = float(self.ram.screen_y * self.frame.shape[0] + self.target_detector.position[1])
+        self.target_memory.remember((target_x, target_y))
+        return target_x, target_y

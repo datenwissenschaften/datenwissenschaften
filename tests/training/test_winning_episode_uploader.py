@@ -14,7 +14,6 @@ def test_winning_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPatch, 
     checkpoint = tmp_path / "models" / "Example-Nes" / "Level1" / "abc123" / "agents" / "model"
     checkpoint.parent.mkdir(parents=True)
     checkpoint.with_suffix(".zip").write_bytes(b"model")
-    checkpoint.with_suffix(".replay.pkl").write_bytes(b"replay")
     requests: list[dict[str, object]] = []
 
     def post(url: str, **kwargs: object) -> Mock:
@@ -60,7 +59,6 @@ def test_winning_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPatch, 
     }
     assert not recording.exists()
     assert not checkpoint.with_suffix(".zip").exists()
-    assert not checkpoint.with_suffix(".replay.pkl").exists()
 
 
 def test_new_best_non_winning_score_is_uploaded_as_training(

@@ -4,8 +4,8 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "datenwissenschaften"
-version = "5.0.0"
-description = "Feature-based reinforcement learning for state-driven retro games."
+version = "6.0.0"
+description = "Visual and state-based reinforcement learning for state-driven retro games."
 readme = "README.md"
 authors = [
     { name = "datenwissenschaften", email = "martin.franke@datenwissenschaften.com" }
@@ -20,6 +20,7 @@ dependencies = [
     "python-box==7.3.2",
     "pyyaml==6.0.3",
     "stable-baselines3==2.9.0",
+    "sb3-contrib==2.9.0",
     "stable-retro==1.0.1",
     "loguru==0.7.3",
 ]

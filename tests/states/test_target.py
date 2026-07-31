@@ -30,6 +30,14 @@ def test_target_rewards_progress_and_remaining_near_target() -> None:
     assert state._automatic_reward() < 0.0
 
 
+def test_target_features_include_remembered_relative_direction() -> None:
+    state = target_state()
+
+    assert np.array_equal(state.target_features(), np.asarray((1.0, 1.0, 0.0), dtype=np.float32))
+    state.ram.player_x = 50
+    assert np.array_equal(state.target_features(), np.asarray((1.0, 0.5, 0.0), dtype=np.float32))
+
+
 def test_explorer_rewards_current_tile_once(tmp_path: Path) -> None:
     state = Explorer.__new__(Explorer)
     state.model_dir = tmp_path

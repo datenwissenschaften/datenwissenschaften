@@ -6,16 +6,14 @@ from typing import Any
 
 from loguru import logger
 from stable_baselines3.common.callbacks import ConvertCallback
-from stable_baselines3.common.utils import ConstantSchedule
 
-from datenwissenschaften.checkpoints.model import atomic_save, atomic_save_replay_buffer
+from datenwissenschaften.checkpoints.model import atomic_save
 from datenwissenschaften.configuration.loader import load_config
 from datenwissenschaften.models.agent import load_agent
 from datenwissenschaften.models.path import model_directory
 from datenwissenschaften.training.winning_episode_uploader import WinningEpisodeUploader
 
 CHECKPOINT_INTERVAL = 10_000
-EXPLORATION_STEPS = 100_000
 
 
 def train(environment: Any, config_path: str | Path) -> None:
@@ -36,14 +34,8 @@ def train(environment: Any, config_path: str | Path) -> None:
     )
 
     while True:
-        if model.num_timesteps >= EXPLORATION_STEPS:
-            model.exploration_schedule = ConstantSchedule(model.exploration_final_eps)
-        training_steps = max(
-            CHECKPOINT_INTERVAL,
-            EXPLORATION_STEPS - model.num_timesteps,
-        )
         model.learn(
-            total_timesteps=training_steps,
+            total_timesteps=CHECKPOINT_INTERVAL,
             reset_num_timesteps=False,
             callback=[uploader, checkpoint_callback],
         )
@@ -76,10 +68,6 @@ def _save_checkpoint(
     if model.num_timesteps < next_checkpoint[0]:
         return True
 
-    atomic_save_replay_buffer(
-        model,
-        checkpoint.with_suffix(".replay.pkl"),
-    )
     atomic_save(model, checkpoint)
     logger.debug("Saved shared agent after {:,} environment steps", model.num_timesteps)
     next_checkpoint[0] = (model.num_timesteps // CHECKPOINT_INTERVAL + 1) * CHECKPOINT_INTERVAL

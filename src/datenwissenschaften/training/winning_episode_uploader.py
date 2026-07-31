@@ -33,7 +33,6 @@ class WinningEpisodeUploader(BaseCallback):
     def remove_model(self) -> None:
         checkpoint = model_directory(self.config) / "model"
         checkpoint.with_suffix(".zip").unlink(missing_ok=True)
-        checkpoint.with_suffix(".replay.pkl").unlink(missing_ok=True)
 
 
 def _process_episode(config: Box, info: dict[str, Any]) -> bool:

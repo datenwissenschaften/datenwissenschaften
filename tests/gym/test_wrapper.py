@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from datenwissenschaften.gym.wrapper import StateMachineGymWrapper, _limit_automatic_reward, _observation_space
-from datenwissenschaften.ram.model import REQUIRED_DQN_RAM_FIELDS, RamInfo, ram
+from datenwissenschaften.ram.model import REQUIRED_RAM_FIELDS, RamInfo, ram
 from datenwissenschaften.states.state import State
 
 
@@ -15,20 +15,23 @@ def ram_info(fields: tuple[str, ...]) -> type[RamInfo]:
     return make_dataclass("TestRam", definitions, bases=(RamInfo,), slots=True)
 
 
-def test_accepts_all_required_dqn_ram_fields() -> None:
+def test_accepts_all_required_ram_fields() -> None:
     space = _observation_space(
-        ram_info(REQUIRED_DQN_RAM_FIELDS),
+        ram_info(REQUIRED_RAM_FIELDS),
         (State,),
+        2,
     )
 
-    assert space.shape == (10,)
+    assert space["scene"].shape == (1, 84, 84)
+    assert space["state"].shape == (15,)
 
 
-def test_rejects_missing_dqn_ram_fields() -> None:
+def test_rejects_missing_ram_fields() -> None:
     with pytest.raises(ValueError, match=r"ram\.player_y"):
         _observation_space(
-            ram_info(REQUIRED_DQN_RAM_FIELDS[:-1]),
+            ram_info(REQUIRED_RAM_FIELDS[:-1]),
             (State,),
+            2,
         )
 
 
@@ -60,6 +63,7 @@ def test_failure_adds_penalty(monkeypatch: pytest.MonkeyPatch) -> None:
     wrapper.failure_penalty = -5.0
     wrapper.player_motion = Mock()
     wrapper.player_motion.measure.return_value = np.zeros(2, dtype=np.float32)
+    wrapper.previous_action = np.zeros(1, dtype=np.float32)
     wrapper.state_types = ()
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._ram",
@@ -67,7 +71,7 @@ def test_failure_adds_penalty(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._observation",
-        lambda ram, states, current, velocity: np.zeros(1, dtype=np.float32),
+        lambda ram, states, current, velocity, previous_action, visual_frame: np.zeros(1, dtype=np.float32),
     )
 
     _, reward, _, truncated, info = wrapper.step(0)
@@ -108,6 +112,7 @@ def test_transition_continues_episode(
     wrapper.failure_penalty = -5.0
     wrapper.player_motion = Mock()
     wrapper.player_motion.measure.return_value = np.zeros(2, dtype=np.float32)
+    wrapper.previous_action = np.zeros(1, dtype=np.float32)
     wrapper.state_types = ()
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._ram",
@@ -115,7 +120,7 @@ def test_transition_continues_episode(
     )
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._observation",
-        lambda ram, states, current, velocity: np.zeros(1, dtype=np.float32),
+        lambda ram, states, current, velocity, previous_action, visual_frame: np.zeros(1, dtype=np.float32),
     )
 
     _, reward, terminated, truncated, _ = wrapper.step(0)
@@ -152,6 +157,7 @@ def test_bounds_automatic_reward_before_adding_transition_reward(
     wrapper.failure_penalty = -5.0
     wrapper.player_motion = Mock()
     wrapper.player_motion.measure.return_value = np.zeros(2, dtype=np.float32)
+    wrapper.previous_action = np.zeros(1, dtype=np.float32)
     wrapper.state_types = ()
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._ram",
@@ -159,7 +165,7 @@ def test_bounds_automatic_reward_before_adding_transition_reward(
     )
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._observation",
-        lambda ram, states, current, velocity: np.zeros(1, dtype=np.float32),
+        lambda ram, states, current, velocity, previous_action, visual_frame: np.zeros(1, dtype=np.float32),
     )
 
     _, reward, _, _, _ = wrapper.step(0)
@@ -198,6 +204,7 @@ def test_does_not_reward_a_transition_on_a_failed_frame(
     wrapper.failure_penalty = -5.0
     wrapper.player_motion = Mock()
     wrapper.player_motion.measure.return_value = np.zeros(2, dtype=np.float32)
+    wrapper.previous_action = np.zeros(1, dtype=np.float32)
     wrapper.state_types = ()
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._ram",
@@ -205,7 +212,7 @@ def test_does_not_reward_a_transition_on_a_failed_frame(
     )
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._observation",
-        lambda ram, states, current, velocity: np.zeros(1, dtype=np.float32),
+        lambda ram, states, current, velocity, previous_action, visual_frame: np.zeros(1, dtype=np.float32),
     )
 
     _, reward, _, truncated, _ = wrapper.step(0)

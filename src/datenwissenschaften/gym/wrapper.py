@@ -6,14 +6,17 @@ import numpy as np
 from gymnasium.core import WrapperActType
 
 from datenwissenschaften.gym.player_motion import PlayerMotion
-from datenwissenschaften.ram.model import REQUIRED_DQN_RAM_FIELDS, RamInfo
+from datenwissenschaften.gym.scene import SCENE_SIZE, scene
+from datenwissenschaften.ram.model import REQUIRED_RAM_FIELDS, RamInfo
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.state import State
+from datenwissenschaften.states.target import TargetState
 from datenwissenschaften.training.episode_counter import EpisodeCounter
 
 T = TypeVar("T", bound=RamInfo)
 FRAME_COST = -0.01
 STATE_REWARD_LIMIT = 1.0
+Observation = dict[str, np.ndarray]
 
 
 class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
@@ -38,7 +41,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             raise ValueError("action_repeat must be positive")
 
         if action_table is None:
-            raise ValueError("Feature-based DQN requires a discrete action table")
+            raise ValueError("Feature-based policy requires a discrete action table")
 
         self.machine = StateMachine(self.start_state_cls(model_dir))
         self.state_types: tuple[type[State[T]], ...] = _state_types(
@@ -50,28 +53,30 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.player_motion = PlayerMotion()
         self.action_table = action_table
         self.action_space = gym.spaces.Discrete(len(action_table))
+        self.previous_action = np.zeros(len(action_table), dtype=np.float32)
         self.observation_space = _observation_space(
             self.ram_info_cls,
             self.state_types,
+            len(action_table),
         )
 
     def reset(
         self,
         **kwargs: Any,
-    ) -> tuple[np.ndarray, dict[str, Any]]:
+    ) -> tuple[Observation, dict[str, Any]]:
         return _reset(self, kwargs)
 
     def step(
         self,
         action: WrapperActType,
-    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    ) -> tuple[Observation, float, bool, bool, dict[str, Any]]:
         return _step(self, action)
 
 
 def _reset(
     wrapper: StateMachineGymWrapper[T],
     kwargs: dict[str, Any],
-) -> tuple[np.ndarray, dict[str, Any]]:
+) -> tuple[Observation, dict[str, Any]]:
     frame, info = wrapper.env.reset(**kwargs)
     wrapper.episode_number = wrapper.episode_counter.next_episode()
     ram = _ram(
@@ -87,12 +92,15 @@ def _reset(
         ram,
         frame,
     )
+    wrapper.previous_action.fill(0.0)
     return (
         _observation(
             ram,
             wrapper.state_types,
             wrapper.machine.current,
             velocity,
+            wrapper.previous_action,
+            frame,
         ),
         info,
     )
@@ -101,17 +109,16 @@ def _reset(
 def _step(
     wrapper: StateMachineGymWrapper[T],
     action: WrapperActType,
-) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+) -> tuple[Observation, float, bool, bool, dict[str, Any]]:
     reward = 0.0
+    recent_frames: list[np.ndarray] = []
+    action_index = _action_index(action, wrapper.action_space)
+    controller_action = wrapper.action_table[action_index]
 
     for _ in range(wrapper.action_repeat):
-        frame, _, terminated, truncated, info = wrapper.env.step(
-            _action(
-                action,
-                wrapper.action_table,
-                wrapper.action_space,
-            )
-        )
+        frame, _, terminated, truncated, info = wrapper.env.step(controller_action)
+        recent_frames.append(frame)
+        recent_frames = recent_frames[-2:]
         ram = _ram(
             wrapper.ram_info_cls,
             wrapper.env.unwrapped,
@@ -151,11 +158,16 @@ def _step(
         ram,
         frame,
     )
+    wrapper.previous_action.fill(0.0)
+    wrapper.previous_action[action_index] = 1.0
+    visual_frame = np.maximum(recent_frames[0], recent_frames[1]) if len(recent_frames) == 2 else recent_frames[0]
     observation = _observation(
         ram,
         wrapper.state_types,
         wrapper.machine.current,
         velocity,
+        wrapper.previous_action,
+        visual_frame,
     )
     return observation, reward, terminated, truncated, info
 
@@ -188,21 +200,32 @@ def _recording_path(retro: Any) -> str:
 def _observation_space(
     ram_info: type[RamInfo],
     states: tuple[type[State[Any]], ...],
-) -> gym.spaces.Box:
+    action_count: int,
+) -> gym.spaces.Dict:
     ram_map = ram_info.ram_map()
-    missing = tuple(field for field in REQUIRED_DQN_RAM_FIELDS if field not in ram_map)
+    missing = tuple(field for field in REQUIRED_RAM_FIELDS if field not in ram_map)
 
     if missing:
         fields = ", ".join(f"ram.{field}" for field in missing)
-        raise ValueError(f"Feature-based DQN requires RAM fields: {fields}")
+        raise ValueError(f"Feature-based policy requires RAM fields: {fields}")
 
     ram_size = sum(length for _, length in ram_map.values())
 
-    return gym.spaces.Box(
-        -1.0,
-        1.0,
-        shape=(ram_size + len(states) + 5,),
-        dtype=np.float32,
+    return gym.spaces.Dict(
+        {
+            "scene": gym.spaces.Box(
+                0,
+                255,
+                shape=(1, SCENE_SIZE, SCENE_SIZE),
+                dtype=np.uint8,
+            ),
+            "state": gym.spaces.Box(
+                -1.0,
+                1.0,
+                shape=(ram_size + len(states) + action_count + 8,),
+                dtype=np.float32,
+            ),
+        }
     )
 
 
@@ -225,7 +248,9 @@ def _observation(
     states: tuple[type[State[T]], ...],
     current: State[T],
     velocity: np.ndarray,
-) -> np.ndarray:
+    previous_action: np.ndarray,
+    visual_frame: np.ndarray,
+) -> Observation:
     state = np.zeros(
         len(states),
         dtype=np.float32,
@@ -245,24 +270,31 @@ def _observation(
             template[1] = current.target_detector.position[0] / width
             template[2] = current.target_detector.position[1] / height
 
-    return np.concatenate(
-        (
-            np.asarray(
-                ram.features(),
-                dtype=np.float32,
+    if not isinstance(current, TargetState):
+        raise TypeError(f"Unsupported state type: {type(current).__name__}")
+
+    return {
+        "scene": scene(visual_frame),
+        "state": np.concatenate(
+            (
+                np.asarray(
+                    ram.features(),
+                    dtype=np.float32,
+                ),
+                state,
+                template,
+                current.target_features(),
+                velocity,
+                previous_action,
             ),
-            state,
-            template,
-            velocity,
-        )
-    )
+        ),
+    }
 
 
-def _action(
+def _action_index(
     action: WrapperActType,
-    action_table: np.ndarray,
     action_space: gym.Space,
-) -> WrapperActType:
+) -> int:
     if not isinstance(action, (int, np.integer)) or isinstance(action, (bool, np.bool_)):
         raise TypeError(f"Action must be an integer, got {type(action).__name__}")
 
@@ -271,4 +303,4 @@ def _action(
     if not action_space.contains(index):
         raise ValueError(f"Action {index} is outside {action_space}")
 
-    return action_table[index]
+    return index

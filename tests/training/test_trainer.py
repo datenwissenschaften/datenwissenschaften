@@ -11,14 +11,9 @@ def test_checkpoint_callback_saves_one_shared_agent(
 ) -> None:
     model = SimpleNamespace(num_timesteps=CHECKPOINT_INTERVAL - 1)
     save_model = Mock()
-    save_replay_buffer = Mock()
     monkeypatch.setattr(
         "datenwissenschaften.training.trainer.atomic_save",
         save_model,
-    )
-    monkeypatch.setattr(
-        "datenwissenschaften.training.trainer.atomic_save_replay_buffer",
-        save_replay_buffer,
     )
     checkpoint = tmp_path / "model"
     callback = _checkpoint_callback(model, checkpoint)
@@ -29,7 +24,3 @@ def test_checkpoint_callback_saves_one_shared_agent(
     model.num_timesteps = CHECKPOINT_INTERVAL
     assert callback({"self": model}, {})
     save_model.assert_called_once_with(model, checkpoint)
-    save_replay_buffer.assert_called_once_with(
-        model,
-        checkpoint.with_suffix(".replay.pkl"),
-    )
