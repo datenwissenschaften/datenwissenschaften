@@ -214,7 +214,7 @@ def test_better_winning_score_is_uploaded(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert best_score.read_text(encoding="utf-8") == "101.0"
 
 
-def test_upload_failure_does_not_stop_training(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_winning_episode_stops_training_when_upload_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     recording = tmp_path / "failed-upload.bk2"
     recording.write_bytes(b"recording")
 
@@ -253,5 +253,5 @@ def test_upload_failure_does_not_stop_training(monkeypatch: pytest.MonkeyPatch, 
         ],
     }
 
-    assert uploader._on_step()
+    assert not uploader._on_step()
     assert recording.exists()

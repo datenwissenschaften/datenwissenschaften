@@ -58,7 +58,8 @@ def _process_episode(config: Box, info: dict[str, Any]) -> bool:
     if not info["won"]:
         recording.unlink(missing_ok=True)
         return False
-    return _upload_episode(_upload_win, config, info, recording)
+    _upload_episode(_upload_win, config, info, recording)
+    return True
 
 
 def _upload_episode(
