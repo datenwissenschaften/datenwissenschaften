@@ -15,6 +15,11 @@ def load_agent(environment: Any, path: Path) -> DQN:
         logger.info(f"Loading agent from {checkpoint}")
         model = DQN.load(checkpoint, env=environment, device="cpu")
         model.load_replay_buffer(replay_buffer, truncate_last_traj=True)
+        if model.replay_buffer.n_envs != model.n_envs:
+            raise ValueError(
+                f"Replay buffer environment count {model.replay_buffer.n_envs} "
+                f"does not match model count {model.n_envs}"
+            )
         model.set_logger(configure(folder=None, format_strings=[]))
         return model
     logger.info("Creating feature-based DQN agent")

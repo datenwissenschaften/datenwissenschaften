@@ -11,6 +11,10 @@ from datenwissenschaften.training.winning_episode_uploader import WinningEpisode
 def test_winning_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     recording = tmp_path / "winning.bk2"
     recording.write_bytes(b"recording")
+    checkpoint = tmp_path / "models" / "Example-Nes" / "Level1" / "abc123" / "agents" / "model"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.with_suffix(".zip").write_bytes(b"model")
+    checkpoint.with_suffix(".replay.pkl").write_bytes(b"replay")
     requests: list[dict[str, object]] = []
 
     def post(url: str, **kwargs: object) -> Mock:
@@ -45,7 +49,7 @@ def test_winning_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPatch, 
         ],
     }
 
-    assert uploader._on_step()
+    assert not uploader._on_step()
     assert len(requests) == 1
     assert requests[0]["data"] == {
         "game": "Example-Nes",
@@ -55,9 +59,14 @@ def test_winning_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPatch, 
         "episode_number": 42,
     }
     assert not recording.exists()
+    assert not checkpoint.with_suffix(".zip").exists()
+    assert not checkpoint.with_suffix(".replay.pkl").exists()
 
 
-def test_non_winning_score_is_not_uploaded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_new_best_non_winning_score_is_uploaded_as_training(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     recording = tmp_path / "first.bk2"
     recording.write_bytes(b"recording")
     requests: list[dict[str, object]] = []
@@ -95,13 +104,21 @@ def test_non_winning_score_is_not_uploaded(monkeypatch: pytest.MonkeyPatch, tmp_
     }
 
     assert uploader._on_step()
-    assert not requests
+    assert len(requests) == 1
+    assert requests[0]["data"] == {
+        "game": "Example-Nes",
+        "category": "Level1",
+        "type": "TRAINING",
+        "action_repeat": 2,
+        "episode_number": 1,
+    }
     assert not recording.exists()
-    assert not next((tmp_path / "models").rglob("best.score"), None)
+    best_score = next((tmp_path / "models").rglob("best.score"))
+    assert best_score.read_text(encoding="utf-8") == "10.0"
 
 
 @pytest.mark.parametrize("score", [100.0, 99.0])
-def test_winning_score_must_improve_best(
+def test_winning_score_does_not_need_to_improve_best(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     score: float,
@@ -145,8 +162,9 @@ def test_winning_score_must_improve_best(
         ],
     }
 
-    assert uploader._on_step()
-    assert not requests
+    assert not uploader._on_step()
+    assert len(requests) == 1
+    assert requests[0]["data"]["type"] == "WON"
     assert not recording.exists()
     assert best_score.read_text(encoding="utf-8") == "100.0"
 
@@ -191,7 +209,7 @@ def test_better_winning_score_is_uploaded(monkeypatch: pytest.MonkeyPatch, tmp_p
         ],
     }
 
-    assert uploader._on_step()
+    assert not uploader._on_step()
     assert len(requests) == 1
     assert requests[0]["data"]["type"] == "WON"
     assert not recording.exists()

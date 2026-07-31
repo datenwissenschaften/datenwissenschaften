@@ -47,6 +47,10 @@ def train(environment: Any, config_path: str | Path) -> None:
             reset_num_timesteps=False,
             callback=[uploader, checkpoint_callback],
         )
+        if uploader.completed:
+            uploader.remove_model()
+            logger.success("Removed completed agent")
+            return
 
 
 def _checkpoint_callback(model: Any, checkpoint: Path) -> Callable[[dict[str, Any], dict[str, Any]], bool]:
