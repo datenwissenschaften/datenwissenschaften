@@ -41,7 +41,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             raise ValueError("action_repeat must be positive")
 
         if action_table is None:
-            raise ValueError("Feature-based policy requires a discrete action table")
+            raise ValueError("Visual-state policy requires a discrete action table")
 
         self.machine = StateMachine(self.start_state_cls(model_dir))
         self.state_types: tuple[type[State[T]], ...] = _state_types(
@@ -207,7 +207,7 @@ def _observation_space(
 
     if missing:
         fields = ", ".join(f"ram.{field}" for field in missing)
-        raise ValueError(f"Feature-based policy requires RAM fields: {fields}")
+        raise ValueError(f"Visual-state policy requires RAM fields: {fields}")
 
     ram_size = sum(length for _, length in ram_map.values())
 
