@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +31,6 @@ def _process_episode(config: Box, info: dict[str, Any]) -> None:
     reward_path = root / "best.score"
     episode = info["episode"]
     score = float(episode["r"])
-    new_best = _record_score(reward_path, score)
     logger.debug(
         "Episode finished: reward={:.3f}, steps={}, end={}, won={}",
         episode["r"],
@@ -40,23 +38,23 @@ def _process_episode(config: Box, info: dict[str, Any]) -> None:
         info["state"],
         info["won"],
     )
-    if new_best and not info["won"]:
-        logger.debug("New best score: {:.3f}", score)
-        _upload_episode(_upload_training, config, info, recording)
     if not info["won"]:
         recording.unlink(missing_ok=True)
         return
-    _upload_episode(_upload_win, config, info, recording)
+    if not _record_score(reward_path, score):
+        recording.unlink(missing_ok=True)
+        return
+    logger.debug("New best winning score: {:.3f}", score)
+    _upload_episode(config, info, recording)
 
 
 def _upload_episode(
-    upload: Callable[[Box, dict[str, Any], Path], None],
     config: Box,
     info: dict[str, Any],
     recording: Path,
 ) -> None:
     try:
-        upload(config, info, recording)
+        _upload_win(config, info, recording)
     except httpx.HTTPError as error:
         logger.warning("Upload failed for {}: {}", recording.name, error)
 
@@ -69,20 +67,6 @@ def _record_score(path: Path, score: float) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(repr(score), encoding="utf-8")
     return True
-
-
-def _upload_training(
-    config: Box,
-    info: dict[str, Any],
-    recording: Path,
-) -> None:
-    with recording.open("rb") as recording_stream:
-        _post(
-            config,
-            info,
-            "TRAINING",
-            {"bk2_file": (recording.name, recording_stream, "application/zip")},
-        )
 
 
 def _upload_win(
