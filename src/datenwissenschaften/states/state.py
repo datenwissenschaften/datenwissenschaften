@@ -66,16 +66,25 @@ class State(Generic[T]):
 
     def _validate_type(self) -> None:
         from datenwissenschaften.states.explorer import Explorer
+        from datenwissenschaften.states.ram_scorer import RamScorerState
         from datenwissenschaften.states.target import TargetState
 
         state_type = type(self)
-        if not isinstance(self, TargetState):
-            raise TypeError(f"{state_type.__name__} must inherit Explorer or TargetState")
+        if not isinstance(self, (TargetState, RamScorerState)):
+            raise TypeError(f"{state_type.__name__} must inherit Explorer, TargetState or RamScorerState")
         if state_type.step is not State.step:
             raise TypeError(f"{state_type.__name__} cannot override step")
-        if state_type._automatic_reward not in {Explorer._automatic_reward, TargetState._automatic_reward}:
+        if state_type._automatic_reward not in {
+            Explorer._automatic_reward,
+            TargetState._automatic_reward,
+            RamScorerState._automatic_reward,
+        }:
             raise TypeError(f"{state_type.__name__} cannot define custom rewards")
-        if any("_reward" in parent.__dict__ for parent in state_type.__mro__):
+        if any(
+            "_reward" in parent.__dict__
+            for parent in state_type.__mro__
+            if parent not in {Explorer, TargetState, RamScorerState}
+        ):
             raise TypeError(f"{state_type.__name__} cannot define custom rewards")
         if isinstance(self, Explorer):
             if state_type._target_state is Explorer._target_state:
@@ -83,6 +92,11 @@ class State(Generic[T]):
             if state_type._won is not Explorer._won:
                 raise TypeError(f"{state_type.__name__} cannot define won")
             return
+
+        if isinstance(self, RamScorerState):
+            if state_type._scored_value is RamScorerState._scored_value:
+                raise TypeError(f"{state_type.__name__} must define a scored value")
+
         has_next = state_type._next is not State._next
         has_won = state_type._won is not State._won
         if has_next == has_won:
