@@ -9,6 +9,7 @@ from datenwissenschaften.gym.player_motion import PlayerMotion
 from datenwissenschaften.gym.scene import SCENE_SIZE, scene
 from datenwissenschaften.ram.model import REQUIRED_RAM_FIELDS, RamInfo
 from datenwissenschaften.states.machine import StateMachine
+from datenwissenschaften.states.ram_scorer import RamScorerState
 from datenwissenschaften.states.state import State
 from datenwissenschaften.states.target import TargetState
 from datenwissenschaften.training.episode_counter import EpisodeCounter
@@ -262,15 +263,17 @@ def _observation(
         dtype=np.float32,
     )
 
-    if current.target_detector is not None:
+    target_features = np.zeros(3, dtype=np.float32)
+    if isinstance(current, TargetState):
         template[0] = float(current.target_detector.seen)
 
         if current.target_detector.position is not None:
             height, width = current.frame.shape[:2]
             template[1] = current.target_detector.position[0] / width
             template[2] = current.target_detector.position[1] / height
+        target_features = current.target_features()
 
-    if not isinstance(current, TargetState):
+    if not isinstance(current, (TargetState, RamScorerState)):
         raise TypeError(f"Unsupported state type: {type(current).__name__}")
 
     return {
@@ -283,7 +286,7 @@ def _observation(
                 ),
                 state,
                 template,
-                current.target_features(),
+                target_features,
                 velocity,
                 previous_action,
             ),
