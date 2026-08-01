@@ -1,12 +1,12 @@
 from typing import TypeVar
 
 from datenwissenschaften.ram.model import RamInfo
-from datenwissenschaften.states.target import TargetState
+from datenwissenschaften.states.state import State
 
 T = TypeVar("T", bound=RamInfo)
 
 
-class RamScorerState(TargetState[T]):
+class RamScorerState(State[T]):
     previous_value: float | None = None
 
     def _on_reset(self) -> None:
@@ -19,10 +19,9 @@ class RamScorerState(TargetState[T]):
         self.previous_value = current_value
 
         if previous is None:
-            return super()._automatic_reward()
+            return 0.0
 
-        reward = current_value - previous
-        return super()._automatic_reward() + reward
+        return current_value - previous
 
     def _scored_value(self) -> float:
         raise NotImplementedError

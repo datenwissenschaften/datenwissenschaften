@@ -1,27 +1,21 @@
 from pathlib import Path
-from typing import ClassVar, Generic, TypeVar
+from typing import Generic, TypeVar
 
 import numpy as np
 
 from datenwissenschaften.ram.model import RamInfo
-from datenwissenschaften.states.detector import TemplateDetector
 
 T = TypeVar("T", bound=RamInfo)
 
 
 class State(Generic[T]):
-    template_file: ClassVar[str]
-    target_detector: TemplateDetector
     ram: T
     frame: np.ndarray
     model_dir: Path
 
     def __init__(self, model_dir: Path) -> None:
         self._validate_type()
-        if not hasattr(self, "template_file"):
-            raise TypeError(f"{type(self).__name__} must define template_file")
         self.model_dir = model_dir
-        self.target_detector = TemplateDetector(self.template_file)
 
     def reset(self, ram: T, frame: np.ndarray) -> None:
         self.ram = ram
@@ -41,7 +35,7 @@ class State(Generic[T]):
         return self._automatic_reward(), self._terminated(), self._truncated(), self._next()
 
     def _detect(self) -> None:
-        self.target_detector.detect(self.frame)
+        pass
 
     def _on_reset(self) -> None:
         pass

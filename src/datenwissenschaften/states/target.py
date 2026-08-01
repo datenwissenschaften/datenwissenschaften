@@ -1,10 +1,11 @@
 from math import hypot
 from pathlib import Path
-from typing import TypeVar
+from typing import ClassVar, TypeVar
 
 import numpy as np
 
 from datenwissenschaften.ram.model import RamInfo
+from datenwissenschaften.states.detector import TemplateDetector
 from datenwissenschaften.states.state import State
 from datenwissenschaften.states.target_memory import TargetMemory
 
@@ -13,10 +14,19 @@ PROGRESS_REWARD_SCALE = 10.0
 
 
 class TargetState(State[T]):
+    template_file: ClassVar[str]
+    target_detector: TemplateDetector
+
     def __init__(self, model_dir: Path) -> None:
+        if not hasattr(self, "template_file"):
+            raise TypeError(f"{type(self).__name__} must define template_file")
         super().__init__(model_dir)
+        self.target_detector = TemplateDetector(self.template_file)
         self.target_memory = TargetMemory(model_dir / "targets" / f"{type(self).__name__}.json")
         self.previous_target_distance: float | None = None
+
+    def _detect(self) -> None:
+        self.target_detector.detect(self.frame)
 
     def _on_reset(self) -> None:
         super()._on_reset()
