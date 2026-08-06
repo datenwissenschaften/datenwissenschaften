@@ -65,7 +65,7 @@ class State(Generic[T]):
 
         state_type = type(self)
         if not isinstance(self, (TargetState, RamScorerState)):
-            raise TypeError(f"{state_type.__name__} must inherit Explorer, TargetState or RamScorerState")
+            raise TypeError(f"{state_type.__name__} must inherit Explorer or TargetState")
         if state_type.step is not State.step:
             raise TypeError(f"{state_type.__name__} cannot override step")
         if state_type._automatic_reward not in {

@@ -5,6 +5,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium.core import WrapperActType
 
+from datenwissenschaften.curriculum import ReverseCurriculum
 from datenwissenschaften.gym.player_motion import PlayerMotion
 from datenwissenschaften.gym.scene import SCENE_SIZE, scene
 from datenwissenschaften.ram.model import REQUIRED_RAM_FIELDS, RamInfo
@@ -60,6 +61,17 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             self.state_types,
             len(action_table),
         )
+        self.curriculum = ReverseCurriculum(
+            model_dir / "curriculum" / self._savestate_name(),
+            tuple(state_type.__name__ for state_type in self.state_types),
+        )
+        self.curriculum_state = self.curriculum.active_state() or self.machine.name
+        self.curriculum_steps = 0
+        self.curriculum_return = 0.0
+        self.curriculum_recorded = False
+
+    def _savestate_name(self) -> str:
+        return Path(str(getattr(self.env.unwrapped, "statename", "default"))).stem
 
     def reset(
         self,
@@ -79,15 +91,27 @@ def _reset(
     kwargs: dict[str, Any],
 ) -> tuple[Observation, dict[str, Any]]:
     frame, info = wrapper.env.reset(**kwargs)
+    checkpoint_state = wrapper.curriculum.episode_start_state()
+    if checkpoint_state is not None:
+        frame = _restore_checkpoint(wrapper, wrapper.curriculum.checkpoint(checkpoint_state))
     wrapper.episode_number = wrapper.episode_counter.next_episode()
+    wrapper.curriculum_state = wrapper.curriculum.active_state() or wrapper.state_types[-1].__name__
+    wrapper.curriculum_steps = 0
+    wrapper.curriculum_return = 0.0
+    wrapper.curriculum_recorded = wrapper.curriculum.is_complete()
     ram = _ram(
         wrapper.ram_info_cls,
         wrapper.env.unwrapped,
     )
+    state_type = (
+        next(state for state in wrapper.state_types if state.__name__ == checkpoint_state)
+        if checkpoint_state is not None
+        else wrapper.state_types[0]
+    )
     wrapper.machine.reset(
         ram,
         frame,
-        wrapper.state_types[0],
+        state_type,
     )
     velocity = wrapper.player_motion.reset(
         ram,
@@ -117,6 +141,8 @@ def _step(
     controller_action = wrapper.action_table[action_index]
 
     for _ in range(wrapper.action_repeat):
+        if hasattr(wrapper, "curriculum"):
+            wrapper.curriculum_steps += 1
         frame, _, terminated, truncated, info = wrapper.env.step(controller_action)
         recent_frames.append(frame)
         recent_frames = recent_frames[-2:]
@@ -150,7 +176,28 @@ def _step(
 
     reward += outcome_reward
     terminated = terminated or won
+    if hasattr(wrapper, "curriculum"):
+        wrapper.curriculum_return += reward
+        if transitioned:
+            _save_curriculum_checkpoint(wrapper)
+            if previous_state == wrapper.curriculum_state and not wrapper.curriculum_recorded:
+                wrapper.curriculum_recorded = True
+                wrapper.curriculum.record_success(wrapper.curriculum_state, wrapper.curriculum_steps)
+                terminated = True
+        elif (terminated or truncated) and not wrapper.curriculum_recorded:
+            wrapper.curriculum.record_failure(
+                wrapper.curriculum_state,
+                wrapper.curriculum_steps,
+                wrapper.curriculum_return,
+            )
+        if won and not wrapper.curriculum_recorded:
+            wrapper.curriculum_recorded = True
+            wrapper.curriculum.record_success(wrapper.curriculum_state, wrapper.curriculum_steps)
     info.update(_episode_info(wrapper, ram, won))
+    if hasattr(wrapper, "curriculum"):
+        info["curriculum_state"] = wrapper.curriculum_state
+        info["curriculum_complete"] = wrapper.curriculum.is_complete()
+        info["curriculum_progress"] = wrapper.curriculum.progress()
 
     if terminated or truncated:
         info["episode_bk2_path"] = _recording_path(wrapper.env.unwrapped)
@@ -196,6 +243,19 @@ def _episode_info(
 def _recording_path(retro: Any) -> str:
     recording = Path(retro.movie_path) / (f"{retro.gamename}-{Path(retro.statename).stem}-{retro.movie_id - 1:06d}.bk2")
     return str(recording)
+
+
+def _save_curriculum_checkpoint(wrapper: StateMachineGymWrapper[Any]) -> None:
+    emulator = wrapper.env.unwrapped
+    wrapper.curriculum.save_checkpoint(wrapper.machine.name, bytes(emulator.em.get_state()))
+
+
+def _restore_checkpoint(wrapper: StateMachineGymWrapper[Any], state: bytes) -> np.ndarray:
+    emulator = wrapper.env.unwrapped
+    emulator.em.set_state(state)
+    emulator.data.reset()
+    emulator.data.update_ram()
+    return emulator.get_screen(apply_rotation=True)
 
 
 def _observation_space(
