@@ -40,8 +40,10 @@ class ReverseCurriculum:
         self._require_state(state_name)
         return self._checkpoint_path(state_name).read_bytes()
 
-    def save_checkpoint(self, state_name: str, emulator_state: bytes) -> bool:
+    def save_checkpoint(self, state_name: str, emulator_state: bytes, score: float) -> bool:
         self._require_state(state_name)
+        if not math.isfinite(score):
+            raise ValueError(f"Checkpoint score must be finite, got {score}")
         if self.is_mastered(state_name):
             return False
         path = self._checkpoint_path(state_name)
@@ -49,7 +51,17 @@ class ReverseCurriculum:
             if path.is_file():
                 return False
             self._atomic_write(path, emulator_state)
+            self._write_float(self._checkpoint_score_path(state_name), score)
         return True
+
+    def checkpoint_score(self, state_name: str) -> float:
+        self._require_state(state_name)
+        if not self.has_checkpoint(state_name):
+            raise RuntimeError(f"Missing checkpoint for curriculum state: {state_name}")
+        score = self._read_float(self._checkpoint_score_path(state_name))
+        if score is None:
+            raise RuntimeError(f"Checkpoint has no valid score: {state_name}")
+        return score
 
     def record_success(self, state_name: str, episode_steps: int) -> bool:
         self._require_state(state_name)
@@ -67,8 +79,7 @@ class ReverseCurriculum:
         if not math.isfinite(score):
             raise ValueError(f"Curriculum score must be finite, got {score}")
         self._write_int(self._steps_path(state_name), max(1, episode_steps, self.typical_steps(state_name)))
-        checkpoint = self._checkpoint_path(state_name)
-        if state_name == self.state_names[0] or not checkpoint.is_file():
+        if state_name == self.state_names[0] or not self.has_checkpoint(state_name):
             return False
         best = self._read_float(self._best_score_path(state_name))
         last = self._read_float(self._last_score_path(state_name))
@@ -81,9 +92,8 @@ class ReverseCurriculum:
         if evidence < self.BAD_CHECKPOINT_EVIDENCE_TARGET:
             self._write_int(self._evidence_path(state_name), evidence)
             return False
-        checkpoint.unlink(missing_ok=True)
         self._clear_failure_evidence(state_name)
-        return True
+        return False
 
     def wins(self, state_name: str) -> int:
         self._require_state(state_name)
@@ -119,6 +129,9 @@ class ReverseCurriculum:
 
     def _checkpoint_path(self, state_name: str) -> Path:
         return self.root / f"{state_name}.state"
+
+    def _checkpoint_score_path(self, state_name: str) -> Path:
+        return self.root / f"{state_name}.score"
 
     def _success_path(self, state_name: str) -> Path:
         return self.root / f"{state_name}.successes"

@@ -3,7 +3,7 @@ paths:
   models: working/models
 
 training:
-  game: Airstriker-Genesis-v0
+  game: Example-Nes-v0
   savestate: Level1
   fingerprint: replace-me
   runner_id: replace-me

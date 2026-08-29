@@ -7,7 +7,6 @@ import pytest
 
 from datenwissenschaften.gym.wrapper import StateMachineGymWrapper, _limit_automatic_reward, _observation_space
 from datenwissenschaften.ram.model import REQUIRED_RAM_FIELDS, RamInfo, ram
-from datenwissenschaften.states.state import State
 
 
 def ram_info(fields: tuple[str, ...]) -> type[RamInfo]:
@@ -18,19 +17,17 @@ def ram_info(fields: tuple[str, ...]) -> type[RamInfo]:
 def test_accepts_all_required_ram_fields() -> None:
     space = _observation_space(
         ram_info(REQUIRED_RAM_FIELDS),
-        (State,),
         2,
     )
 
-    assert space["scene"].shape == (1, 84, 84)
-    assert space["state"].shape == (15,)
+    assert space.shape == (11,)
+    assert space.dtype == np.float32
 
 
 def test_rejects_missing_ram_fields() -> None:
     with pytest.raises(ValueError, match=r"ram\.player_y"):
         _observation_space(
             ram_info(REQUIRED_RAM_FIELDS[:-1]),
-            (State,),
             2,
         )
 
@@ -43,9 +40,11 @@ def test_rejects_non_finite_automatic_reward() -> None:
 def test_failure_adds_penalty(monkeypatch: pytest.MonkeyPatch) -> None:
     wrapper = object.__new__(StateMachineGymWrapper)
     wrapper.action_repeat = 1
-    wrapper.action_table = np.asarray([[0]], dtype=np.int8)
     wrapper.action_space = Mock()
     wrapper.action_space.contains.return_value = True
+    wrapper.curriculum_enabled = False
+    wrapper.state_time_limit_frames = 10
+    wrapper.state_frames = 0
     wrapper.ram_info_cls = Mock()
     wrapper.env = Mock()
     wrapper.env.step.return_value = np.zeros((1, 1, 3)), 0.0, False, True, {}
@@ -71,10 +70,10 @@ def test_failure_adds_penalty(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._observation",
-        lambda ram, states, current, velocity, previous_action, visual_frame: np.zeros(1, dtype=np.float32),
+        lambda ram, current, velocity, previous_action: np.zeros(1, dtype=np.float32),
     )
 
-    _, reward, _, truncated, info = wrapper.step(0)
+    _, reward, _, truncated, info = wrapper.step(np.zeros(1, dtype=np.int8))
 
     assert truncated
     assert reward == -5.01
@@ -86,9 +85,11 @@ def test_transition_continues_episode(
 ) -> None:
     wrapper = object.__new__(StateMachineGymWrapper)
     wrapper.action_repeat = 4
-    wrapper.action_table = np.asarray([[0]], dtype=np.int8)
     wrapper.action_space = Mock()
     wrapper.action_space.contains.return_value = True
+    wrapper.curriculum_enabled = False
+    wrapper.state_time_limit_frames = 10
+    wrapper.state_frames = 0
     wrapper.ram_info_cls = Mock()
     wrapper.env = Mock()
     wrapper.env.step.return_value = np.zeros((1, 1, 3)), 0.0, False, False, {}
@@ -120,10 +121,10 @@ def test_transition_continues_episode(
     )
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._observation",
-        lambda ram, states, current, velocity, previous_action, visual_frame: np.zeros(1, dtype=np.float32),
+        lambda ram, current, velocity, previous_action: np.zeros(1, dtype=np.float32),
     )
 
-    _, reward, terminated, truncated, _ = wrapper.step(0)
+    _, reward, terminated, truncated, _ = wrapper.step(np.zeros(1, dtype=np.int8))
 
     assert reward == 5.99
     assert not terminated
@@ -136,9 +137,11 @@ def test_bounds_automatic_reward_before_adding_transition_reward(
 ) -> None:
     wrapper = object.__new__(StateMachineGymWrapper)
     wrapper.action_repeat = 1
-    wrapper.action_table = np.asarray([[0]], dtype=np.int8)
     wrapper.action_space = Mock()
     wrapper.action_space.contains.return_value = True
+    wrapper.curriculum_enabled = False
+    wrapper.state_time_limit_frames = 10
+    wrapper.state_frames = 0
     wrapper.ram_info_cls = Mock()
     wrapper.env = Mock()
     wrapper.env.step.return_value = np.zeros((1, 1, 3)), 0.0, False, False, {}
@@ -165,10 +168,10 @@ def test_bounds_automatic_reward_before_adding_transition_reward(
     )
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._observation",
-        lambda ram, states, current, velocity, previous_action, visual_frame: np.zeros(1, dtype=np.float32),
+        lambda ram, current, velocity, previous_action: np.zeros(1, dtype=np.float32),
     )
 
-    _, reward, _, _, _ = wrapper.step(0)
+    _, reward, _, _, _ = wrapper.step(np.zeros(1, dtype=np.int8))
 
     assert reward == 5.99
 
@@ -178,9 +181,11 @@ def test_does_not_reward_a_transition_on_a_failed_frame(
 ) -> None:
     wrapper = object.__new__(StateMachineGymWrapper)
     wrapper.action_repeat = 1
-    wrapper.action_table = np.asarray([[0]], dtype=np.int8)
     wrapper.action_space = Mock()
     wrapper.action_space.contains.return_value = True
+    wrapper.curriculum_enabled = False
+    wrapper.state_time_limit_frames = 10
+    wrapper.state_frames = 0
     wrapper.ram_info_cls = Mock()
     wrapper.env = Mock()
     wrapper.env.step.return_value = np.zeros((1, 1, 3)), 0.0, False, False, {}
@@ -212,10 +217,10 @@ def test_does_not_reward_a_transition_on_a_failed_frame(
     )
     monkeypatch.setattr(
         "datenwissenschaften.gym.wrapper._observation",
-        lambda ram, states, current, velocity, previous_action, visual_frame: np.zeros(1, dtype=np.float32),
+        lambda ram, current, velocity, previous_action: np.zeros(1, dtype=np.float32),
     )
 
-    _, reward, _, truncated, _ = wrapper.step(0)
+    _, reward, _, truncated, _ = wrapper.step(np.zeros(1, dtype=np.int8))
 
     assert truncated
     assert reward == -5.01

@@ -25,8 +25,12 @@ class RunnerStatsPublisher(BaseCallback):
         self.next_publish_at: float = 0.0
 
     def _on_step(self) -> bool:
+        self.process(self.locals["dones"], self.locals["infos"])
+        return True
+
+    def process(self, dones: Any, infos: list[dict[str, Any]]) -> None:
         completed = False
-        for done, info in zip(self.locals["dones"], self.locals["infos"], strict=True):
+        for done, info in zip(dones, infos, strict=True):
             if done:
                 _record_episode(self.stats, info)
                 completed = True
@@ -34,7 +38,6 @@ class RunnerStatsPublisher(BaseCallback):
             _save_stats(self.path, self.stats)
         if completed and time.monotonic() >= self.next_publish_at:
             self._publish()
-        return True
 
     def _on_training_end(self) -> None:
         if int(self.stats["timed_episodes"]) > 0:

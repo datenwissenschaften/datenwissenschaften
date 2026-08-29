@@ -1,4 +1,3 @@
-import os
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -6,7 +5,7 @@ from typing import Any
 
 import stable_retro
 from loguru import logger
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor, VecNormalize
 
 from datenwissenschaften.configuration.loader import load_config
 from datenwissenschaften.models.path import model_directory
@@ -16,29 +15,22 @@ from datenwissenschaften.rewards.normalizer import normalize_rewards
 
 def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) -> VecNormalize:
     config = load_config(config_path)
-    environment_count = len(os.sched_getaffinity(0))
-    if environment_count < 1:
-        raise RuntimeError("The process must have at least one available CPU")
     logger.info(
-        "Building {} environment(s) for {} / {}",
-        environment_count,
+        "Building one CPU environment for {} / {}",
         config.training.game,
         config.training.savestate,
     )
     import_roms(config.paths.roms)
     models_path = model_directory(config)
-    factories = [
-        partial(
-            _create_environment,
-            wrapper,
-            config.training.game,
-            config.training.savestate,
-            models_path,
-            index,
-        )
-        for index in range(environment_count)
-    ]
-    environments = SubprocVecEnv(factories) if len(factories) > 1 else DummyVecEnv(factories)
+    factory = partial(
+        _create_environment,
+        wrapper,
+        config.training.game,
+        config.training.savestate,
+        models_path,
+        0,
+    )
+    environments = DummyVecEnv([factory])
     logger.success("Environments ready")
     return normalize_rewards(VecMonitor(environments), models_path)
 

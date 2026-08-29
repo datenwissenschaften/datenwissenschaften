@@ -4,10 +4,11 @@ A small state-driven reinforcement-learning engine for `stable-retro`.
 
 The engine:
 
-1. combines a compact grayscale scene with RAM, state, target, motion, and prior-action features;
+1. combines RAM, target, motion, and prior-action features without pixel observations;
 2. provides automatic exploration and target-progress rewards;
-3. trains one compact recurrent PPO policy across all states;
-4. saves the policy throughout training.
+3. trains one compact A2C policy per curriculum state, resuming each state from its saved emulator checkpoint;
+4. runs complete episodes with the trained policies, switching policies as the curriculum state advances;
+5. saves each policy and the shared reward normalizer throughout training.
 
 ## Installation
 
@@ -34,8 +35,8 @@ environment = build_environment(GameWrapper, config_path)
 train(environment, config_path)
 ```
 
-Game states subclass `Explorer` or `TargetState` and implement outcomes and transitions. Stable Baselines3 receives
-a visual and numeric observation and learns through a compact CNN with a shared LSTM policy.
+Game states subclass `Explorer`, `TargetState`, or `RamScorerState` and implement outcomes and transitions. Stable
+Baselines3 receives a flat numeric observation and learns through a one-layer, 32-unit A2C policy on one CPU thread.
 
 ## State classes
 
@@ -43,6 +44,7 @@ a visual and numeric observation and learns through a compact CNN with a shared 
 | --- | --- | --- |
 | Target | `datenwissenschaften.states.target.TargetState` | Rewards distance progress and persists the first target location |
 | Explorer | `datenwissenschaften.states.explorer.Explorer` | Rewards new positions and advances when the template is visible |
+| RAM scorer | `datenwissenschaften.states.ram_scorer.RamScorerState` | Rewards changes in a game-specific RAM score |
 
 Every project requires `screen_x`, `screen_y`, `player_x`, and `player_y` RAM fields. Player velocity is calculated
 from consecutive positions. Every state requires `template_file`. Target locations are stored under the game's model

@@ -1,3 +1,4 @@
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -11,13 +12,21 @@ class TargetMemory:
         self.coordinates = self._load()
 
     def remember(self, coordinates: tuple[float, float]) -> None:
-        if self.coordinates is not None:
-            return
-        self.coordinates = coordinates
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
-        temporary.write_text(json.dumps(coordinates), encoding="utf-8")
-        temporary.replace(self.path)
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with lock_path.open("a+b") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                remembered = self._load()
+                if remembered is not None:
+                    self.coordinates = remembered
+                    return
+                self.coordinates = coordinates
+                temporary = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
+                temporary.write_text(json.dumps(coordinates), encoding="utf-8")
+                temporary.replace(self.path)
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
         logger.success(
             "Remembered {} target at ({:.1f}, {:.1f})",
             self.path.stem,

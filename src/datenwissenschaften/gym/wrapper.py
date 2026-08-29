@@ -7,7 +7,6 @@ from gymnasium.core import WrapperActType
 
 from datenwissenschaften.curriculum import ReverseCurriculum
 from datenwissenschaften.gym.player_motion import PlayerMotion
-from datenwissenschaften.gym.scene import SCENE_SIZE, scene
 from datenwissenschaften.ram.model import REQUIRED_RAM_FIELDS, RamInfo
 from datenwissenschaften.states.machine import StateMachine
 from datenwissenschaften.states.ram_scorer import RamScorerState
@@ -18,7 +17,7 @@ from datenwissenschaften.training.episode_counter import EpisodeCounter
 T = TypeVar("T", bound=RamInfo)
 FRAME_COST = -0.01
 STATE_REWARD_LIMIT = 1.0
-Observation = dict[str, np.ndarray]
+Observation = np.ndarray
 
 
 class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
@@ -34,16 +33,20 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self,
         env: gym.Env,
         *,
-        action_table: np.ndarray | None,
+        action_size: int,
         model_dir: Path,
+        curriculum_enabled: bool,
+        state_time_limit_frames: int,
     ) -> None:
         super().__init__(env)
 
         if self.action_repeat < 1:
             raise ValueError("action_repeat must be positive")
 
-        if action_table is None:
-            raise ValueError("Visual-state policy requires a discrete action table")
+        if action_size < 1:
+            raise ValueError("action_size must be positive")
+        if state_time_limit_frames < 1:
+            raise ValueError("state_time_limit_frames must be positive")
 
         self.machine = StateMachine(self.start_state_cls(model_dir))
         self.state_types: tuple[type[State[T]], ...] = _state_types(
@@ -53,13 +56,15 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.episode_counter: EpisodeCounter = EpisodeCounter(model_dir / "episodes.count")
         self.episode_number: int = 0
         self.player_motion = PlayerMotion()
-        self.action_table = action_table
-        self.action_space = gym.spaces.Discrete(len(action_table))
-        self.previous_action = np.zeros(len(action_table), dtype=np.float32)
+        self.curriculum_enabled = curriculum_enabled
+        self.state_time_limit_frames = state_time_limit_frames
+        self.state_frames = 0
+        self.action_space = gym.spaces.MultiBinary(action_size)
+        self.action_space.dtype = np.dtype(np.float32)
+        self.previous_action = np.zeros(action_size, dtype=np.float32)
         self.observation_space = _observation_space(
             self.ram_info_cls,
-            self.state_types,
-            len(action_table),
+            action_size,
         )
         self.curriculum = ReverseCurriculum(
             model_dir / "curriculum" / self._savestate_name(),
@@ -69,6 +74,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
         self.curriculum_steps = 0
         self.curriculum_return = 0.0
         self.curriculum_recorded = False
+        self.full_run = False
 
     def _savestate_name(self) -> str:
         return Path(str(getattr(self.env.unwrapped, "statename", "default"))).stem
@@ -91,14 +97,20 @@ def _reset(
     kwargs: dict[str, Any],
 ) -> tuple[Observation, dict[str, Any]]:
     frame, info = wrapper.env.reset(**kwargs)
-    checkpoint_state = wrapper.curriculum.episode_start_state()
+    checkpoint_state = wrapper.curriculum.episode_start_state() if wrapper.curriculum_enabled else None
     if checkpoint_state is not None:
         frame = _restore_checkpoint(wrapper, wrapper.curriculum.checkpoint(checkpoint_state))
     wrapper.episode_number = wrapper.episode_counter.next_episode()
-    wrapper.curriculum_state = wrapper.curriculum.active_state() or wrapper.state_types[-1].__name__
+    wrapper.curriculum_state = (
+        wrapper.curriculum.active_state() if wrapper.curriculum_enabled else None
+    ) or wrapper.state_types[0].__name__
     wrapper.curriculum_steps = 0
-    wrapper.curriculum_return = 0.0
-    wrapper.curriculum_recorded = wrapper.curriculum.is_complete()
+    wrapper.state_frames = 0
+    wrapper.curriculum_return = (
+        wrapper.curriculum.checkpoint_score(checkpoint_state) if checkpoint_state is not None else 0.0
+    )
+    wrapper.curriculum_recorded = wrapper.curriculum.is_complete() if wrapper.curriculum_enabled else False
+    wrapper.full_run = wrapper.curriculum.is_complete() if wrapper.curriculum_enabled else False
     ram = _ram(
         wrapper.ram_info_cls,
         wrapper.env.unwrapped,
@@ -121,11 +133,9 @@ def _reset(
     return (
         _observation(
             ram,
-            wrapper.state_types,
             wrapper.machine.current,
             velocity,
             wrapper.previous_action,
-            frame,
         ),
         info,
     )
@@ -136,27 +146,30 @@ def _step(
     action: WrapperActType,
 ) -> tuple[Observation, float, bool, bool, dict[str, Any]]:
     reward = 0.0
-    recent_frames: list[np.ndarray] = []
-    action_index = _action_index(action, wrapper.action_space)
-    controller_action = wrapper.action_table[action_index]
+    controller_action = _controller_action(action, wrapper.action_space)
 
     for _ in range(wrapper.action_repeat):
-        if hasattr(wrapper, "curriculum"):
+        if wrapper.curriculum_enabled:
             wrapper.curriculum_steps += 1
         frame, _, terminated, truncated, info = wrapper.env.step(controller_action)
-        recent_frames.append(frame)
-        recent_frames = recent_frames[-2:]
         ram = _ram(
             wrapper.ram_info_cls,
             wrapper.env.unwrapped,
         )
         previous_state = wrapper.machine.name
+        wrapper.state_frames += 1
         state_reward, state_terminated, state_truncated = wrapper.machine.step(
             ram,
             frame,
         )
 
         transitioned = wrapper.machine.name != previous_state
+        if transitioned:
+            wrapper.state_frames = 0
+        if wrapper.curriculum_enabled and wrapper.full_run:
+            wrapper.curriculum_state = wrapper.machine.name
+        elif wrapper.state_frames >= wrapper.state_time_limit_frames:
+            state_truncated = True
         terminated = terminated or state_terminated
         truncated = truncated or state_truncated
         reward += _limit_automatic_reward(state_reward) + FRAME_COST
@@ -176,7 +189,7 @@ def _step(
 
     reward += outcome_reward
     terminated = terminated or won
-    if hasattr(wrapper, "curriculum"):
+    if wrapper.curriculum_enabled:
         wrapper.curriculum_return += reward
         if transitioned:
             _save_curriculum_checkpoint(wrapper)
@@ -194,28 +207,27 @@ def _step(
             wrapper.curriculum_recorded = True
             wrapper.curriculum.record_success(wrapper.curriculum_state, wrapper.curriculum_steps)
     info.update(_episode_info(wrapper, ram, won))
-    if hasattr(wrapper, "curriculum"):
+    if wrapper.curriculum_enabled:
+        info["full_run"] = wrapper.full_run
         info["curriculum_state"] = wrapper.curriculum_state
         info["curriculum_complete"] = wrapper.curriculum.is_complete()
         info["curriculum_progress"] = wrapper.curriculum.progress()
 
     if terminated or truncated:
-        info["episode_bk2_path"] = _recording_path(wrapper.env.unwrapped)
+        recording_path = _recording_path(wrapper.env.unwrapped)
+        if recording_path is not None:
+            info["episode_bk2_path"] = recording_path
 
     velocity = wrapper.player_motion.measure(
         ram,
         frame,
     )
-    wrapper.previous_action.fill(0.0)
-    wrapper.previous_action[action_index] = 1.0
-    visual_frame = np.maximum(recent_frames[0], recent_frames[1]) if len(recent_frames) == 2 else recent_frames[0]
+    wrapper.previous_action = controller_action.astype(np.float32)
     observation = _observation(
         ram,
-        wrapper.state_types,
         wrapper.machine.current,
         velocity,
         wrapper.previous_action,
-        visual_frame,
     )
     return observation, reward, terminated, truncated, info
 
@@ -240,14 +252,20 @@ def _episode_info(
     }
 
 
-def _recording_path(retro: Any) -> str:
+def _recording_path(retro: Any) -> str | None:
+    if retro.movie_path is None:
+        return None
     recording = Path(retro.movie_path) / (f"{retro.gamename}-{Path(retro.statename).stem}-{retro.movie_id - 1:06d}.bk2")
     return str(recording)
 
 
 def _save_curriculum_checkpoint(wrapper: StateMachineGymWrapper[Any]) -> None:
     emulator = wrapper.env.unwrapped
-    wrapper.curriculum.save_checkpoint(wrapper.machine.name, bytes(emulator.em.get_state()))
+    wrapper.curriculum.save_checkpoint(
+        wrapper.machine.name,
+        bytes(emulator.em.get_state()),
+        wrapper.curriculum_return,
+    )
 
 
 def _restore_checkpoint(wrapper: StateMachineGymWrapper[Any], state: bytes) -> np.ndarray:
@@ -260,33 +278,22 @@ def _restore_checkpoint(wrapper: StateMachineGymWrapper[Any], state: bytes) -> n
 
 def _observation_space(
     ram_info: type[RamInfo],
-    states: tuple[type[State[Any]], ...],
     action_count: int,
-) -> gym.spaces.Dict:
+) -> gym.spaces.Box:
     ram_map = ram_info.ram_map()
     missing = tuple(field for field in REQUIRED_RAM_FIELDS if field not in ram_map)
 
     if missing:
         fields = ", ".join(f"ram.{field}" for field in missing)
-        raise ValueError(f"Visual-state policy requires RAM fields: {fields}")
+        raise ValueError(f"State policy requires RAM fields: {fields}")
 
-    ram_size = sum(length for _, length in ram_map.values())
+    ram_size = ram_info.feature_size()
 
-    return gym.spaces.Dict(
-        {
-            "scene": gym.spaces.Box(
-                0,
-                255,
-                shape=(1, SCENE_SIZE, SCENE_SIZE),
-                dtype=np.uint8,
-            ),
-            "state": gym.spaces.Box(
-                -1.0,
-                1.0,
-                shape=(ram_size + len(states) + action_count + 8,),
-                dtype=np.float32,
-            ),
-        }
+    return gym.spaces.Box(
+        -1.0,
+        1.0,
+        shape=(ram_size + action_count + 5,),
+        dtype=np.float32,
     )
 
 
@@ -306,64 +313,34 @@ def _state_types(
 
 def _observation(
     ram: T,
-    states: tuple[type[State[T]], ...],
     current: State[T],
     velocity: np.ndarray,
     previous_action: np.ndarray,
-    visual_frame: np.ndarray,
-) -> Observation:
-    state = np.zeros(
-        len(states),
-        dtype=np.float32,
-    )
-    state[states.index(type(current))] = 1.0
-
-    template = np.zeros(
-        3,
-        dtype=np.float32,
-    )
-
+) -> np.ndarray:
     target_features = np.zeros(3, dtype=np.float32)
     if isinstance(current, TargetState):
-        template[0] = float(current.target_detector.seen)
-
-        if current.target_detector.position is not None:
-            height, width = current.frame.shape[:2]
-            template[1] = current.target_detector.position[0] / width
-            template[2] = current.target_detector.position[1] / height
+        target_features = current.target_features()
+    elif isinstance(current, RamScorerState):
         target_features = current.target_features()
 
     if not isinstance(current, (TargetState, RamScorerState)):
         raise TypeError(f"Unsupported state type: {type(current).__name__}")
 
-    return {
-        "scene": scene(visual_frame),
-        "state": np.concatenate(
-            (
-                np.asarray(
-                    ram.features(),
-                    dtype=np.float32,
-                ),
-                state,
-                template,
-                target_features,
-                velocity,
-                previous_action,
-            ),
+    return np.concatenate(
+        (
+            np.asarray(ram.features(), dtype=np.float32),
+            target_features,
+            velocity,
+            previous_action,
         ),
-    }
+    )
 
 
-def _action_index(
+def _controller_action(
     action: WrapperActType,
     action_space: gym.Space,
-) -> int:
-    if not isinstance(action, (int, np.integer)) or isinstance(action, (bool, np.bool_)):
-        raise TypeError(f"Action must be an integer, got {type(action).__name__}")
-
-    index = int(action)
-
-    if not action_space.contains(index):
-        raise ValueError(f"Action {index} is outside {action_space}")
-
-    return index
+) -> np.ndarray:
+    controller_action = np.asarray(action, dtype=np.int8)
+    if not action_space.contains(controller_action):
+        raise ValueError(f"Action {controller_action} is outside {action_space}")
+    return controller_action

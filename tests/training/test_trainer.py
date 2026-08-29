@@ -5,7 +5,7 @@ from unittest.mock import Mock, call
 from datenwissenschaften.training.trainer import CHECKPOINT_INTERVAL, _checkpoint_callback
 
 
-def test_checkpoint_callback_saves_one_shared_agent(
+def test_checkpoint_callback_saves_agent(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -22,7 +22,7 @@ def test_checkpoint_callback_saves_one_shared_agent(
         save_normalizer,
     )
     checkpoint = tmp_path / "model"
-    callback = _checkpoint_callback(model, checkpoint)
+    callback = _checkpoint_callback(model, checkpoint, tmp_path / "agents")
 
     assert callback({"self": model}, {})
     save_model.assert_not_called()
@@ -31,4 +31,4 @@ def test_checkpoint_callback_saves_one_shared_agent(
     model.num_timesteps = CHECKPOINT_INTERVAL
     assert callback({"self": model}, {})
     save_model.assert_called_once_with(model, checkpoint)
-    save_normalizer.assert_has_calls([call(environment, tmp_path)])
+    save_normalizer.assert_has_calls([call(environment, tmp_path / "agents")])

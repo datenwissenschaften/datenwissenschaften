@@ -13,13 +13,21 @@ def ram(address: int) -> Any:
     return field(default=0, metadata={"address": address, "length": 1})
 
 
+def signed_ram(address: int) -> Any:
+    return field(default=0, metadata={"address": address, "length": 1, "signed": True})
+
+
+def ram_word(address: int) -> Any:
+    return field(default=0, metadata={"address": address, "length": 2, "word": True})
+
+
 def ram_array(address: int, length: int) -> Any:
     if length < 1:
         raise ValueError("length must be positive.")
 
     return field(
         default_factory=lambda: [0] * length,
-        metadata={"address": address, "length": length},
+        metadata={"address": address, "length": length, "array": True},
     )
 
 
@@ -31,12 +39,22 @@ class RamInfo:
 
     @classmethod
     @final
+    def feature_size(cls) -> int:
+        return sum(1 if f.metadata.get("word") else int(f.metadata["length"]) for f in fields(cls))
+
+    @classmethod
+    @final
     def from_ram(cls, raw_ram: Any) -> Self:
         values = {}
+        ram_fields = {item.name: item for item in fields(cls)}
 
         for name, (address, length) in cls.ram_map().items():
-            if length == 1:
-                values[name] = int(raw_ram[address])
+            ram_field = ram_fields[name]
+            if ram_field.metadata.get("word"):
+                values[name] = int(raw_ram[address]) | int(raw_ram[address + 1]) << 8
+            elif length == 1:
+                value = int(raw_ram[address])
+                values[name] = value - 256 if ram_field.metadata.get("signed") and value >= 128 else value
             else:
                 values[name] = [int(raw_ram[address + offset]) for offset in range(length)]
 
@@ -57,10 +75,11 @@ class RamInfo:
 
         for f in fields(self):
             value = getattr(self, f.name)
+            scale = 65535.0 if f.metadata.get("word") else 128.0 if f.metadata.get("signed") else 255.0
 
             if isinstance(value, list):
-                result.extend(float(item) / 255.0 for item in value)
+                result.extend(float(item) / scale for item in value)
             else:
-                result.append(float(value) / 255.0)
+                result.append(float(value) / scale)
 
         return result

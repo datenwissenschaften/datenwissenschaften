@@ -16,6 +16,21 @@ This project follows a strict engineering philosophy centered around:
 
 ---
 
+# Minimal Hardware Target
+
+The complete training and inference path must run without a GPU on a minimal virtual server.
+
+- Always select the CPU explicitly. Never probe for, initialize, or require a GPU.
+- Use one emulator process and one PyTorch CPU thread.
+- Policies consume compact numeric state. Never add pixel observations, CNNs, frame stacks, or auxiliary neural networks.
+- Keep the A2C actor and value networks at one 32-unit layer unless a reproducible NES evaluation proves that a smaller model still wins.
+- Do not add recurrence, PPO minibatches, replay buffers, or auxiliary models unless a reproducible NES evaluation proves they are necessary.
+- Keep rollout buffers at 128 steps unless a reproducible NES evaluation proves that a smaller buffer still learns.
+- Reject non-A2C, visual-policy, and accelerator-dependent checkpoints explicitly.
+- Treat parameter count, serialized checkpoint size, peak RAM, and CPU time as regression-sensitive behavior.
+
+---
+
 # Major Versions
 
 Major versions are clean breaks.

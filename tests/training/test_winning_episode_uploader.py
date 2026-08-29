@@ -167,6 +167,46 @@ def test_winning_score_does_not_need_to_improve_best(
     assert best_score.read_text(encoding="utf-8") == "100.0"
 
 
+def test_winning_episode_does_not_finish_curriculum_before_mastery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    recording = tmp_path / "curriculum.bk2"
+    recording.write_bytes(b"recording")
+    monkeypatch.setattr(
+        "datenwissenschaften.training.winning_episode_uploader.httpx.post",
+        Mock(return_value=Mock()),
+    )
+    uploader = WinningEpisodeUploader(
+        Box(
+            {
+                "paths": {"models": tmp_path / "models"},
+                "training": {
+                    "game": "Example-Nes",
+                    "savestate": "Level1",
+                    "fingerprint": "abc123",
+                },
+                "upload": {"url": "https://example.test", "api_key": "secret"},
+            }
+        )
+    )
+    assert not uploader.process(
+        [True],
+        [
+            {
+                "episode": {"r": 1.0, "l": 50},
+                "episode_bk2_path": str(recording),
+                "episode_number": 1,
+                "action_repeat": 4,
+                "state": "Finish",
+                "won": True,
+                "curriculum_complete": False,
+            }
+        ],
+    )
+    assert not recording.exists()
+
+
 def test_better_winning_score_is_uploaded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     recording = tmp_path / "better.bk2"
     recording.write_bytes(b"recording")

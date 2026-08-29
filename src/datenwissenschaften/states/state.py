@@ -83,8 +83,6 @@ class State(Generic[T]):
         if isinstance(self, Explorer):
             if state_type._target_state is Explorer._target_state:
                 raise TypeError(f"{state_type.__name__} must define a target state")
-            if state_type._won is not Explorer._won:
-                raise TypeError(f"{state_type.__name__} cannot define won")
             return
 
         if isinstance(self, RamScorerState):

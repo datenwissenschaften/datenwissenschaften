@@ -37,6 +37,8 @@ def load_config(config_path: str | Path) -> Box:
     config.paths.roms = _path(config.paths.roms, path.parent)
     config.paths.models = _path(config.paths.models, path.parent)
     config.training.game = _string(config.training.game, "training.game")
+    if "-nes" not in config.training.game.lower():
+        raise RuntimeError("Only NES games are supported: training.game must contain '-Nes'")
     config.training.savestate = _string(config.training.savestate, "training.savestate")
     config.training.fingerprint = _string(config.training.fingerprint, "training.fingerprint")
     config.training.runner_id = _string(config.training.runner_id, "training.runner_id")
