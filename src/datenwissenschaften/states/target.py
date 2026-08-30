@@ -5,9 +5,9 @@ from typing import ClassVar, TypeVar
 import numpy as np
 
 from datenwissenschaften.ram.model import RamInfo
-from datenwissenschaften.states.detector import TemplateDetector
 from datenwissenschaften.states.state import State
 from datenwissenschaften.states.target_memory import TargetMemory
+from datenwissenschaften.states.template_detector import TemplateDetector
 
 T = TypeVar("T", bound=RamInfo)
 PROGRESS_REWARD_SCALE = 10.0

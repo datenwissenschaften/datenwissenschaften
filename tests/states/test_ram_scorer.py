@@ -52,3 +52,29 @@ def test_ram_scorer_zero_reward_when_unchanged(ram_scorer):
 
     reward, _, _, _ = ram_scorer.step(ram_scorer.ram, ram_scorer.frame)
     assert reward == 0.0
+
+
+class FakeDetector:
+    def __init__(self, positions):
+        self.positions = positions
+
+    def detect(self, frame):
+        pass
+
+
+def test_ram_scorer_rewards_approaching_target(ram_scorer):
+    ram_scorer.target_detector = FakeDetector(((50.0, 50.0),))
+    ram_scorer._on_reset()
+
+    ram_scorer.target_detector = FakeDetector(((45.0, 50.0),))
+    reward, _, _, _ = ram_scorer.step(ram_scorer.ram, ram_scorer.frame)
+    assert reward > 0.0
+
+
+def test_ram_scorer_ignores_target_switch_jump(ram_scorer):
+    ram_scorer.target_detector = FakeDetector(((50.0, 50.0),))
+    ram_scorer._on_reset()
+
+    ram_scorer.target_detector = FakeDetector(((90.0, 90.0),))
+    reward, _, _, _ = ram_scorer.step(ram_scorer.ram, ram_scorer.frame)
+    assert reward == 0.0

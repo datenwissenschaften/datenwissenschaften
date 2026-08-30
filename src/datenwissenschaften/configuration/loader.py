@@ -5,6 +5,7 @@ import yaml
 from box import Box
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
+SUPPORTED_RENDER_MODES = ("human", "rgb_array")
 
 
 def load_config(config_path: str | Path) -> Box:
@@ -25,6 +26,7 @@ def load_config(config_path: str | Path) -> Box:
         "paths.models",
         "training.game",
         "training.savestate",
+        "training.render_mode",
         "training.fingerprint",
         "training.runner_id",
         "training.runner_name",
@@ -40,6 +42,10 @@ def load_config(config_path: str | Path) -> Box:
     if "-nes" not in config.training.game.lower():
         raise RuntimeError("Only NES games are supported: training.game must contain '-Nes'")
     config.training.savestate = _string(config.training.savestate, "training.savestate")
+    config.training.render_mode = _string(config.training.render_mode, "training.render_mode")
+    if config.training.render_mode not in SUPPORTED_RENDER_MODES:
+        values = ", ".join(SUPPORTED_RENDER_MODES)
+        raise RuntimeError(f"Configuration value 'training.render_mode' must be one of: {values}")
     config.training.fingerprint = _string(config.training.fingerprint, "training.fingerprint")
     config.training.runner_id = _string(config.training.runner_id, "training.runner_id")
     config.training.runner_name = _string(config.training.runner_name, "training.runner_name")

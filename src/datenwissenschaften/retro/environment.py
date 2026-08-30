@@ -16,9 +16,10 @@ from datenwissenschaften.rewards.normalizer import normalize_rewards
 def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) -> VecNormalize:
     config = load_config(config_path)
     logger.info(
-        "Building one CPU environment for {} / {}",
+        "Building one CPU environment for {} / {} with {} rendering",
         config.training.game,
         config.training.savestate,
+        config.training.render_mode,
     )
     import_roms(config.paths.roms)
     models_path = model_directory(config)
@@ -27,6 +28,7 @@ def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) ->
         wrapper,
         config.training.game,
         config.training.savestate,
+        config.training.render_mode,
         models_path,
         0,
     )
@@ -35,10 +37,17 @@ def build_environment(wrapper: Callable[[Any], Any], config_path: str | Path) ->
     return normalize_rewards(VecMonitor(environments), models_path)
 
 
-def _create_environment(wrapper: Callable[[Any], Any], game: str, savestate: str, model_dir: Path, index: int) -> Any:
+def _create_environment(
+    wrapper: Callable[[Any], Any],
+    game: str,
+    savestate: str,
+    render_mode: str,
+    model_dir: Path,
+    index: int,
+) -> Any:
     recordings = model_dir / "episodes" / str(index)
     recordings.mkdir(parents=True, exist_ok=True)
     return wrapper(
-        stable_retro.make(game, savestate, render_mode="rgb_array", record=recordings),
+        stable_retro.make(game, savestate, render_mode=render_mode, record=recordings),
         model_dir=model_dir,
     )

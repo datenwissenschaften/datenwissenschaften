@@ -42,6 +42,7 @@ def test_winning_run_uploads_required_metadata(monkeypatch: pytest.MonkeyPatch, 
                 "episode_bk2_path": str(recording),
                 "episode_number": 42,
                 "action_repeat": 3,
+                "start_state": "Start",
                 "state": "Finish",
                 "won": True,
             }
@@ -95,6 +96,7 @@ def test_new_best_non_winning_score_is_uploaded_as_training(
                 "episode_bk2_path": str(recording),
                 "episode_number": 1,
                 "action_repeat": 2,
+                "start_state": "Start",
                 "state": "Start",
                 "won": False,
             }
@@ -154,6 +156,7 @@ def test_winning_score_does_not_need_to_improve_best(
                 "episode_bk2_path": str(recording),
                 "episode_number": 1,
                 "action_repeat": 4,
+                "start_state": "Start",
                 "state": "Finish",
                 "won": True,
             }
@@ -198,6 +201,7 @@ def test_winning_episode_does_not_finish_curriculum_before_mastery(
                 "episode_bk2_path": str(recording),
                 "episode_number": 1,
                 "action_repeat": 4,
+                "start_state": "Start",
                 "state": "Finish",
                 "won": True,
                 "curriculum_complete": False,
@@ -241,6 +245,7 @@ def test_better_winning_score_is_uploaded(monkeypatch: pytest.MonkeyPatch, tmp_p
                 "episode_bk2_path": str(recording),
                 "episode_number": 1,
                 "action_repeat": 4,
+                "start_state": "Start",
                 "state": "Finish",
                 "won": True,
             }
@@ -287,6 +292,7 @@ def test_winning_episode_stops_training_when_upload_fails(monkeypatch: pytest.Mo
                 "episode_bk2_path": str(recording),
                 "episode_number": 1,
                 "action_repeat": 4,
+                "start_state": "Start",
                 "state": "Finish",
                 "won": True,
             }

@@ -52,10 +52,11 @@ def _process_episode(config: Box, info: dict[str, Any]) -> tuple[bool, bool]:
     new_best = _record_score(reward_path, score)
     best_score = float(reward_path.read_text(encoding="utf-8"))
     logger.debug(
-        "Episode finished: reward={:.3f}, best={:.3f}, steps={}, end={}, won={}",
+        "Episode finished: reward={:.3f}, best={:.3f}, steps={}, start={}, end={}, won={}",
         episode["r"],
         best_score,
         episode["l"],
+        info["start_state"],
         info["state"],
         info["won"],
     )

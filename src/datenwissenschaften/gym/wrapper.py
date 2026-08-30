@@ -15,7 +15,7 @@ from datenwissenschaften.states.target import TargetState
 from datenwissenschaften.training.episode_counter import EpisodeCounter
 
 T = TypeVar("T", bound=RamInfo)
-FRAME_COST = -0.01
+FRAME_COST = -0.001
 STATE_REWARD_LIMIT = 1.0
 Observation = np.ndarray
 
@@ -71,6 +71,7 @@ class StateMachineGymWrapper(gym.Wrapper, Generic[T]):
             tuple(state_type.__name__ for state_type in self.state_types),
         )
         self.curriculum_state = self.curriculum.active_state() or self.machine.name
+        self.episode_start_state: str = self.machine.name
         self.curriculum_steps = 0
         self.curriculum_return = 0.0
         self.curriculum_recorded = False
@@ -120,6 +121,7 @@ def _reset(
         if checkpoint_state is not None
         else wrapper.state_types[0]
     )
+    wrapper.episode_start_state = state_type.__name__
     wrapper.machine.reset(
         ram,
         frame,
@@ -245,6 +247,7 @@ def _episode_info(
 ) -> dict[str, Any]:
     return {
         "state": wrapper.machine.name,
+        "start_state": wrapper.episode_start_state,
         "episode_number": wrapper.episode_number,
         "action_repeat": wrapper.action_repeat,
         "won": won,

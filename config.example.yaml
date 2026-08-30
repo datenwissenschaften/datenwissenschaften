@@ -5,6 +5,7 @@ paths:
 training:
   game: Example-Nes-v0
   savestate: Level1
+  render_mode: rgb_array
   fingerprint: replace-me
   runner_id: replace-me
   runner_name: replace-me

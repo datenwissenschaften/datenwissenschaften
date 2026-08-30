@@ -15,6 +15,7 @@ paths:
 training:
   game: Example-Nes
   savestate: Level1
+  render_mode: rgb_array
   num_envs: 4
   fingerprint: abc123
   runner_id: runner-1

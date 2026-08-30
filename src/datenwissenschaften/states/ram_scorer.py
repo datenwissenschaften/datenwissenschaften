@@ -5,14 +5,16 @@ from typing import ClassVar, TypeVar
 import numpy as np
 
 from datenwissenschaften.ram.model import RamInfo
-from datenwissenschaften.states.detector import (
+from datenwissenschaften.states.detection import (
     MATCH_THRESHOLD,
     MINIMUM_TARGET_DISTANCE,
-    MultiTemplateDetector,
 )
+from datenwissenschaften.states.multi_template_detector import MultiTemplateDetector
 from datenwissenschaften.states.state import State
 
 T = TypeVar("T", bound=RamInfo)
+DISTANCE_REWARD_SCALE = 10.0
+TARGET_SWITCH_DISTANCE = 8.0
 
 
 class RamScorerState(State[T]):
@@ -31,6 +33,7 @@ class RamScorerState(State[T]):
             if self.detector_files
             else None
         )
+        self.previous_target_position: tuple[float, float] | None = None
         self.previous_target_distance: float | None = None
 
     def _detect(self) -> None:
@@ -40,7 +43,9 @@ class RamScorerState(State[T]):
     def _on_reset(self) -> None:
         super()._on_reset()
         self.previous_value = float(self._scored_value())
-        self.previous_target_distance = self._target_distance()
+        target = self._target_coordinates()
+        self.previous_target_position = target
+        self.previous_target_distance = None if target is None else self._distance_to(target)
 
     def _automatic_reward(self) -> float:
         current_value = float(self._scored_value())
@@ -52,12 +57,18 @@ class RamScorerState(State[T]):
         else:
             score_reward = current_value - previous
 
-        distance = self._target_distance()
+        target = self._target_coordinates()
+        previous_target = self.previous_target_position
         previous_distance = self.previous_target_distance
+        distance = None if target is None else self._distance_to(target)
+        self.previous_target_position = target
         self.previous_target_distance = distance
-        if distance is None or previous_distance is None:
+
+        if target is None or previous_target is None or previous_distance is None:
             return score_reward
-        return score_reward + previous_distance - distance
+        if hypot(target[0] - previous_target[0], target[1] - previous_target[1]) >= TARGET_SWITCH_DISTANCE:
+            return score_reward
+        return score_reward + (previous_distance - distance) * DISTANCE_REWARD_SCALE
 
     def target_features(self) -> np.ndarray:
         target = self._target_coordinates()
@@ -76,10 +87,7 @@ class RamScorerState(State[T]):
             dtype=np.float32,
         )
 
-    def _target_distance(self) -> float | None:
-        target = self._target_coordinates()
-        if target is None:
-            return None
+    def _distance_to(self, target: tuple[float, float]) -> float:
         height, width = self.frame.shape[:2]
         actor_x = float(self.ram.screen_x * width + self.ram.player_x)
         actor_y = float(self.ram.screen_y * height + self.ram.player_y)

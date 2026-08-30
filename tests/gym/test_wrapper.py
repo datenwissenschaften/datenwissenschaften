@@ -59,6 +59,7 @@ def test_failure_adds_penalty(monkeypatch: pytest.MonkeyPatch) -> None:
     wrapper.machine.step.return_value = 0.0, False, False
     wrapper.machine.current._won.return_value = False
     wrapper.episode_number = 1
+    wrapper.episode_start_state = "Stage"
     wrapper.failure_penalty = -5.0
     wrapper.player_motion = Mock()
     wrapper.player_motion.measure.return_value = np.zeros(2, dtype=np.float32)
@@ -76,8 +77,9 @@ def test_failure_adds_penalty(monkeypatch: pytest.MonkeyPatch) -> None:
     _, reward, _, truncated, info = wrapper.step(np.zeros(1, dtype=np.int8))
 
     assert truncated
-    assert reward == -5.01
+    assert reward == -5.001
     assert info["action_repeat"] == 1
+    assert info["start_state"] == "Stage"
 
 
 def test_transition_continues_episode(
@@ -109,6 +111,7 @@ def test_transition_continues_episode(
     wrapper.machine.step.side_effect = transition
     wrapper.machine.current._won.return_value = False
     wrapper.episode_number = 1
+    wrapper.episode_start_state = "First"
     wrapper.transition_reward = 5.0
     wrapper.failure_penalty = -5.0
     wrapper.player_motion = Mock()
@@ -126,7 +129,7 @@ def test_transition_continues_episode(
 
     _, reward, terminated, truncated, _ = wrapper.step(np.zeros(1, dtype=np.int8))
 
-    assert reward == 5.99
+    assert reward == 5.999
     assert not terminated
     assert not truncated
     wrapper.env.step.assert_called_once()
@@ -156,6 +159,7 @@ def test_bounds_automatic_reward_before_adding_transition_reward(
     wrapper.machine.step.side_effect = transition
     wrapper.machine.current._won.return_value = False
     wrapper.episode_number = 1
+    wrapper.episode_start_state = "First"
     wrapper.transition_reward = 5.0
     wrapper.failure_penalty = -5.0
     wrapper.player_motion = Mock()
@@ -173,7 +177,7 @@ def test_bounds_automatic_reward_before_adding_transition_reward(
 
     _, reward, _, _, _ = wrapper.step(np.zeros(1, dtype=np.int8))
 
-    assert reward == 5.99
+    assert reward == 5.999
 
 
 def test_does_not_reward_a_transition_on_a_failed_frame(
@@ -205,6 +209,7 @@ def test_does_not_reward_a_transition_on_a_failed_frame(
     wrapper.machine.step.side_effect = failed_transition
     wrapper.machine.current._won.return_value = False
     wrapper.episode_number = 1
+    wrapper.episode_start_state = "First"
     wrapper.transition_reward = 5.0
     wrapper.failure_penalty = -5.0
     wrapper.player_motion = Mock()
@@ -223,4 +228,4 @@ def test_does_not_reward_a_transition_on_a_failed_frame(
     _, reward, _, truncated, _ = wrapper.step(np.zeros(1, dtype=np.int8))
 
     assert truncated
-    assert reward == -5.01
+    assert reward == -5.001
