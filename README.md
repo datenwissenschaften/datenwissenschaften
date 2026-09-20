@@ -1,4 +1,4 @@
-# Martin Franke
+# Dr. Martin Franke
 
 **AI Strategist · Lead Data Scientist · ML Engineer**
 
