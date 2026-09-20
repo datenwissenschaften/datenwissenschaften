@@ -2,8 +2,8 @@
 
 **AI Strategist · Lead Data Scientist · ML Engineer**
 
-PhD in Computer Science with 15 years of experience building machine-learning,
-AI, and large-scale data systems.
+PhD (Dr.-Ing.) in Computer Science with 15 years of experience building
+machine-learning, AI, and large-scale data systems.
 
 My work spans production ML, agentic AI, distributed data processing, and
 data platforms — from research and prototyping through production deployment,
