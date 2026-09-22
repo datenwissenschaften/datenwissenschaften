@@ -1,72 +1,40 @@
 # Dr. Martin Franke
 
-**AI Strategist · Lead Data Scientist · ML Engineer**
+**Machine Learning Engineer · Lead Data Scientist · AI Strategist**
 
-PhD (Dr.-Ing.) in Computer Science with 15 years of experience building
-machine-learning, AI, and large-scale data systems.
+Dr.-Ing. in Computer Science with 15+ years of experience across applied machine learning, AI, experimentation, and large-scale data systems.
 
-My work spans production ML, agentic AI, distributed data processing, and
-data platforms — from research and prototyping through production deployment,
-governance, and technical leadership.
-
-## What I work on
-
-- **AI & Machine Learning** — production ML, LLMs, AI agents, recommender systems
-  and reinforcement learning
-- **Data Science at Scale** — PySpark, Apache Spark, Databricks and distributed analytics
-- **Agentic Analytics** — natural-language interfaces, metadata-driven discovery,
-  code generation and tool-using agents
-- **ML Engineering** — APIs, testing, CI/CD, monitoring and reproducible ML systems
-- **Data Platforms & Governance** — metadata, data quality, catalogs, lineage and
-  production-grade data pipelines
+I build production-oriented ML and analytics systems from research and prototyping through architecture, implementation, validation, deployment, and governance. My current technical focus is **agentic analytics, distributed data engineering, experimentation, and reproducible ML systems**.
 
 ## Selected projects
 
-### 🎮 Retro Speedlab
+| Project | Focus |
+|---|---|
+| [agentic-data-analyst](https://github.com/datenwissenschaften/agentic-data-analyst) | Guarded agentic analytics: natural language → dbt metadata → typed IR → validated PySpark execution |
+| [spark-data-quality](https://github.com/datenwissenschaften/spark-data-quality) | Typed, Spark-native data-quality validation and profiling with shared aggregation planning |
+| [experimentation-toolkit](https://github.com/datenwissenschaften/experimentation-toolkit) | A/B testing, statistical inference, SRM diagnostics, power analysis, and multiple-testing correction |
+| [spark-asammdf](https://github.com/datenwissenschaften/spark-asammdf) | Apache Spark DataSource V2 connector for distributed analysis of ASAM MDF4 measurement data |
+| [retro-speedlab-core](https://github.com/datenwissenschaften/retro-speedlab-core) | Recurrent PPO + RND reinforcement-learning engine with vectorized environments, resumable checkpoints, and telemetry |
+| [retro-speedlab](https://github.com/datenwissenschaften/retro-speedlab) | Cookiecutter scaffold for reproducible Stable Retro reinforcement-learning projects with tested project generation and CI |
 
-Reinforcement-learning environment and training platform for experimenting with
-agents on classic video games.
+## Engineering focus
 
-`Python` · `PyTorch` · `PPO` · `RND` · `Gymnasium` · `Stable-Retro`
+**ML & AI:** PyTorch · scikit-learn · Spark ML · LLMs · AI agents · MCP · reinforcement learning
 
-### 🤖 Agentic Data Analyst — coming soon
+**Data & distributed systems:** PySpark · Apache Spark · Databricks · Airflow · SQL · data quality · metadata · lineage
 
-Reference architecture for natural-language-driven analytics:
-
-**question → dataset discovery → metadata → PySpark generation → validation → execution**
-
-`Python` · `PySpark` · `LLMs` · `MCP` · `FastAPI`
-
-### ⚡ Spark Data Quality — coming soon
-
-Distributed data-quality and validation framework designed for PySpark workloads.
-
-`PySpark` · `Databricks` · `Data Quality` · `Testing`
-
-## Background
-
-I started working on applied machine learning and behavioral analytics at
-TU Dresden, where I completed my doctorate in Computer Science.
-
-Since then, I have worked across research, healthcare, digital products and
-automotive, most recently designing AI and large-scale analytics systems for
-Volkswagen Group applications.
-
-My focus is on turning ML and AI concepts into systems that are **useful,
-maintainable, reproducible and production-ready**.
-
-## Technology
-
-**Languages:** Python · Scala · SQL · TypeScript
-
-**AI / ML:** PyTorch · scikit-learn · Spark ML · LLMs · AI Agents · MCP
-
-**Data:** PySpark · Apache Spark · Databricks · Airflow · PostgreSQL
-
-**Engineering:** FastAPI · REST · Docker · GitHub Actions · CI/CD · Testing
+**Software engineering:** Python · Scala · FastAPI · REST · Docker · GitHub Actions · CI/CD · testing · reproducibility
 
 **Cloud:** Azure · AWS · GCP
 
+## Background
+
+I started working on applied machine learning and behavioral analytics at **TU Dresden**, where I completed my doctorate in Computer Science.
+
+Since then, I have worked across research, healthcare, digital products, and automotive. My recent work has centered on production ML and large-scale automotive analytics: distributed PySpark pipelines, semantic data abstractions and metadata indexing, ML/AI-assisted analytics, reproducible delivery, monitoring, and governance.
+
+The repositories above use public or synthetic data and are independent portfolio projects; they do not contain proprietary employer or client code or data.
+
 ---
 
-[Website](https://www.datenwissenschaften.com)
+[Website & projects](https://www.datenwissenschaften.com/products?utm_source=github&utm_medium=profile&utm_campaign=portfolio&utm_content=profile-readme)
