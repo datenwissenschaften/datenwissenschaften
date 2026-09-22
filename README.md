@@ -37,4 +37,4 @@ The repositories above use public or synthetic data and are independent portfoli
 
 ---
 
-[Website & projects](https://www.datenwissenschaften.com/products?utm_source=github&utm_medium=profile&utm_campaign=portfolio&utm_content=profile-readme)
+[Website](https://www.datenwissenschaften.com/?utm_source=github&utm_medium=profile&utm_campaign=portfolio&utm_content=profile-readme)
