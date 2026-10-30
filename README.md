@@ -14,12 +14,12 @@ I build production-oriented ML and analytics systems from research and prototypi
 | [spark-data-quality](https://github.com/datenwissenschaften/spark-data-quality) | Typed, Spark-native data-quality validation and profiling with shared aggregation planning |
 | [experimentation-toolkit](https://github.com/datenwissenschaften/experimentation-toolkit) | A/B testing, statistical inference, SRM diagnostics, power analysis, and multiple-testing correction |
 | [spark-asammdf](https://github.com/datenwissenschaften/spark-asammdf) | Apache Spark DataSource V2 connector for distributed analysis of ASAM MDF4 measurement data |
-| [retro-speedlab-core](https://github.com/datenwissenschaften/retro-speedlab-core) | Recurrent PPO + RND reinforcement-learning engine with vectorized environments, resumable checkpoints, and telemetry |
-| [retro-speedlab](https://github.com/datenwissenschaften/retro-speedlab) | Cookiecutter scaffold for reproducible Stable Retro reinforcement-learning projects with tested project generation and CI |
+| [retro-speedlab-core](https://github.com/datenwissenschaften/retro-speedlab-core) | Engine of [Retro Speedlab](https://www.retrospeedlab.com), an AI that speedruns NES games live: Go-Explore search over emulator save states, every run verified frame-exact from power-on, with Claude agents that research the game and maintain the platform |
+| [retro-speedlab](https://github.com/datenwissenschaften/retro-speedlab) | Cookiecutter scaffold for a new Retro Speedlab game: RAM map, game states, Claude lab agent and Dokku deployment, with tested project generation |
 
 ## Engineering focus
 
-**ML & AI:** PyTorch · scikit-learn · Spark ML · LLMs · AI agents · MCP · reinforcement learning
+**ML & AI:** PyTorch · scikit-learn · Spark ML · LLMs · AI agents · Claude Agent SDK · MCP · reinforcement learning · search-based planning
 
 **Data & distributed systems:** PySpark · Apache Spark · Databricks · Airflow · SQL · data quality · metadata · lineage
 
