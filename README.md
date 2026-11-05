@@ -1,31 +1,34 @@
 # Dr. Martin Franke
 
-**Machine Learning Engineer · Lead Data Scientist · AI Strategist**
+**Senior AI Engineer · Machine Learning Engineer · Lead Data Scientist**
 
 Dr.-Ing. in Computer Science with 15+ years of experience across applied machine learning, AI, experimentation, and large-scale data systems.
 
-I build production-oriented ML and analytics systems from research and prototyping through architecture, implementation, validation, deployment, and governance. My current technical focus is **agentic analytics, distributed data engineering, experimentation, and reproducible ML systems**.
+I build production-oriented ML and analytics systems from research and prototyping through architecture, implementation, validation, deployment, and governance. My current technical focus is **agentic AI systems (Claude agents built with Claude Code and the Agent SDK, with evaluation and observability), search and reinforcement learning, and production data and ML systems**.
 
 ## Selected projects
 
 | Project | Focus |
 |---|---|
-| [agentic-data-analyst](https://github.com/datenwissenschaften/agentic-data-analyst) | Guarded agentic analytics: natural language → dbt metadata → typed IR → validated PySpark execution |
+| [retro-speedlab-core](https://github.com/datenwissenschaften/retro-speedlab-core) | Engine of [Retro Speedlab](https://www.retrospeedlab.com), an AI that speedruns Snake Rattle 'n Roll (NES) live on Twitch: Go-Explore and tree search over emulator save states guided by a Stable-Baselines3 PPO policy, every run verified frame-exact from power-on, Claude Code lab runs traced in Langfuse and scored on search progress, experiments in Weights & Biases |
+| [retro-speedlab-maintainer](https://github.com/datenwissenschaften/retro-speedlab-maintainer) | Scheduled Claude Agent SDK agent that keeps Retro Speedlab running: every six hours it reads Bugsink issues, lab reports and the live run, fixes the most important problem with a test, then merges and deploys or opens a pull request |
+| [retro-speedlab](https://github.com/datenwissenschaften/retro-speedlab) | Cookiecutter template for Retro Speedlab game packages: a skeleton that scheduled Claude Code lab runs grow until the TAS search beats the game |
+| [agentic-data-analyst](https://github.com/datenwissenschaften/agentic-data-analyst) | Chat with a speedrun database: Claude writes read-only DuckDB SQL, a reviewer agent checks it, and a Chainlit UI shows answers with tables and charts; deterministic SQL guardrails and cost budgets |
 | [spark-data-quality](https://github.com/datenwissenschaften/spark-data-quality) | Typed, Spark-native data-quality validation and profiling with shared aggregation planning |
 | [experimentation-toolkit](https://github.com/datenwissenschaften/experimentation-toolkit) | A/B testing, statistical inference, SRM diagnostics, power analysis, and multiple-testing correction |
 | [spark-asammdf](https://github.com/datenwissenschaften/spark-asammdf) | Apache Spark DataSource V2 connector for distributed analysis of ASAM MDF4 measurement data |
-| [retro-speedlab-core](https://github.com/datenwissenschaften/retro-speedlab-core) | Engine of [Retro Speedlab](https://www.retrospeedlab.com), an AI that speedruns NES games live: Go-Explore search over emulator save states, every run verified frame-exact from power-on, with Claude agents that research the game and maintain the platform |
-| [retro-speedlab](https://github.com/datenwissenschaften/retro-speedlab) | Cookiecutter scaffold for a new Retro Speedlab game: RAM map, game states, Claude lab agent and Dokku deployment, with tested project generation |
 
 ## Engineering focus
 
-**ML & AI:** PyTorch · scikit-learn · Spark ML · LLMs · AI agents · Claude Agent SDK · MCP · reinforcement learning · search-based planning
+**AI agents & LLMs:** Claude Code · Claude Agent SDK · MCP · multi-agent orchestration · LLM evaluation · Langfuse · OpenTelemetry
 
-**Data & distributed systems:** PySpark · Apache Spark · Databricks · Airflow · SQL · data quality · metadata · lineage
+**ML & search:** PyTorch · Stable-Baselines3 · Gymnasium · reinforcement learning · search-based planning · scikit-learn · Spark ML · Weights & Biases
 
-**Software engineering:** Python · Scala · FastAPI · REST · Docker · GitHub Actions · CI/CD · testing · reproducibility
+**Data & distributed systems:** PySpark · Apache Spark · Databricks · Airflow · Flyte · SQL · DuckDB · PostgreSQL · data quality · metadata · lineage
 
-**Cloud:** Azure · AWS · GCP
+**Software engineering:** Python · pyright · ruff · Scala · FastAPI · Vue · REST · Docker · Dokku · GitHub Actions · CI/CD · testing · reproducibility
+
+**Cloud:** Azure · AWS · GCP · Hetzner
 
 ## Background
 
