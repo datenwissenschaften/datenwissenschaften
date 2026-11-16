@@ -10,7 +10,7 @@ I build production-oriented ML and analytics systems from research and prototypi
 
 | Project | Focus |
 |---|---|
-| [Retro Speedlab](https://github.com/RetroSpeedLab) | An AI that designs its own 8-bit games and speedruns them live on Twitch; its search, games, website and data platform live in their own organization, [github.com/RetroSpeedLab](https://github.com/RetroSpeedLab) |
+| [RetroSpeedLab](https://github.com/RetroSpeedLab) | An AI that designs its own 8-bit games and speedruns them live on Twitch; its search, games, website and data platform live in their own organization, [github.com/RetroSpeedLab](https://github.com/RetroSpeedLab) |
 | [agentic-data-analyst](https://github.com/datenwissenschaften/agentic-data-analyst) | Chat with a speedrun database: Claude writes read-only DuckDB SQL, a reviewer agent checks it, and a Chainlit UI shows answers with tables and charts; deterministic SQL guardrails and cost budgets |
 | [spark-data-quality](https://github.com/datenwissenschaften/spark-data-quality) | Typed, Spark-native data-quality validation and profiling with shared aggregation planning |
 | [experimentation-toolkit](https://github.com/datenwissenschaften/experimentation-toolkit) | A/B testing, statistical inference, SRM diagnostics, power analysis, and multiple-testing correction |
