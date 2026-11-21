@@ -18,7 +18,7 @@ I build production-oriented ML and analytics systems from research and prototypi
 
 ## Engineering focus
 
-**AI agents & LLMs:** Claude Code · Claude Agent SDK · MCP · multi-agent orchestration · LLM evaluation · Langfuse · OpenTelemetry
+**AI agents & LLMs:** Claude Code · Claude Agent SDK · MCP · multi-agent orchestration · LLM evaluation · OpenTelemetry · Grafana Tempo
 
 **ML & search:** PyTorch · Stable-Baselines3 · Gymnasium · reinforcement learning · search-based planning · scikit-learn · Spark ML · Aim
 
