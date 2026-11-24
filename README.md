@@ -20,9 +20,9 @@ I build production-oriented ML and analytics systems from research and prototypi
 
 **AI agents & LLMs:** Claude Code · Claude Agent SDK · MCP · multi-agent orchestration · LLM evaluation · OpenTelemetry · Grafana Tempo
 
-**ML & search:** PyTorch · Stable-Baselines3 · Gymnasium · reinforcement learning · search-based planning · scikit-learn · Spark ML · Aim
+**ML & search:** PyTorch · Stable-Baselines3 · Gymnasium · reinforcement learning · search-based planning · scikit-learn · Spark ML
 
-**Data & distributed systems:** PySpark · Apache Spark · Databricks · Airflow · Flyte · SQL · DuckDB · PostgreSQL · data quality · metadata · lineage
+**Data & distributed systems:** PySpark · Apache Spark · Databricks · Airflow · Flyte · SQL · DuckDB · PostgreSQL · Grafana · data quality · metadata · lineage
 
 **Software engineering:** Python · pyright · ruff · Scala · FastAPI · Vue · REST · Docker · Dokku · GitHub Actions · CI/CD · testing · reproducibility
 
